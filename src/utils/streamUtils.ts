@@ -32,6 +32,9 @@ export const getStreamData = async (
 
         sortedData.forEach((s: StreamLink) => {
             const mapped = getMappedQuality(s.quality);
+            // Filter out 360P as requested
+            if (mapped === '360P') return;
+
             if (!qualityMap.has(mapped)) {
                 qualityMap.set(mapped, s);
             }

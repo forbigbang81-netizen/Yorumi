@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import Hls from 'hls.js';
+import { useState, useRef } from 'react';
+
 import type { Episode } from '../types/anime';
 import type { StreamLink } from '../types/stream';
 import { getStreamData, getMappedQuality } from '../utils/streamUtils';
@@ -11,40 +11,11 @@ export function useStreams(scraperSession: string | null) {
     const [isAutoQuality, setIsAutoQuality] = useState(true);
     const [showQualityMenu, setShowQualityMenu] = useState(false);
     const [streamLoading, setStreamLoading] = useState(false);
-    const [playerMode, setPlayerMode] = useState<'hls' | 'embed'>('embed');
-
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const hlsRef = useRef<Hls | null>(null);
     const streamCache = useRef(new Map<string, Promise<StreamLink[]>>());
 
     const currentStream = streams[selectedStreamIndex] || null;
 
-    // Setup HLS player
-    useEffect(() => {
-        if (currentStream?.directUrl && playerMode === 'hls' && videoRef.current) {
-            if (Hls.isSupported()) {
-                if (hlsRef.current) hlsRef.current.destroy();
-                const hls = new Hls({
-                    capLevelToPlayerSize: true,
-                    enableWorker: true,
-                    lowLatencyMode: true,
-                    backBufferLength: 90
-                });
-                hls.loadSource(currentStream.directUrl);
-                hls.attachMedia(videoRef.current);
-                hlsRef.current = hls;
-            } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
-                videoRef.current.src = currentStream.directUrl;
-            }
-        }
 
-        return () => {
-            if (hlsRef.current) {
-                hlsRef.current.destroy();
-                hlsRef.current = null;
-            }
-        };
-    }, [currentStream, playerMode]);
 
     const ensureStreamData = (episode: Episode): Promise<StreamLink[]> => {
         if (!scraperSession) return Promise.resolve([]);
@@ -113,9 +84,6 @@ export function useStreams(scraperSession: string | null) {
         showQualityMenu,
         currentStream,
         streamLoading,
-        playerMode,
-        videoRef,
-        hlsRef,
 
         // Actions
         loadStream,
@@ -123,7 +91,6 @@ export function useStreams(scraperSession: string | null) {
         handleQualityChange,
         setAutoQuality,
         setShowQualityMenu,
-        setPlayerMode,
         getMappedQuality,
         clearStreams,
     };

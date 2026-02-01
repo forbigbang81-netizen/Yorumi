@@ -107,7 +107,7 @@ export default function PlayerControls({
                             </div>
 
                             {/* Desktop: Popover */}
-                            <div className="hidden sm:flex absolute bottom-full right-0 mb-2 bg-[#1a1a1a] border border-white/10 rounded-lg p-1.5 min-w-[140px] shadow-xl flex-col gap-1 z-20">
+                            <div className="hidden sm:flex absolute bottom-full right-0 mb-2 bg-[#1a1a1a] border border-white/10 rounded-lg p-1.5 min-w-[140px] shadow-xl flex-col gap-1 z-[60]">
                                 <button
                                     onClick={onSetAutoQuality}
                                     className={`w-full text-left px-3 py-1.5 text-sm rounded-md transition-colors ${isAutoQuality ? 'bg-yorumi-accent/20 text-yorumi-accent' : 'text-gray-300 hover:bg-white/10'}`}
@@ -146,6 +146,6 @@ export default function PlayerControls({
                     <span className="hidden sm:inline">{isExpanded ? 'Collapse' : 'Expand'}</span>
                 </button>
             </div>
-        </div>
+        </div >
     );
 }
