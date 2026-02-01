@@ -121,7 +121,19 @@ export default function AnimeDetailsPage() {
                     inList={inList}
                     onWatch={() => {
                         const title = slugify(selectedAnime.title || selectedAnime.title_english || 'anime');
-                        navigate(`/anime/watch/${title}/${id}`);
+
+                        let targetEp: number | undefined;
+                        // Smart Logic:
+                        if (selectedAnime.status === 'Finished Airing') {
+                            targetEp = 1;
+                        } else if (selectedAnime.status === 'Currently Airing') {
+                            // Use 'latest' keyword
+                            targetEp = 'latest' as any;
+                        } else {
+                            targetEp = 1;
+                        }
+
+                        navigate(`/anime/watch/${title}/${id}?ep=${targetEp}`);
                     }}
                     onToggleList={handleToggleList}
                 >
