@@ -68,10 +68,35 @@ export function usePlayer(animeId: string | undefined) {
 
     // Auto-load Episode
     useEffect(() => {
-        if (episodes.length > 0 && !currentStream && !streamLoading) {
-            const targetEp = episodes.find(e => e.episodeNumber == epNumParam) || episodes[0];
+        // STRICT GUARD: Match URL ID with Context Anime ID
+        // This prevents race condition where previous anime state triggers a load for the new page
+        const currentId = String(animeId);
+        const animeMatch = selectedAnime &&
+            (String(selectedAnime.id) === currentId || String(selectedAnime.mal_id) === currentId);
+
+        if (episodes.length > 0 && !currentStream && !streamLoading && animeMatch) {
+            let targetEp: Episode | undefined;
+
+            if (epNumParam === 'latest') {
+                // Find the episode with the highest number
+                // episodes are typically sorted, but let's be safe
+                // Assuming episodes are sorted desc or asc, usually we want the one with highest number
+                // But typically the list from AniList/Jikan is sorted.
+                // Let's just take the last one in the list if we assume chronological order, 
+                // OR find the max episodeNumber.
+                // Let's rely on the array order or a find max.
+                // Safe bet: Parse numbers and find max.
+
+                // Optimized: just grab the last one if available, or sort.
+                // Let's sort to be safe.
+                const sorted = [...episodes].sort((a, b) => parseFloat(a.episodeNumber) - parseFloat(b.episodeNumber));
+                targetEp = sorted[sorted.length - 1];
+            } else {
+                targetEp = episodes.find(e => e.episodeNumber == epNumParam) || episodes[0];
+            }
+
             if (targetEp) {
-                // Update URL if we defaulted to a different episode
+                // Update URL if we defaulted to a different episode or resolved 'latest'
                 if (String(targetEp.episodeNumber) !== epNumParam) {
                     setSearchParams({ ep: String(targetEp.episodeNumber) }, { replace: true });
                 }
