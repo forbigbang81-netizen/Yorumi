@@ -27,9 +27,26 @@ export default function HomePage() {
     const handleWatchClick = (item: Anime, episodeNumber?: number) => {
         const title = slugify(item.title || item.title_english || 'anime');
         const id = item.scraperId || item.mal_id || item.id;
-        const url = episodeNumber
-            ? `/anime/watch/${title}/${id}?ep=${episodeNumber}`
-            : `/anime/watch/${title}/${id}`;
+
+        let targetEp = episodeNumber;
+
+        if (!targetEp) {
+            // Smart Logic:
+            // If Finished -> Play Episode 1
+            // If Airing -> Play Latest Episode
+            if (item.status === 'Finished Airing') {
+                targetEp = 1;
+            } else if (item.status === 'Currently Airing') {
+                // Use 'latest' keyword - let the player determine the actual number
+                // based on the loaded episode list
+                targetEp = 'latest' as any;
+            } else {
+                // Default fallback (e.g. Not Yet Released or unknown)
+                targetEp = 1;
+            }
+        }
+
+        const url = `/anime/watch/${title}/${id}?ep=${targetEp}`;
         navigate(url, { state: { anime: item } });
     };
 
