@@ -44,7 +44,7 @@ export default function Navbar({
 
     // Debounce Logic
     const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
-    const debouncedSearchQuery = useDebounce(localSearchQuery, 500);
+    const debouncedSearchQuery = useDebounce(localSearchQuery, 220);
 
     // Sync local state when prop changes (e.g. clear button from parent)
     useEffect(() => {

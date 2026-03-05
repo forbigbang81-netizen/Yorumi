@@ -131,8 +131,8 @@ export const animeService = {
     },
 
     // Search anime via AniList
-    async searchAnime(query: string, page: number = 1) {
-        const res = await fetch(`${API_BASE}/anilist/search?q=${encodeURIComponent(query)}&page=${page}&limit=18`);
+    async searchAnime(query: string, page: number = 1, limit: number = 18) {
+        const res = await fetch(`${API_BASE}/anilist/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
         const data = await res.json();
         return {
             data: data.media?.map(mapAnilistToAnime) || [],
