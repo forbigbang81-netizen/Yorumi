@@ -28,7 +28,25 @@ const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick, onViewAll }) =>
         fetchManga();
     }, []);
 
-    if (loading) return null;
+    if (loading) {
+        return (
+            <section className="container mx-auto px-4 relative z-20 mt-4 mb-12 animate-pulse">
+                <div className="flex items-center justify-between mb-6">
+                    <div className="h-7 w-44 rounded bg-white/10" />
+                    <div className="h-6 w-20 rounded bg-white/10" />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                    {Array.from({ length: 12 }).map((_, idx) => (
+                        <div key={idx}>
+                            <div className="aspect-[2/3] rounded-lg bg-white/10 mb-2" />
+                            <div className="h-4 w-4/5 rounded bg-white/10" />
+                            <div className="h-4 w-3/5 rounded bg-white/10 mt-2" />
+                        </div>
+                    ))}
+                </div>
+            </section>
+        );
+    }
     if (mangaList.length === 0) return null;
 
     return (
