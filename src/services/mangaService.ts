@@ -35,6 +35,32 @@ const mapAnilistToManga = (item: any) => ({
     relations: item.relations
 });
 
+const mapScraperToManga = (scraperData: any) => ({
+    mal_id: scraperData.id,
+    id: scraperData.id,
+    title: scraperData.title || 'Unknown',
+    title_english: scraperData.altNames?.[0] || scraperData.title,
+    title_romaji: scraperData.title,
+    title_native: scraperData.altNames?.[scraperData.altNames?.length - 1],
+    title_japanese: scraperData.altNames?.[scraperData.altNames?.length - 1],
+    images: {
+        jpg: {
+            image_url: scraperData.coverImage || '',
+            large_image_url: scraperData.coverImage || ''
+        }
+    },
+    synopsis: scraperData.synopsis || 'No synopsis available from source.',
+    type: 'Manga',
+    chapters: Array.isArray(scraperData.chapters) ? scraperData.chapters.length : 0,
+    volumes: 0,
+    score: 0,
+    status: scraperData.status || 'Unknown',
+    genres: scraperData.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
+    authors: scraperData.author ? [{ name: scraperData.author, role: 'Story & Art' }] : [],
+    published: { from: '', to: '', string: '' },
+    countryOfOrigin: 'JP'
+});
+
 export const mangaService = {
     // Fetch top manga from AniList (sorted by SCORE)
     async getTopManga(page: number = 1) {
@@ -93,8 +119,8 @@ export const mangaService = {
     },
 
     // Search manga via AniList
-    async searchManga(query: string, page: number = 1) {
-        const res = await fetch(`${API_BASE}/anilist/search/manga?q=${encodeURIComponent(query)}&page=${page}&limit=18`);
+    async searchManga(query: string, page: number = 1, limit: number = 18) {
+        const res = await fetch(`${API_BASE}/anilist/search/manga?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
         const data = await res.json();
         return {
             data: data.media?.map(mapAnilistToManga) || [],
@@ -194,6 +220,7 @@ export const mangaService = {
     async getScraperMangaDetails(id: string) {
         try {
             const res = await fetch(`${API_BASE}/manga/details/${encodeURIComponent(id)}`);
+            if (!res.ok) return null;
             const json = await res.json();
             const scraperData = json.data;
 
@@ -219,29 +246,7 @@ export const mangaService = {
             */
 
             // 2. Fallback: Return mapped scraper data
-            return {
-                mal_id: scraperData.id, // Keep string ID
-                title: scraperData.title,
-                title_english: scraperData.altNames?.[0] || scraperData.title, // Attempt to populate alt titles
-                title_romaji: scraperData.title,
-                title_native: scraperData.altNames?.[scraperData.altNames?.length - 1],
-                images: {
-                    jpg: {
-                        image_url: scraperData.coverImage || '',
-                        large_image_url: scraperData.coverImage || ''
-                    }
-                },
-                synopsis: scraperData.synopsis || 'No synopsis available from source.',
-                type: 'Manga',
-                status: scraperData.status || 'Unknown',
-                chapters: scraperData.chapters?.length || 0,
-                volumes: 0,
-                score: 0,
-                genres: scraperData.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
-                countryOfOrigin: 'JP', // Assume JP
-                authors: scraperData.author ? [{ name: scraperData.author, role: 'Story & Art' }] : [],
-                published: { from: '', to: '', string: '' }
-            } as any;
+            return mapScraperToManga(scraperData) as any;
         } catch (error) {
             console.error('getScraperMangaDetails failed:', error);
             return null;
@@ -253,7 +258,20 @@ export const mangaService = {
         const res = await fetch(`${API_BASE}/manga/details/${encodeURIComponent(String(id))}`);
         if (!res.ok) throw new Error(`Failed to fetch unified manga details (${res.status})`);
         const json = await res.json();
-        return json.data;
+        const data = json.data;
+        if (!data) return null;
+
+        // AniList-shaped payload
+        if (data.title && typeof data.title === 'object') {
+            return mapAnilistToManga(data);
+        }
+
+        // Scraper-shaped payload
+        if (typeof data.title === 'string') {
+            return mapScraperToManga(data);
+        }
+
+        return null;
     },
 
     // Get random manga (Client-side pool for speed)
