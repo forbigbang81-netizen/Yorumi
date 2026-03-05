@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { redis } from '../mapping/mapper';
+import { createHash } from 'crypto';
 
 const ANILIST_API_URL = 'https://graphql.anilist.co';
 
@@ -59,30 +60,131 @@ function setCache(key: string, data: any, ttl: number): void {
 // ============================================================================
 let lastRequestTime = 0;
 const MIN_REQUEST_INTERVAL = 500; // 500ms between requests (max 2/sec)
+const inFlightRequests = new Map<string, Promise<any>>();
+const REDIS_RATE_LIMIT_KEY = 'anilist:ratelimit:last-request-ms';
 
-async function rateLimitedRequest(query: string, variables: any): Promise<any> {
+function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getRequestHash(query: string, variables: any): string {
+    return createHash('sha1')
+        .update(query)
+        .update(JSON.stringify(variables || {}))
+        .digest('hex');
+}
+
+async function applyRateLimit(): Promise<void> {
     const now = Date.now();
-    const timeSinceLastRequest = now - lastRequestTime;
-
-    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-        await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL - timeSinceLastRequest));
+    const localElapsed = now - lastRequestTime;
+    if (localElapsed < MIN_REQUEST_INTERVAL) {
+        await sleep(MIN_REQUEST_INTERVAL - localElapsed);
     }
 
-    lastRequestTime = Date.now();
-
+    // Best-effort cross-instance pacing via Redis timestamp.
     try {
-        const response = await axios.post(ANILIST_API_URL, { query, variables });
-        return response.data;
-    } catch (error: any) {
-        // Handle rate limit error specifically
-        if (error.response?.status === 429) {
-            console.warn('AniList rate limit hit, waiting 60 seconds...');
-            await new Promise(resolve => setTimeout(resolve, 60000));
-            // Retry once after waiting
-            const response = await axios.post(ANILIST_API_URL, { query, variables });
-            return response.data;
+        const remoteLast = await redis.get<number>(REDIS_RATE_LIMIT_KEY);
+        if (remoteLast) {
+            const remoteElapsed = Date.now() - remoteLast;
+            if (remoteElapsed < MIN_REQUEST_INTERVAL) {
+                await sleep(MIN_REQUEST_INTERVAL - remoteElapsed);
+            }
         }
-        throw error;
+        const nextTs = Date.now();
+        await redis.set(REDIS_RATE_LIMIT_KEY, nextTs, { ex: 120 });
+        lastRequestTime = nextTs;
+    } catch {
+        lastRequestTime = Date.now();
+    }
+}
+
+function getRetryDelayMs(error: any, attempt: number): number {
+    const retryAfterHeader = error?.response?.headers?.['retry-after'];
+    const retryAfterSec = Number(retryAfterHeader);
+    if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+        return retryAfterSec * 1000;
+    }
+
+    const base = 800;
+    const max = 15000;
+    const jitter = Math.floor(Math.random() * 350);
+    return Math.min(base * Math.pow(2, attempt) + jitter, max);
+}
+
+async function rateLimitedRequest(
+    query: string,
+    variables: any,
+    options: { cacheTtlSeconds?: number; bypassCache?: boolean } = {}
+): Promise<any> {
+    const cacheTtlSeconds = options.cacheTtlSeconds ?? 120;
+    const bypassCache = options.bypassCache ?? false;
+    const requestHash = getRequestHash(query, variables);
+    const responseCacheKey = `anilist:resp:${requestHash}`;
+
+    if (!bypassCache) {
+        try {
+            const cached = await redis.get<any>(responseCacheKey);
+            if (cached) return cached;
+        } catch {
+            // Ignore Redis cache failures and continue with network call.
+        }
+    }
+
+    const inFlight = inFlightRequests.get(requestHash);
+    if (inFlight) {
+        return inFlight;
+    }
+
+    const requestPromise = (async () => {
+        const maxAttempts = 4;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+                await applyRateLimit();
+                const response = await axios.post(
+                    ANILIST_API_URL,
+                    { query, variables },
+                    { timeout: 20000 }
+                );
+                const payload = response.data;
+
+                if (!bypassCache) {
+                    try {
+                        await redis.set(responseCacheKey, payload, { ex: cacheTtlSeconds });
+                    } catch {
+                        // Ignore Redis cache failures.
+                    }
+                }
+
+                return payload;
+            } catch (error: any) {
+                const status = error?.response?.status;
+                const isRetriable =
+                    status === 429 ||
+                    status === 408 ||
+                    status === 502 ||
+                    status === 503 ||
+                    status === 504 ||
+                    !status;
+
+                if (!isRetriable || attempt === maxAttempts - 1) {
+                    throw error;
+                }
+
+                const delayMs = getRetryDelayMs(error, attempt);
+                console.warn(`AniList request retry ${attempt + 1}/${maxAttempts - 1} in ${delayMs}ms (status: ${status ?? 'network'})`);
+                await sleep(delayMs);
+            }
+        }
+
+        throw new Error('AniList request failed after retries');
+    })();
+
+    inFlightRequests.set(requestHash, requestPromise);
+    try {
+        return await requestPromise;
+    } finally {
+        inFlightRequests.delete(requestHash);
     }
 }
 
@@ -172,12 +274,8 @@ export const anilistService = {
         `;
 
         try {
-            const response = await axios.post(ANILIST_API_URL, {
-                query,
-                variables: { idMal: malIds }
-            });
-
-            return response.data.data.Page.media;
+            const response = await rateLimitedRequest(query, { idMal: malIds }, { cacheTtlSeconds: 3600 });
+            return response.data.Page.media;
         } catch (error) {
             console.error('Error fetching AniList images:', error);
             return [];
@@ -759,12 +857,8 @@ export const anilistService = {
         `;
 
         try {
-            const response = await axios.post(ANILIST_API_URL, {
-                query,
-                variables: { search, page, perPage }
-            });
-
-            const data = response.data.data.Page;
+            const response = await rateLimitedRequest(query, { search, page, perPage }, { cacheTtlSeconds: 300 });
+            const data = response.data.Page;
 
             // 2. Set Cache (24 hours)
             try {
@@ -798,12 +892,8 @@ export const anilistService = {
         `;
 
         try {
-            const response = await axios.post(ANILIST_API_URL, {
-                query,
-                variables: { search, page, perPage }
-            });
-
-            return response.data.data.Page;
+            const response = await rateLimitedRequest(query, { search, page, perPage }, { cacheTtlSeconds: 300 });
+            return response.data.Page;
         } catch (error) {
             console.error('Error searching manga:', error);
             return { media: [], pageInfo: {} };
@@ -863,12 +953,8 @@ export const anilistService = {
         `;
 
         try {
-            const response = await axios.post(ANILIST_API_URL, {
-                query,
-                variables: { id }
-            });
-
-            const media = response.data.data.Media;
+            const response = await rateLimitedRequest(query, { id }, { cacheTtlSeconds: 3600 });
+            const media = response.data.Media;
             if (media && media.recommendations && media.recommendations.nodes) {
                 media.recommendations.nodes = media.recommendations.nodes.filter((node: any) => !node.mediaRecommendation?.isAdult);
             }
@@ -930,12 +1016,8 @@ export const anilistService = {
         `;
 
         try {
-            const response = await axios.post(ANILIST_API_URL, {
-                query,
-                variables: { id }
-            });
-
-            const media = response.data.data.Media;
+            const response = await rateLimitedRequest(query, { id }, { cacheTtlSeconds: 3600 });
+            const media = response.data.Media;
             if (media && media.recommendations && media.recommendations.nodes) {
                 media.recommendations.nodes = media.recommendations.nodes.filter((node: any) => !node.mediaRecommendation?.isAdult);
             }
@@ -976,12 +1058,13 @@ export const anilistService = {
         `;
 
         try {
-            const response = await axios.post(ANILIST_API_URL, {
+            const response = await rateLimitedRequest(
                 query,
-                variables: { airingAtGreater: startTime, airingAtLesser: endTime }
-            });
+                { airingAtGreater: startTime, airingAtLesser: endTime },
+                { cacheTtlSeconds: 300 }
+            );
             // Filter out adult content
-            const schedules = response.data.data.Page.airingSchedules.filter(
+            const schedules = response.data.Page.airingSchedules.filter(
                 (s: any) => !s.media.isAdult
             );
             return schedules;
@@ -1033,11 +1116,8 @@ export const anilistService = {
         `;
 
         try {
-            const response = await axios.post(ANILIST_API_URL, {
-                query,
-                variables: { genre, page, perPage }
-            });
-            return response.data.data.Page;
+            const response = await rateLimitedRequest(query, { genre, page, perPage }, { cacheTtlSeconds: 600 });
+            return response.data.Page;
         } catch (error) {
             console.error('Error fetching anime by genre:', error);
             return { media: [], pageInfo: {} };
@@ -1062,11 +1142,8 @@ export const anilistService = {
         `;
 
         try {
-            const response = await axios.post(ANILIST_API_URL, {
-                query,
-                variables: { genre, page, perPage }
-            });
-            return response.data.data.Page;
+            const response = await rateLimitedRequest(query, { genre, page, perPage }, { cacheTtlSeconds: 600 });
+            return response.data.Page;
         } catch (error) {
             console.error('Error fetching manga by genre:', error);
             return { media: [], pageInfo: {} };
