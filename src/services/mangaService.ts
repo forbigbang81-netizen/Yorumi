@@ -136,13 +136,24 @@ export const mangaService = {
     // Get manga chapters from MangaKatana scraper
     async getChapters(mangaId: string) {
         const res = await fetch(`${API_BASE}/manga/chapters/${encodeURIComponent(mangaId)}`);
+        if (!res.ok) throw new Error(`Failed to fetch chapters (${res.status})`);
         return res.json();
     },
 
     // Get chapter pages from MangaKatana scraper
     async getChapterPages(chapterUrl: string) {
-        const res = await fetch(`${API_BASE}/manga/pages?url=${encodeURIComponent(chapterUrl)}`);
-        return res.json();
+        const fetchOnce = async () => {
+            const res = await fetch(`${API_BASE}/manga/pages?url=${encodeURIComponent(chapterUrl)}`);
+            if (!res.ok) throw new Error(`Failed to fetch chapter pages (${res.status})`);
+            return res.json();
+        };
+
+        try {
+            return await fetchOnce();
+        } catch {
+            // Retry once to handle transient scraper/network failures.
+            return fetchOnce();
+        }
     },
 
     // Search manga on MangaKatana scraper
@@ -235,6 +246,14 @@ export const mangaService = {
             console.error('getScraperMangaDetails failed:', error);
             return null;
         }
+    },
+
+    // Unified details endpoint (supports AniList numeric IDs and scraper IDs)
+    async getUnifiedMangaDetails(id: string | number) {
+        const res = await fetch(`${API_BASE}/manga/details/${encodeURIComponent(String(id))}`);
+        if (!res.ok) throw new Error(`Failed to fetch unified manga details (${res.status})`);
+        const json = await res.json();
+        return json.data;
     },
 
     // Get random manga (Client-side pool for speed)
