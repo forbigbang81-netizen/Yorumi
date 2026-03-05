@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import HomePage from './pages/HomePage';
@@ -17,28 +17,16 @@ import { animeService } from './services/animeService';
 import { mangaService } from './services/mangaService';
 import ScrollToTop from './components/ui/ScrollToTop';
 
-// Debounce helper
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-  return debouncedValue;
-}
-
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
-  const debouncedSearchTerm = useDebounce(searchQuery, 100);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const { closeViewAll } = useAnime();
+  const searchRequestIdRef = useRef(0);
+  const searchCacheRef = useRef(new Map<string, { data: any[]; timestamp: number }>());
+  const SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
 
   // Derive active tab from URL or Query Params (to persist state on Search Page)
   const queryParams = new URLSearchParams(location.search);
@@ -51,16 +39,28 @@ function App() {
   // Perform search when debounced term changes
   useEffect(() => {
     const performSearch = async () => {
-      if (!debouncedSearchTerm.trim()) {
+      const term = searchQuery.trim();
+      if (term.length < 2) {
         setSearchResults([]);
+        setIsSearching(false);
         return;
       }
 
+      const cacheKey = `${activeTab}:${term.toLowerCase()}`;
+      const cached = searchCacheRef.current.get(cacheKey);
+      const now = Date.now();
+      if (cached && (now - cached.timestamp) < SEARCH_CACHE_TTL_MS) {
+        setSearchResults(cached.data);
+        setIsSearching(false);
+        return;
+      }
+
+      const requestId = ++searchRequestIdRef.current;
       setIsSearching(true);
       try {
         if (activeTab === 'anime') {
-          const { data } = await animeService.searchAnime(debouncedSearchTerm, 1);
-          setSearchResults(data.slice(0, 4).map((item: any) => ({
+          const { data } = await animeService.searchAnime(term, 1, 6);
+          const mapped = data.slice(0, 4).map((item: any) => ({
             id: item.id,
             title: item.title_english || item.title || 'Unknown',
             subtitle: item.title_japanese || item.title_english,
@@ -69,30 +69,40 @@ function App() {
             type: item.type, // e.g., TV
             duration: item.duration,
             url: `/anime/details/${item.id}`
-          })));
+          }));
+          if (requestId !== searchRequestIdRef.current) return;
+          setSearchResults(mapped);
+          searchCacheRef.current.set(cacheKey, { data: mapped, timestamp: Date.now() });
         } else {
-          const { data } = await mangaService.searchManga(debouncedSearchTerm, 1);
-          setSearchResults(data.slice(0, 4).map((item: any) => ({
-            id: item.id,
+          const { data } = await mangaService.searchManga(term, 1, 6);
+          const mapped = data.slice(0, 4).map((item: any) => ({
+            id: item.id || item.mal_id,
             title: item.title_english || item.title || 'Unknown',
             subtitle: item.title_japanese || item.title_english,
             image: item.images.jpg.image_url,
             date: item.published?.string ? new Date(item.published.string).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
             type: item.type, // e.g., MANGA
             duration: null, // Manga doesn't have duration
-            url: `/manga/details/${item.id}`
-          })));
+            url: `/manga/details/${item.id || item.mal_id}`
+          }));
+          if (requestId !== searchRequestIdRef.current) return;
+          setSearchResults(mapped);
+          searchCacheRef.current.set(cacheKey, { data: mapped, timestamp: Date.now() });
         }
       } catch (error) {
         console.error("Search failed:", error);
-        setSearchResults([]);
+        if (requestId === searchRequestIdRef.current) {
+          setSearchResults([]);
+        }
       } finally {
-        setIsSearching(false);
+        if (requestId === searchRequestIdRef.current) {
+          setIsSearching(false);
+        }
       }
     };
 
     performSearch();
-  }, [debouncedSearchTerm, activeTab]);
+  }, [searchQuery, activeTab]);
 
   // Sync Search Query if we are on search page
   useEffect(() => {
