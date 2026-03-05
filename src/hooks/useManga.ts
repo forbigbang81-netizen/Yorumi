@@ -172,10 +172,10 @@ export function useManga() {
             if (!mangakatanaId && typeof manga.mal_id === 'number') {
                 try {
                     const unified = await mangaService.getUnifiedMangaDetails(manga.mal_id);
-                    if (unified?.chapters?.length > 0) {
+                    if (unified && Array.isArray((unified as any).chapters) && (unified as any).chapters.length > 0) {
                         const cacheKey = `anilist:${manga.mal_id}`;
-                        mangaChaptersCache.current.set(cacheKey, unified.chapters);
-                        setMangaChapters(unified.chapters);
+                        mangaChaptersCache.current.set(cacheKey, (unified as any).chapters);
+                        setMangaChapters((unified as any).chapters);
                         setMangaChaptersLoading(false);
                         return;
                     }
@@ -647,8 +647,14 @@ export function useManga() {
                     // 2. Fetch Chapters (search scraper via handleMangaClick logic)
                     await handleMangaClick(data);
                 } else {
-                    console.error('Manga details not found for ID:', id);
-                    // Optional: Set some error state here if UI handles it
+                    // Fallback: unified endpoint can still resolve some IDs.
+                    const fallback = await mangaService.getUnifiedMangaDetails(id);
+                    if (fallback && fallback.mal_id) {
+                        setSelectedManga(fallback as any);
+                        await handleMangaClick(fallback as any);
+                    } else {
+                        console.error('Manga details not found for ID:', id);
+                    }
                 }
             } else {
                 // 1. Fetch Scraper Metadata (String ID)
@@ -675,6 +681,13 @@ export function useManga() {
                         console.error('Failed to fetch chapters for scraper ID:', chapErr);
                     } finally {
                         setMangaChaptersLoading(false);
+                    }
+                } else {
+                    // Fallback for malformed or legacy IDs.
+                    const fallback = await mangaService.getUnifiedMangaDetails(String(id));
+                    if (fallback && fallback.mal_id) {
+                        setSelectedManga(fallback as any);
+                        await handleMangaClick(fallback as any);
                     }
                 }
             }
