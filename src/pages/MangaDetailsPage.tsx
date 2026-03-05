@@ -4,7 +4,6 @@ import { ArrowLeft, Check, Plus } from 'lucide-react';
 import { useManga } from '../hooks/useManga';
 import { useReadList } from '../hooks/useReadList';
 import { slugify } from '../utils/slugify';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
 import MangaCard from '../features/manga/components/MangaCard';
 import type { MangaChapter } from '../types/manga';
 import DetailsCharacters from '../features/anime/components/details/DetailsCharacters';
@@ -156,26 +155,52 @@ export default function MangaDetailsPage() {
 
     if (mangaLoading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
-                <LoadingSpinner size="lg" text="Loading Manga Details..." />
+            <div className="min-h-screen bg-[#0a0a0a] pb-20 animate-pulse">
+                <div className="relative h-[40vh] md:h-[50vh] w-full overflow-hidden bg-white/10" />
+                <div className="container mx-auto px-4 md:px-6 -mt-24 md:-mt-32 relative z-10">
+                    <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+                        <div className="flex-shrink-0 mx-auto md:mx-0 w-48 sm:w-64 md:w-72">
+                            <div className="rounded-xl aspect-[2/3] bg-white/10" />
+                        </div>
+                        <div className="flex-1 pt-4 md:pt-8 space-y-4">
+                            <div className="h-10 w-3/4 rounded bg-white/10" />
+                            <div className="h-6 w-1/2 rounded bg-white/10" />
+                            <div className="h-12 w-56 rounded-full bg-white/10" />
+                            <div className="h-6 w-40 rounded bg-white/10 mt-8" />
+                            <div className="space-y-2">
+                                <div className="h-4 w-full rounded bg-white/10" />
+                                <div className="h-4 w-5/6 rounded bg-white/10" />
+                                <div className="h-4 w-4/6 rounded bg-white/10" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
 
     if (!selectedManga) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0a] text-white gap-4">
-                <div className="text-6xl font-black text-white/10">404</div>
-                <h1 className="text-2xl font-bold">Manga Not Found</h1>
-                <p className="text-gray-400 max-w-md text-center">
-                    The manga you are looking for isn't available right now. It might be an invalid ID or the source (AniList) is currently down.
-                </p>
-                <button
-                    onClick={handleBack}
-                    className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-full font-bold transition-colors mt-4"
-                >
-                    Go Back
-                </button>
+            <div className="min-h-screen bg-[#0a0a0a] pb-20 animate-pulse">
+                <div className="relative h-[40vh] md:h-[50vh] w-full overflow-hidden bg-white/10" />
+                <div className="container mx-auto px-4 md:px-6 -mt-24 md:-mt-32 relative z-10">
+                    <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+                        <div className="flex-shrink-0 mx-auto md:mx-0 w-48 sm:w-64 md:w-72">
+                            <div className="rounded-xl aspect-[2/3] bg-white/10" />
+                        </div>
+                        <div className="flex-1 pt-4 md:pt-8 space-y-4">
+                            <div className="h-10 w-3/4 rounded bg-white/10" />
+                            <div className="h-6 w-1/2 rounded bg-white/10" />
+                            <div className="h-12 w-56 rounded-full bg-white/10" />
+                            <div className="h-6 w-40 rounded bg-white/10 mt-8" />
+                            <div className="space-y-2">
+                                <div className="h-4 w-full rounded bg-white/10" />
+                                <div className="h-4 w-5/6 rounded bg-white/10" />
+                                <div className="h-4 w-4/6 rounded bg-white/10" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -362,7 +387,11 @@ export default function MangaDetailsPage() {
                                 <div id="chapters-section" className="py-6 border-t border-white/10 mt-6">
                                     <h3 className="text-xl font-bold text-white mb-4">Chapters</h3>
                                     {mangaChaptersLoading ? (
-                                        <div className="py-8 flex justify-center"><LoadingSpinner size="md" /></div>
+                                        <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2 mt-6 animate-pulse">
+                                            {Array.from({ length: 30 }).map((_, idx) => (
+                                                <div key={idx} className="aspect-square rounded bg-white/10" />
+                                            ))}
+                                        </div>
                                     ) : mangaChapters.length > 0 ? (
                                         <ChapterList
                                             chapters={mangaChapters}
