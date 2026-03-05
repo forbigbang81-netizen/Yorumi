@@ -1,5 +1,4 @@
 import type { MangaPage, MangaChapter } from '../../../../types/manga';
-import LoadingSpinner from '../../../../components/ui/LoadingSpinner';
 
 interface PageViewerProps {
     pages: MangaPage[];
@@ -63,9 +62,18 @@ export default function PageViewer({
                 onScroll={onScroll}
             >
                 {isLoading ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                        <LoadingSpinner size="lg" />
-                        <p className="text-gray-400 animate-pulse">Loading Pages...</p>
+                    <div className="absolute inset-0 p-6 animate-pulse">
+                        {readingMode === 'longstrip' ? (
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="w-[70%] h-[280px] md:h-[360px] bg-white/10 rounded-lg" />
+                                <div className="w-[70%] h-[280px] md:h-[360px] bg-white/10 rounded-lg" />
+                                <div className="w-[70%] h-[280px] md:h-[360px] bg-white/10 rounded-lg" />
+                            </div>
+                        ) : (
+                            <div className="h-full flex items-center justify-center">
+                                <div className="w-[80%] h-[80%] bg-white/10 rounded-xl" />
+                            </div>
+                        )}
                     </div>
                 ) : pages.length > 0 ? (
                     readingMode === 'longstrip' ? (
