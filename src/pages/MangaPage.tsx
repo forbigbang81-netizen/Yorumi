@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Pagination from '../components/ui/Pagination';
 
 // Feature Components
@@ -53,8 +52,16 @@ export default function MangaPage() {
                 </div>
 
                 {manga.viewAllLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <LoadingSpinner size="lg" text="Loading..." />
+                    <div className="animate-pulse">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                            {Array.from({ length: 18 }).map((_, idx) => (
+                                <div key={idx}>
+                                    <div className="aspect-[2/3] rounded-lg bg-white/10 mb-3" />
+                                    <div className="h-4 w-4/5 rounded bg-white/10" />
+                                    <div className="h-4 w-3/5 rounded bg-white/10 mt-2" />
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 ) : (
                     <>
