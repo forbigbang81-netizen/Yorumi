@@ -1,6 +1,5 @@
 import { Search, LayoutList, LayoutGrid } from 'lucide-react';
 import type { MangaChapter } from '../../../../types/manga';
-import LoadingSpinner from '../../../../components/ui/LoadingSpinner';
 
 interface ChapterListProps {
     chapters: MangaChapter[];
@@ -83,8 +82,17 @@ export default function ChapterList({
 
             <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
                 {isLoading ? (
-                    <div className="flex items-center justify-center py-12">
-                        <LoadingSpinner size="md" />
+                    <div className={`${viewMode === 'grid' ? 'grid grid-cols-4 gap-2 p-3' : 'flex flex-col'} animate-pulse`}>
+                        {Array.from({ length: viewMode === 'grid' ? 20 : 12 }).map((_, idx) => (
+                            viewMode === 'grid' ? (
+                                <div key={idx} className="aspect-square rounded-md bg-white/10 border border-white/5" />
+                            ) : (
+                                <div key={idx} className="px-5 py-3 border-b border-white/5">
+                                    <div className="h-4 w-24 rounded bg-white/10 mb-2" />
+                                    <div className="h-3 w-32 rounded bg-white/10" />
+                                </div>
+                            )
+                        ))}
                     </div>
                 ) : filteredChapters.length > 0 ? (
                     <div className={viewMode === 'grid' ? "grid grid-cols-4 gap-2 p-3" : "flex flex-col"}>
