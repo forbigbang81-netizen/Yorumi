@@ -89,7 +89,7 @@ export default function ChapterList({
                 ) : filteredChapters.length > 0 ? (
                     <div className={viewMode === 'grid' ? "grid grid-cols-4 gap-2 p-3" : "flex flex-col"}>
                         {filteredChapters.map((chapter, index) => {
-                            const isCurrent = currentChapter?.id === chapter.id;
+                            const isCurrent = currentChapter?.url === chapter.url;
                             const match = chapter.title.match(/Chapter\s+(\d+[\.]?\d*)/i);
                             const displayNum = match ? match[1] : '';
                             const cleanTitle = chapter.title.replace(/Chapter\s+\d+/, '').trim().replace(/^:/, '').trim();
