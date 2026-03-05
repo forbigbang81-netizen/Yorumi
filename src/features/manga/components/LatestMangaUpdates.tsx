@@ -43,9 +43,19 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
 
     if (loading) {
         return (
-            <div className="bg-[#1a1a2e] rounded-xl p-6 h-full min-h-[400px]">
-                <div className="flex items-center justify-center h-full">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-yorumi-manga"></div>
+            <div className="bg-[#1a1a2e] rounded-xl p-6 h-full min-h-[400px] animate-pulse">
+                <div className="h-7 w-40 rounded bg-white/10 mb-6" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Array.from({ length: 9 }).map((_, idx) => (
+                        <div key={idx} className="flex gap-4 p-2 rounded-lg border border-white/5">
+                            <div className="w-16 h-24 rounded-md bg-white/10 flex-shrink-0" />
+                            <div className="flex-1">
+                                <div className="h-4 w-5/6 rounded bg-white/10 mb-3 mt-2" />
+                                <div className="h-3 w-1/3 rounded bg-white/10 mb-2" />
+                                <div className="h-3 w-1/2 rounded bg-white/10" />
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         );
