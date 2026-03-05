@@ -109,13 +109,53 @@ export async function getMangaDetails(id: string) {
  */
 export async function getChapterList(id: string) {
     const realId = id.startsWith('mk:') ? id.replace('mk:', '') : id;
-    const chapters = await mangakatana.getChapterList(realId);
-    return chapters.map(c => ({ ...c, id: `mk:${c.id}` }));
+    const now = Date.now();
+
+    const cached = chapterListCache.get(realId);
+    if (cached && (now - cached.timestamp) < CHAPTER_LIST_CACHE_TTL) {
+        console.log(`[Cache] Chapter list hit: ${realId}`);
+        return cached.data;
+    }
+
+    const inFlight = chapterListInFlight.get(realId);
+    if (inFlight) {
+        console.log(`[Cache] Waiting for in-flight chapter list: ${realId}`);
+        return inFlight;
+    }
+
+    const fetchPromise = (async () => {
+        try {
+            let chapters = await mangakatana.getChapterList(realId);
+
+            // Retry once when source returns an empty list to reduce transient misses.
+            if (!chapters || chapters.length === 0) {
+                await new Promise(resolve => setTimeout(resolve, 700));
+                chapters = await mangakatana.getChapterList(realId);
+            }
+
+            const normalized = chapters.map(c => ({ ...c, id: `mk:${c.id}` }));
+
+            if (normalized.length > 0) {
+                chapterListCache.set(realId, { data: normalized, timestamp: Date.now() });
+            }
+
+            return normalized;
+        } finally {
+            chapterListInFlight.delete(realId);
+        }
+    })();
+
+    chapterListInFlight.set(realId, fetchPromise);
+    return fetchPromise;
 }
 
 // In-memory cache for chapter pages (30 minute TTL)
 const pagesCache = new Map<string, { data: any[], timestamp: number }>();
 const PAGES_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const chapterListCache = new Map<string, { data: any[], timestamp: number }>();
+const CHAPTER_LIST_CACHE_TTL = 20 * 60 * 1000; // 20 minutes
+const chapterListInFlight = new Map<string, Promise<any[]>>();
+const pagesInFlight = new Map<string, Promise<any[]>>();
 
 /**
  * Get pages with caching
@@ -130,24 +170,45 @@ export async function getChapterPages(url: string) {
         return cached.data;
     }
 
-    console.log(`[Fetch] Getting chapter pages: ${url.slice(-30)}`);
-    const pages = await mangakatana.getChapterPages(url);
+    const inFlight = pagesInFlight.get(url);
+    if (inFlight) {
+        console.log(`[Cache] Waiting for in-flight pages: ${url.slice(-30)}`);
+        return inFlight;
+    }
+    const fetchPromise = (async () => {
+        try {
+            console.log(`[Fetch] Getting chapter pages: ${url.slice(-30)}`);
+            let pages = await mangakatana.getChapterPages(url);
 
-    // Cache successful results
-    if (pages && pages.length > 0) {
-        pagesCache.set(url, { data: pages, timestamp: now });
+            // Retry once for transient scraper failures.
+            if (!pages || pages.length === 0) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                pages = await mangakatana.getChapterPages(url);
+            }
 
-        // Clean old entries if cache is too large
-        if (pagesCache.size > 100) {
-            for (const [key, val] of pagesCache.entries()) {
-                if (now - val.timestamp > PAGES_CACHE_TTL) {
-                    pagesCache.delete(key);
+            // Cache successful results
+            if (pages && pages.length > 0) {
+                pagesCache.set(url, { data: pages, timestamp: Date.now() });
+
+                // Clean old entries if cache is too large
+                if (pagesCache.size > 100) {
+                    const cleanupNow = Date.now();
+                    for (const [key, val] of pagesCache.entries()) {
+                        if (cleanupNow - val.timestamp > PAGES_CACHE_TTL) {
+                            pagesCache.delete(key);
+                        }
+                    }
                 }
             }
-        }
-    }
 
-    return pages;
+            return pages;
+        } finally {
+            pagesInFlight.delete(url);
+        }
+    })();
+
+    pagesInFlight.set(url, fetchPromise);
+    return fetchPromise;
 }
 
 /**
