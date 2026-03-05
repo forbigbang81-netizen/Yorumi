@@ -5,6 +5,7 @@ import { token_set_ratio } from 'fuzzball';
 import { storage } from '../utils/storage';
 
 export type MangaViewMode = 'default' | 'popular_manhwa' | 'all_time_popular' | 'top_100';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export function useManga() {
     const [topManga, setTopManga] = useState<Manga[]>([]);
@@ -153,7 +154,7 @@ export function useManga() {
             } else {
                 // 1. CHECK PERSISTENT MAPPING FIRST
                 try {
-                    const mapRes = await fetch(`http://localhost:3001/api/mapping/${manga.mal_id}`);
+                    const mapRes = await fetch(`${API_BASE}/mapping/${manga.mal_id}`);
                     if (mapRes.ok) {
                         const mapData = await mapRes.json();
                         if (mapData && mapData.id) {
@@ -164,6 +165,22 @@ export function useManga() {
                     }
                 } catch (err) {
                     console.warn('[useManga] Failed to check mapping:', err);
+                }
+            }
+
+            // Fast path: let backend resolve AniList ID to chapter list first.
+            if (!mangakatanaId && typeof manga.mal_id === 'number') {
+                try {
+                    const unified = await mangaService.getUnifiedMangaDetails(manga.mal_id);
+                    if (unified?.chapters?.length > 0) {
+                        const cacheKey = `anilist:${manga.mal_id}`;
+                        mangaChaptersCache.current.set(cacheKey, unified.chapters);
+                        setMangaChapters(unified.chapters);
+                        setMangaChaptersLoading(false);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('[useManga] Unified details fallback failed, trying title search...', e);
                 }
             }
 
@@ -231,16 +248,17 @@ export function useManga() {
 
                 // Remove duplicates while preserving order
                 const uniqueTitles = [...new Set(titlesToTry)];
+                const limitedTitles = uniqueTitles.slice(0, 8);
 
 
 
                 let bestMatch: { id: string; title: string } | null = null;
 
-                for (const title of uniqueTitles) {
+                for (const title of limitedTitles) {
                     if (bestMatch) break; // Stop once we find a match
 
-                    // Add slight delay to avoid rate limiting
-                    if (title !== uniqueTitles[0]) await new Promise(r => setTimeout(r, 800));
+                    // Keep delays small so chapter resolution stays responsive.
+                    if (title !== limitedTitles[0]) await new Promise(r => setTimeout(r, 120));
 
                     try {
                         // Normalize special characters and simplify for search
@@ -333,7 +351,7 @@ export function useManga() {
                                 console.log(`[useManga] Found ALIAS match: ${bestMatch.title}`);
 
                                 // Auto-save alias matches as well since they are exact
-                                fetch('http://localhost:3001/api/mapping', {
+                                fetch(`${API_BASE}/mapping`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
@@ -383,7 +401,7 @@ export function useManga() {
                                     // AUTO-SAVE HIGH CONFIDENCE MATCHES
                                     if (bestFuzzyScore > 85) {
                                         console.log(`[useManga] High confidence match (>85). Saving mapping...`);
-                                        fetch('http://localhost:3001/api/mapping', {
+                                        fetch(`${API_BASE}/mapping`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({
@@ -435,7 +453,7 @@ export function useManga() {
 
     const loadMangaChapter = async (chapter: MangaChapter) => {
         // Prevent race conditions: only process the latest request
-        const requestId = chapter.id;
+        const requestId = chapter.url;
         latestChapterId.current = requestId;
 
         setCurrentMangaChapter(chapter);
@@ -481,6 +499,16 @@ export function useManga() {
                 }
             }
 
+            // Retry once if backend returns empty pages for this chapter.
+            if (!pages || pages.length === 0) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                const retryData = await mangaService.getChapterPages(chapter.url);
+                if (retryData?.pages && retryData.pages.length > 0) {
+                    pages = retryData.pages;
+                    chapterPagesCache.current.set(chapter.url, Promise.resolve(retryData.pages));
+                }
+            }
+
             // Only update if this is still the latest requested chapter
             if (latestChapterId.current === requestId) {
                 setChapterPages(pages);
@@ -503,7 +531,7 @@ export function useManga() {
     };
 
     const prefetchNextChapters = (currentChapter: MangaChapter, count: number) => {
-        const currentIndex = mangaChapters.findIndex(ch => ch.id === currentChapter.id);
+        const currentIndex = mangaChapters.findIndex(ch => ch.url === currentChapter.url);
         if (currentIndex === -1) return;
 
         // Collect URLs to prefetch
