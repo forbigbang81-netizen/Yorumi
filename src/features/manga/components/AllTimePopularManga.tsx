@@ -39,7 +39,25 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick,
     const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
     const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
 
-    if (loading) return null;
+    if (loading) {
+        return (
+            <section className="container mx-auto px-4 relative z-20 mt-4 mb-12 animate-pulse">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="h-8 w-56 rounded bg-white/10" />
+                    <div className="h-6 w-20 rounded bg-white/10" />
+                </div>
+                <div className="flex gap-4 overflow-hidden">
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                        <div key={idx} className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px]">
+                            <div className="aspect-[2/3] rounded-lg bg-white/10 mb-3" />
+                            <div className="h-4 w-4/5 rounded bg-white/10" />
+                            <div className="h-4 w-3/5 rounded bg-white/10 mt-2" />
+                        </div>
+                    ))}
+                </div>
+            </section>
+        );
+    }
     if (mangaList.length === 0) return null;
 
     return (
