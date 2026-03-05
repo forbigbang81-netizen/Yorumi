@@ -280,10 +280,13 @@ export async function getChapterList(mangaId: string): Promise<Chapter[]> {
             const $el = $(element);
             const linkEl = $el.find('.chapter a');
             const chapterTitle = linkEl.text().trim();
-            const chapterUrl = linkEl.attr('href') || '';
+            const rawChapterUrl = linkEl.attr('href') || '';
+            const chapterUrl = rawChapterUrl.startsWith('http')
+                ? rawChapterUrl
+                : `${BASE_URL}${rawChapterUrl.startsWith('/') ? '' : '/'}${rawChapterUrl}`;
             const uploadDate = $el.find('.update_time').text().trim();
 
-            // Extract chapter ID from URL
+            // Keep stable short ID format for compatibility with existing UI state/history.
             const chapterId = chapterUrl.replace(/\/$/, '').split('/').pop() || '';
 
             if (chapterTitle && chapterUrl) {
@@ -313,15 +316,19 @@ export async function getChapterList(mangaId: string): Promise<Chapter[]> {
  * First tries fast regex extraction, falls back to Puppeteer if needed
  */
 export async function getChapterPages(chapterUrl: string): Promise<ChapterPage[]> {
+    const normalizedChapterUrl = chapterUrl.startsWith('http')
+        ? chapterUrl
+        : `${BASE_URL}${chapterUrl.startsWith('/') ? '' : '/'}${chapterUrl}`;
+
     // First try fast regex extraction (no browser needed)
     try {
-        console.log(`[Fast] Fetching ${chapterUrl}...`);
+        console.log(`[Fast] Fetching ${normalizedChapterUrl}...`);
         // Use direct axios call like the working test script to avoid instance issues
-        const response = await axios.get(chapterUrl, {
+        const response = await axios.get(normalizedChapterUrl, {
             headers: {
                 'User-Agent': USER_AGENT
             },
-            timeout: 10000
+            timeout: 15000
         });
         const html = response.data;
 
@@ -382,7 +389,7 @@ export async function getChapterPages(chapterUrl: string): Promise<ChapterPage[]
     // Fall back to Puppeteer for JavaScript-heavy pages
     let browser = null;
     try {
-        console.log(`[Puppeteer] Launching for ${chapterUrl}...`);
+        console.log(`[Puppeteer] Launching for ${normalizedChapterUrl}...`);
         browser = await getBrowserInstance();
 
         const page = await browser.newPage();
@@ -398,7 +405,7 @@ export async function getChapterPages(chapterUrl: string): Promise<ChapterPage[]
             }
         });
 
-        await page.goto(chapterUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto(normalizedChapterUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         const imageUrls = await page.evaluate(() => {
@@ -412,14 +419,18 @@ export async function getChapterPages(chapterUrl: string): Promise<ChapterPage[]
             const scripts = Array.from(document.querySelectorAll('script'));
             for (const script of scripts) {
                 const content = script.textContent || '';
-                const match = content.match(/var\s+\w+\s*=\s*\[(['"].*?['"])\]/);
-                if (match) {
-                    try {
-                        const urls = eval(`[${match[1]}]`);
-                        if (Array.isArray(urls) && urls.length > 0 && typeof urls[0] === 'string' && urls[0].includes('http')) {
-                            return urls;
+                const matches = content.matchAll(/var\s+\w+\s*=\s*(\[[\s\S]*?\]);/g);
+                for (const m of matches) {
+                    const arrayText = m[1] || '';
+                    const urls: string[] = [];
+                    const urlMatches = arrayText.matchAll(/['"]([^'"]+)['"]/g);
+                    for (const u of urlMatches) {
+                        const value = u[1];
+                        if (value && (value.includes('http') || value.startsWith('//'))) {
+                            urls.push(value);
                         }
-                    } catch (e) { }
+                    }
+                    if (urls.length > 0) return urls;
                 }
             }
 
