@@ -70,7 +70,7 @@ export default function MangaReaderModal({
     // Reset page index on chapter change
     useEffect(() => {
         setPageIndex(0);
-    }, [currentChapter?.id]);
+    }, [currentChapter?.url]);
 
     // Preload adjacent pages
     useEffect(() => {
@@ -107,7 +107,7 @@ export default function MangaReaderModal({
     if (!isOpen) return null;
 
     // Determine prev/next chapters
-    const currentChapterIndex = chapters.findIndex(c => c.id === currentChapter?.id);
+    const currentChapterIndex = chapters.findIndex(c => c.url === currentChapter?.url);
     const prevChapter = currentChapterIndex !== -1 && currentChapterIndex < chapters.length - 1
         ? chapters[currentChapterIndex + 1] : null;
     const nextChapter = currentChapterIndex !== -1 && currentChapterIndex > 0
