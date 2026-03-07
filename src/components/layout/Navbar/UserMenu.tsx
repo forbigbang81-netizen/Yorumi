@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { User as UserIcon, History, Heart, LogOut, BookOpen } from 'lucide-react';
+import { User as UserIcon, Cat, Book, LogOut } from 'lucide-react';
 
 interface UserMenuProps {
     user: any;
@@ -12,7 +12,7 @@ interface UserMenuProps {
 export default function UserMenu({
     user,
     avatar,
-    activeTab,
+    activeTab: _activeTab,
     onLogin,
     onLogout,
 }: UserMenuProps) {
@@ -63,41 +63,20 @@ export default function UserMenu({
                         <span className="font-medium">Profile</span>
                     </button>
 
-                    {activeTab === 'manga' ? (
-                        <>
-                            <button
-                                onClick={() => navigate('/profile?tab=continue-reading')}
-                                className="w-full flex items-center gap-3 px-4 py-3 bg-[#2a2a2a]/50 hover:bg-[#2a2a2a] text-gray-200 rounded-xl transition-all group/item"
-                            >
-                                <BookOpen className="w-5 h-5 text-gray-400 group-hover/item:text-white transition-colors" />
-                                <span className="font-medium">Continue Reading</span>
-                            </button>
-                            <button
-                                onClick={() => navigate('/profile?tab=readlist')}
-                                className="w-full flex items-center gap-3 px-4 py-3 bg-[#2a2a2a]/50 hover:bg-[#2a2a2a] text-gray-200 rounded-xl transition-all group/item"
-                            >
-                                <BookOpen className="w-5 h-5 text-gray-400 group-hover/item:text-white transition-colors" />
-                                <span className="font-medium">Read List</span>
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <button
-                                onClick={() => navigate('/profile?tab=continue-watching')}
-                                className="w-full flex items-center gap-3 px-4 py-3 bg-[#2a2a2a]/50 hover:bg-[#2a2a2a] text-gray-200 rounded-xl transition-all group/item"
-                            >
-                                <History className="w-5 h-5 text-gray-400 group-hover/item:text-white transition-colors" />
-                                <span className="font-medium">Continue Watching</span>
-                            </button>
-                            <button
-                                onClick={() => navigate('/profile?tab=watchlist')}
-                                className="w-full flex items-center gap-3 px-4 py-3 bg-[#2a2a2a]/50 hover:bg-[#2a2a2a] text-gray-200 rounded-xl transition-all group/item"
-                            >
-                                <Heart className="w-5 h-5 text-gray-400 group-hover/item:text-white transition-colors" />
-                                <span className="font-medium">Watch List</span>
-                            </button>
-                        </>
-                    )}
+                    <button
+                        onClick={() => navigate('/profile?tab=anime-overview')}
+                        className="w-full flex items-center gap-3 px-4 py-3 bg-[#2a2a2a]/50 hover:bg-[#2a2a2a] text-gray-200 rounded-xl transition-all group/item"
+                    >
+                        <Cat className="w-5 h-5 text-gray-400 group-hover/item:text-white transition-colors" />
+                        <span className="font-medium">Anime Overview</span>
+                    </button>
+                    <button
+                        onClick={() => navigate('/profile?tab=manga-overview')}
+                        className="w-full flex items-center gap-3 px-4 py-3 bg-[#2a2a2a]/50 hover:bg-[#2a2a2a] text-gray-200 rounded-xl transition-all group/item"
+                    >
+                        <Book className="w-5 h-5 text-gray-400 group-hover/item:text-white transition-colors" />
+                        <span className="font-medium">Manga Overview</span>
+                    </button>
                 </div>
 
                 {/* Logout Footer */}

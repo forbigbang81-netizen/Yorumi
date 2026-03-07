@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { doc, setDoc, deleteDoc, onSnapshot, collection, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
+import { useActivityHistory } from './useActivityHistory';
 import type { Anime, Episode } from '../types/anime';
 import { type WatchProgress } from '../utils/storage';
 
 export function useContinueWatching() {
     const { user } = useAuth();
+    const { recordActivity } = useActivityHistory();
     const [continueWatchingList, setContinueWatchingList] = useState<WatchProgress[]>([]);
 
     // Subscribe to Firestore updates
@@ -36,6 +38,7 @@ export function useContinueWatching() {
         if (!user) return; // Only save if logged in
 
         const image = anime.anilist_banner_image || anime.images.jpg.large_image_url;
+        const poster = anime.images.jpg.image_url || anime.images.jpg.large_image_url;
 
         const validId = anime.id || anime.mal_id;
         const progress: WatchProgress = {
@@ -45,15 +48,17 @@ export function useContinueWatching() {
             timestamp: Date.now(), // For video position if we track it
             lastWatched: Date.now(), // For sorting
             animeTitle: anime.title,
-            animeImage: image
+            animeImage: image,
+            animePoster: poster
         };
 
         try {
             await setDoc(doc(db, 'users', user.uid, 'continueWatching', validId.toString()), progress);
+            await recordActivity(`anime:${validId}:ep:${progress.episodeNumber}`);
         } catch (error) {
             console.error("Failed to save progress to Firestore:", error);
         }
-    }, [user]);
+    }, [user, recordActivity]);
 
     const removeFromHistory = useCallback(async (malId: number | string) => {
         if (!user) return;

@@ -6,6 +6,7 @@ export interface WatchProgress {
     lastWatched: number;
     animeTitle: string;
     animeImage: string;
+    animePoster?: string;
 }
 
 export interface ReadProgress {
@@ -16,6 +17,7 @@ export interface ReadProgress {
     lastRead: number;
     mangaTitle: string;
     mangaImage: string;
+    mangaPoster?: string;
 }
 
 export interface WatchListItem {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { doc, setDoc, onSnapshot, collection, query, orderBy, limit, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
+import { useActivityHistory } from './useActivityHistory';
 import { type ReadProgress } from '../utils/storage';
 
 interface Manga {
@@ -9,6 +10,7 @@ interface Manga {
     title: string;
     images: {
         jpg: {
+            image_url?: string;
             large_image_url: string;
         };
     };
@@ -22,6 +24,7 @@ interface Chapter {
 
 export function useContinueReading() {
     const { user } = useAuth();
+    const { recordActivity } = useActivityHistory();
     const [continueReadingList, setContinueReadingList] = useState<ReadProgress[]>([]);
 
     // Subscribe to Firestore updates
@@ -57,7 +60,8 @@ export function useContinueReading() {
             timestamp: Date.now(),
             lastRead: Date.now(),
             mangaTitle: manga.title,
-            mangaImage: manga.images.jpg.large_image_url
+            mangaImage: manga.images.jpg.large_image_url,
+            mangaPoster: manga.images.jpg.image_url || manga.images.jpg.large_image_url
         };
 
         try {
@@ -81,10 +85,11 @@ export function useContinueReading() {
             }
 
             await setDoc(doc(db, 'users', user.uid, 'continueReading', manga.mal_id.toString()), progress);
+            await recordActivity(`manga:${manga.mal_id}:ch:${progress.chapterNumber}`);
         } catch (error) {
             console.error("Failed to save progress to Firestore:", error);
         }
-    }, [user]);
+    }, [user, recordActivity]);
 
     const removeFromHistory = useCallback(async (mangaId: string) => {
         if (!user) return;
