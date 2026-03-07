@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAnime } from '../../../hooks/useAnime';
 import { useStreams } from '../../../hooks/useStreams';
 import type { Anime, Episode } from '../../../types/anime';
+import { storage } from '../../../utils/storage';
 
 export function usePlayer(animeId: string | undefined) {
     const navigate = useNavigate();
@@ -112,6 +113,65 @@ export function usePlayer(animeId: string | undefined) {
             markEpisodeComplete(parseFloat(currentEpisode.episodeNumber));
         }
     }, [selectedAnime, currentEpisode]);
+
+    // Track real watch time while player is active and visible.
+    useEffect(() => {
+        if (!selectedAnime || !currentStream?.url) return;
+
+        const animeId = String(selectedAnime.id || selectedAnime.mal_id || '');
+        if (!animeId) return;
+
+        let accumulatedSeconds = 0;
+        let lastTick = Date.now();
+
+        const isActiveWatching = () =>
+            document.visibilityState === 'visible' && document.hasFocus();
+
+        const flush = () => {
+            const seconds = Math.floor(accumulatedSeconds);
+            if (seconds > 0) {
+                storage.addAnimeWatchTime(animeId, seconds);
+                accumulatedSeconds = 0;
+            }
+        };
+
+        const interval = window.setInterval(() => {
+            const now = Date.now();
+            const delta = (now - lastTick) / 1000;
+            lastTick = now;
+
+            if (isActiveWatching()) {
+                accumulatedSeconds += delta;
+            }
+
+            if (accumulatedSeconds >= 15) {
+                flush();
+            }
+        }, 1000);
+
+        const handleBlur = () => flush();
+        const handleVisibility = () => {
+            if (document.visibilityState !== 'visible') {
+                flush();
+            }
+            lastTick = Date.now();
+        };
+        const handleFocus = () => {
+            lastTick = Date.now();
+        };
+
+        window.addEventListener('blur', handleBlur);
+        document.addEventListener('visibilitychange', handleVisibility);
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            window.clearInterval(interval);
+            flush();
+            window.removeEventListener('blur', handleBlur);
+            document.removeEventListener('visibilitychange', handleVisibility);
+            window.removeEventListener('focus', handleFocus);
+        };
+    }, [selectedAnime?.id, selectedAnime?.mal_id, currentStream?.url]);
 
     // --- Actions ---
 

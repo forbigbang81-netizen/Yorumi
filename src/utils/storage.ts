@@ -55,7 +55,10 @@ const STORAGE_KEYS = {
     WATCH_LIST: 'yorumi_watch_list',
     READ_LIST: 'yorumi_read_list',
     EPISODE_HISTORY: 'yorumi_episode_history',
-    CHAPTER_HISTORY: 'yorumi_chapter_history'
+    CHAPTER_HISTORY: 'yorumi_chapter_history',
+    ANIME_WATCH_TIME: 'yorumi_anime_watch_time',
+    ANIME_GENRE_CACHE: 'yorumi_anime_genre_cache',
+    MANGA_GENRE_CACHE: 'yorumi_manga_genre_cache'
 };
 
 export const storage = {
@@ -196,6 +199,71 @@ export const storage = {
         return history[animeId] || [];
     },
 
+    // Anime watch time (seconds)
+    addAnimeWatchTime: (animeId: string, seconds: number) => {
+        try {
+            if (!animeId || !Number.isFinite(seconds) || seconds <= 0) return;
+            const current = storage.getAnimeWatchTime();
+            const normalized = Math.floor(seconds);
+            current[animeId] = (current[animeId] || 0) + normalized;
+            localStorage.setItem(STORAGE_KEYS.ANIME_WATCH_TIME, JSON.stringify(current));
+        } catch (error) {
+            console.error('Failed to add anime watch time:', error);
+        }
+    },
+
+    getAnimeWatchTime: (): Record<string, number> => {
+        try {
+            const data = localStorage.getItem(STORAGE_KEYS.ANIME_WATCH_TIME);
+            return data ? JSON.parse(data) : {};
+        } catch (error) {
+            console.error('Failed to get anime watch time:', error);
+            return {};
+        }
+    },
+
+    getAnimeWatchTimeSeconds: (animeId: string): number => {
+        const data = storage.getAnimeWatchTime();
+        return data[animeId] || 0;
+    },
+
+    // Genre caches
+    getAnimeGenreCache: (): Record<string, string[]> => {
+        try {
+            const data = localStorage.getItem(STORAGE_KEYS.ANIME_GENRE_CACHE);
+            return data ? JSON.parse(data) : {};
+        } catch (error) {
+            console.error('Failed to get anime genre cache:', error);
+            return {};
+        }
+    },
+
+    setAnimeGenreCache: (cache: Record<string, string[]>) => {
+        try {
+            localStorage.setItem(STORAGE_KEYS.ANIME_GENRE_CACHE, JSON.stringify(cache || {}));
+        } catch (error) {
+            console.error('Failed to set anime genre cache:', error);
+        }
+    },
+
+    getMangaGenreCache: (): Record<string, string[]> => {
+        try {
+            const data = localStorage.getItem(STORAGE_KEYS.MANGA_GENRE_CACHE);
+            return data ? JSON.parse(data) : {};
+        } catch (error) {
+            console.error('Failed to get manga genre cache:', error);
+            return {};
+        }
+    },
+
+    setMangaGenreCache: (cache: Record<string, string[]>) => {
+        try {
+            localStorage.setItem(STORAGE_KEYS.MANGA_GENRE_CACHE, JSON.stringify(cache || {}));
+        } catch (error) {
+            console.error('Failed to set manga genre cache:', error);
+        }
+    },
+
     // Chapter History (Read Chapters)
     markChapterAsRead: (mangaId: string, chapterId: string) => {
         try {
@@ -246,6 +314,9 @@ export const syncStorage = {
         const continueWatching = storage.getContinueWatching();
         const episodeHistory = storage.getEpisodeHistory();
         const chapterHistory = storage.getChapterHistory();
+        const animeWatchTime = storage.getAnimeWatchTime();
+        const animeGenreCache = storage.getAnimeGenreCache();
+        const mangaGenreCache = storage.getMangaGenreCache();
 
         try {
             await setDoc(userRef, {
@@ -254,6 +325,9 @@ export const syncStorage = {
                 continueWatching,
                 episodeHistory,
                 chapterHistory,
+                animeWatchTime,
+                animeGenreCache,
+                mangaGenreCache,
                 lastSynced: Date.now()
             }, { merge: true });
         } catch (error) {
@@ -333,6 +407,43 @@ export const syncStorage = {
                     });
                     localStorage.setItem(STORAGE_KEYS.CHAPTER_HISTORY, JSON.stringify(merged));
                 }
+
+                // Merge Anime Watch Time (keep the larger value per anime to avoid sync double-counting)
+                if (data.animeWatchTime) {
+                    const local = storage.getAnimeWatchTime();
+                    const merged: Record<string, number> = { ...local };
+
+                    Object.entries(data.animeWatchTime as Record<string, number>).forEach(([animeId, seconds]) => {
+                        const safeSeconds = Number(seconds) || 0;
+                        merged[animeId] = Math.max(merged[animeId] || 0, safeSeconds);
+                    });
+
+                    localStorage.setItem(STORAGE_KEYS.ANIME_WATCH_TIME, JSON.stringify(merged));
+                }
+
+                // Merge Anime Genre Cache
+                if (data.animeGenreCache) {
+                    const local = storage.getAnimeGenreCache();
+                    const merged: Record<string, string[]> = { ...local };
+                    Object.entries(data.animeGenreCache as Record<string, string[]>).forEach(([animeId, genres]) => {
+                        const localGenres = merged[animeId] || [];
+                        const cloudGenres = Array.isArray(genres) ? genres : [];
+                        merged[animeId] = Array.from(new Set([...localGenres, ...cloudGenres]));
+                    });
+                    localStorage.setItem(STORAGE_KEYS.ANIME_GENRE_CACHE, JSON.stringify(merged));
+                }
+
+                // Merge Manga Genre Cache
+                if (data.mangaGenreCache) {
+                    const local = storage.getMangaGenreCache();
+                    const merged: Record<string, string[]> = { ...local };
+                    Object.entries(data.mangaGenreCache as Record<string, string[]>).forEach(([mangaId, genres]) => {
+                        const localGenres = merged[mangaId] || [];
+                        const cloudGenres = Array.isArray(genres) ? genres : [];
+                        merged[mangaId] = Array.from(new Set([...localGenres, ...cloudGenres]));
+                    });
+                    localStorage.setItem(STORAGE_KEYS.MANGA_GENRE_CACHE, JSON.stringify(merged));
+                }
             }
         } catch (error) {
             console.error('Failed to pull from cloud:', error);
@@ -380,5 +491,23 @@ storage.markEpisodeAsWatched = (animeId, episodeNumber) => {
 const originalMarkChapterAsRead = storage.markChapterAsRead;
 storage.markChapterAsRead = (mangaId, chapterId) => {
     originalMarkChapterAsRead(mangaId, chapterId);
+    if (auth.currentUser) syncStorage.pushToCloud();
+};
+
+const originalAddAnimeWatchTime = storage.addAnimeWatchTime;
+storage.addAnimeWatchTime = (animeId, seconds) => {
+    originalAddAnimeWatchTime(animeId, seconds);
+    if (auth.currentUser) syncStorage.pushToCloud();
+};
+
+const originalSetAnimeGenreCache = storage.setAnimeGenreCache;
+storage.setAnimeGenreCache = (cache) => {
+    originalSetAnimeGenreCache(cache);
+    if (auth.currentUser) syncStorage.pushToCloud();
+};
+
+const originalSetMangaGenreCache = storage.setMangaGenreCache;
+storage.setMangaGenreCache = (cache) => {
+    originalSetMangaGenreCache(cache);
     if (auth.currentUser) syncStorage.pushToCloud();
 };
