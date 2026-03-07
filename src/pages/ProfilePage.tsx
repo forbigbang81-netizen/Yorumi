@@ -12,11 +12,13 @@ import { slugify } from '../utils/slugify';
 type TabType = 'profile' | 'anime-overview' | 'manga-overview';
 
 export default function ProfilePage() {
-    const { user, avatar } = useAuth();
+    const { user, avatar, banner, updateBanner } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
+    const [isBannerModalOpen, setIsBannerModalOpen] = useState(false);
 
     const activeTab = (searchParams.get('tab') as TabType) || 'profile';
+    const isMangaOverview = activeTab === 'manga-overview';
 
     const handleTabChange = (tab: TabType) => {
         setSearchParams({ tab });
@@ -38,18 +40,25 @@ export default function ProfilePage() {
                 {/* Background Image */}
                 <div className="absolute inset-0 z-0">
                     <img
-                        src="/anime-bg.png"
+                        src={banner || '/anime-bg.png'}
                         alt="Background"
                         className="w-full h-full object-cover opacity-60"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/50 to-transparent" />
                     <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a]/30 to-transparent" />
+                    <button
+                        onClick={() => setIsBannerModalOpen(true)}
+                        className="absolute top-4 right-4 z-20 text-white/70 hover:text-white transition-colors"
+                        title="Change banner"
+                    >
+                        <Pencil className="w-4 h-4" />
+                    </button>
                 </div>
 
                 {/* Greeting Content */}
                 <div className="relative z-10 flex flex-col items-center mt-4 md:mt-10 px-4 text-center">
                     <h1 className="text-4xl md:text-8xl font-black text-white tracking-tight mb-4 drop-shadow-2xl">
-                        Hi, <span className="text-yorumi-accent">{user.displayName?.split(' ')[0] || 'User'}</span>
+                        Hi, <span className={isMangaOverview ? 'text-yorumi-manga' : 'text-yorumi-accent'}>{user.displayName?.split(' ')[0] || 'User'}</span>
                     </h1>
                     <p className="text-gray-200 text-lg md:text-2xl font-medium drop-shadow-lg">
                         Welcome back to your personal hub
@@ -76,10 +85,21 @@ export default function ProfilePage() {
                             onClick={() => handleTabChange('manga-overview')}
                             icon={<Book className={activeTab === 'manga-overview' ? "w-5 h-5 fill-current" : "w-5 h-5"} />}
                             label="Manga Overview"
+                            activeClassName="text-yorumi-manga border-yorumi-manga"
                         />
                     </div>
                 </div>
             </div>
+
+            <BannerSelectionModal
+                isOpen={isBannerModalOpen}
+                onClose={() => setIsBannerModalOpen(false)}
+                currentBanner={banner}
+                onSelectBanner={async (path) => {
+                    await updateBanner(path);
+                    setIsBannerModalOpen(false);
+                }}
+            />
 
             {/* Content Section */}
             <div className="max-w-7xl mx-auto px-3 md:px-8 py-8 md:py-12 relative z-10">
@@ -106,14 +126,14 @@ export default function ProfilePage() {
                     <div className="space-y-12">
                         <div>
                             <div className="flex items-center gap-3 mb-6">
-                                <History className="w-6 h-6 text-yorumi-accent" />
+                                <History className="w-6 h-6 text-yorumi-manga" />
                                 <h3 className="text-xl font-bold text-white">Continue Reading</h3>
                             </div>
                             <ContinueReadingList />
                         </div>
                         <div>
                             <div className="flex items-center gap-3 mb-6">
-                                <Heart className="w-6 h-6 text-yorumi-accent" />
+                                <Heart className="w-6 h-6 text-yorumi-manga" />
                                 <h3 className="text-xl font-bold text-white">Read List</h3>
                             </div>
                             <ReadList />
@@ -127,11 +147,23 @@ export default function ProfilePage() {
 
 // Components
 
-const TabButton = ({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) => (
+const TabButton = ({
+    active,
+    onClick,
+    icon,
+    label,
+    activeClassName = 'text-yorumi-accent border-yorumi-accent'
+}: {
+    active: boolean;
+    onClick: () => void;
+    icon: React.ReactNode;
+    label: string;
+    activeClassName?: string;
+}) => (
     <button
         onClick={onClick}
         className={`flex items-center gap-2 md:gap-3 pb-3 md:pb-4 text-sm md:text-lg font-bold transition-all duration-300 border-b-2 outline-none whitespace-nowrap shrink-0 ${active
-            ? 'text-yorumi-accent border-yorumi-accent'
+            ? activeClassName
             : 'text-gray-400 border-transparent hover:text-white hover:border-white/20'
             }`}
     >
@@ -142,6 +174,7 @@ const TabButton = ({ active, onClick, icon, label }: { active: boolean; onClick:
 
 // Add component import
 import AvatarSelectionModal from '../components/modals/AvatarSelectionModal';
+import BannerSelectionModal from '../components/modals/BannerSelectionModal';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import MangaCard from '../features/manga/components/MangaCard';
 
@@ -225,7 +258,7 @@ const ActivityOverview = () => {
     return (
         <div>
             <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Activity Overview</h3>
-            <div className="bg-[#1c1c1c] rounded-2xl p-4 md:p-6 border border-white/5 overflow-visible">
+            <div className="bg-[#1c1c1c] rounded-2xl p-4 md:p-6 overflow-visible">
                 <div className="w-full flex justify-center overflow-visible pt-2 md:pt-4">
                     <div className="grid grid-rows-7 grid-flow-col gap-[2px] md:gap-[4px] overflow-visible">
                         {grid}
@@ -299,7 +332,7 @@ const ActivityOverview = () => {
         return (
             <div>
                 <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Genre Overview</h3>
-                <div className="bg-[#1c1c1c] rounded-3xl border border-white/5 overflow-hidden">
+                <div className="bg-[#1c1c1c] rounded-3xl overflow-hidden">
                     <div className="p-5 md:p-6 pb-6">
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                         {top4.map(g => (
@@ -357,6 +390,7 @@ const ActivityOverview = () => {
     const RecentActivity = () => {
         const { continueWatchingList } = useContinueWatching();
         const { continueReadingList } = useContinueReading();
+        const navigate = useNavigate();
 
         const [activities, setActivities] = useState<any[]>([]);
 
@@ -410,7 +444,17 @@ const ActivityOverview = () => {
                     {activities.map((item) => (
                         <div
                             key={item.id}
-                            className="relative flex rounded-xl border border-white/10 overflow-hidden h-24 md:h-28"
+                            onClick={() => {
+                                if (item.type === 'watching') {
+                                    const title = slugify(item.title || 'anime');
+                                    navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
+                                    return;
+                                }
+
+                                const title = slugify(item.title || 'manga');
+                                navigate(`/manga/read/${title}/${item.mangaId}/c${item.chapterNumber}`);
+                            }}
+                            className="relative flex rounded-xl overflow-hidden h-24 md:h-28 cursor-pointer"
                             style={{
                                 backgroundImage: `linear-gradient(90deg, rgba(17,17,17,0.95) 0%, rgba(17,17,17,0.9) 45%, rgba(17,17,17,0.82) 100%), url(${item.bannerImage})`,
                                 backgroundSize: 'cover',
@@ -422,7 +466,7 @@ const ActivityOverview = () => {
                             </div>
                             <div className="flex-1 min-w-0 flex flex-col justify-center relative z-10 px-4 md:px-5 py-3 md:py-4">
                                 <p className="text-[13px] md:text-[15px] font-bold text-gray-100 mb-0.5 truncate">{item.subtitle}</p>
-                                <p className={`text-[13px] md:text-[15px] font-bold ${item.titleColor} truncate hover:underline cursor-pointer`}>{item.title}</p>
+                                <p className={`text-[13px] md:text-[15px] font-bold ${item.titleColor} truncate`}>{item.title}</p>
                             </div>
                         </div>
                     ))}
@@ -432,9 +476,10 @@ const ActivityOverview = () => {
     };
 
     const ProfileTab = ({ user, avatar }: { user: any, avatar: string | null }) => {
-        const { updateName, updateAvatar } = useAuth();
+        const { updateName, updateAvatar, profileCardBackground, updateProfileCardBackground } = useAuth();
         const [isEditing, setIsEditing] = useState(false);
         const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+        const [isCardBackgroundModalOpen, setIsCardBackgroundModalOpen] = useState(false);
         const [newName, setNewName] = useState(user.displayName || '');
         const [loading, setLoading] = useState(false);
 
@@ -462,7 +507,23 @@ const ActivityOverview = () => {
         return (
             <div className="w-full max-w-[1180px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8 xl:gap-8">
                 <div className="space-y-6 md:space-y-8 min-w-0">
-                    <div className="bg-[#1c1c1c] rounded-2xl p-5 md:p-7 border border-white/5">
+                    <div
+                        className="group relative bg-[#1c1c1c] rounded-2xl p-5 md:p-7 overflow-hidden"
+                        style={profileCardBackground
+                            ? {
+                                backgroundImage: `linear-gradient(90deg, rgba(28,28,28,0.94) 0%, rgba(28,28,28,0.9) 48%, rgba(28,28,28,0.84) 100%), url(${profileCardBackground})`,
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center'
+                            }
+                            : undefined}
+                    >
+                        <button
+                            onClick={() => setIsCardBackgroundModalOpen(true)}
+                            className="absolute top-4 right-4 z-10 text-white/70 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                            title="Change card background"
+                        >
+                            <Pencil className="w-4 h-4" />
+                        </button>
                         <h2 className="text-[20px] md:text-[22px] font-bold mb-6 md:mb-7 flex items-center gap-3 text-white">
                             <User className="w-6 h-6 text-[#518feb] fill-[#518feb]" />
                             Profile Details
@@ -470,9 +531,9 @@ const ActivityOverview = () => {
 
                         <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
                             <div className="flex justify-center sm:justify-start sm:pt-1">
-                                <div className="relative group w-24 h-24 shrink-0">
+                                <div className="relative w-24 h-24 shrink-0">
                                     <div
-                                        className="w-full h-full rounded-full overflow-hidden border-4 border-[#3cb6ff] shadow-xl bg-yorumi-main cursor-pointer"
+                                        className="group/avatar w-full h-full rounded-full overflow-hidden border-4 border-[#3cb6ff] shadow-xl bg-yorumi-main cursor-pointer"
                                         onClick={() => setIsAvatarModalOpen(true)}
                                     >
                                         {avatar ? (
@@ -483,13 +544,13 @@ const ActivityOverview = () => {
                                             </div>
                                         )}
 
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-full">
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center rounded-full pointer-events-none">
                                             <Pencil className="w-7 h-7 text-white" />
                                         </div>
                                     </div>
                                     <button
                                         onClick={() => setIsAvatarModalOpen(true)}
-                                        className="absolute -bottom-1 -right-1 w-8 h-8 flex items-center justify-center bg-[#c37df0] rounded-full text-black shadow-lg hover:bg-[#d28dfb] transition-colors border-2 border-[#1c1c1c]"
+                                        className="absolute -bottom-1 -right-1 w-8 h-8 flex items-center justify-center bg-[#c37df0] rounded-full text-black shadow-lg transition-colors border-2 border-[#1c1c1c]"
                                     >
                                         <Pencil className="w-3.5 h-3.5" />
                                     </button>
@@ -528,14 +589,16 @@ const ActivityOverview = () => {
                                             </button>
                                         </div>
                                     ) : (
-                                        <div className="flex items-center gap-3 group min-w-0">
-                                            <div className="text-xl md:text-2xl font-black text-white tracking-tight leading-none truncate">{user.displayName || 'No Name Set'}</div>
-                                            <button
-                                                onClick={() => setIsEditing(true)}
-                                                className="px-2 py-1 rounded-lg text-gray-400 opacity-0 group-hover:opacity-100 hover:text-white hover:bg-white/10 transition-all text-xs font-bold"
-                                            >
-                                                Edit
-                                            </button>
+                                        <div className="min-w-0">
+                                            <div className="inline-flex items-center gap-2 group/name max-w-full">
+                                                <div className="text-xl md:text-2xl font-black text-white tracking-tight leading-none truncate">{user.displayName || 'No Name Set'}</div>
+                                                <button
+                                                    onClick={() => setIsEditing(true)}
+                                                    className="px-2 py-1 rounded-lg text-gray-400 opacity-0 group-hover/name:opacity-100 hover:text-white hover:bg-white/10 transition-all text-xs font-bold"
+                                                >
+                                                    Edit
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -563,6 +626,15 @@ const ActivityOverview = () => {
                             onClose={() => setIsAvatarModalOpen(false)}
                             currentAvatar={avatar}
                             onSelectAvatar={handleAvatarSelect}
+                        />
+                        <BannerSelectionModal
+                            isOpen={isCardBackgroundModalOpen}
+                            onClose={() => setIsCardBackgroundModalOpen(false)}
+                            currentBanner={profileCardBackground}
+                            onSelectBanner={async (path) => {
+                                await updateProfileCardBackground(path);
+                                setIsCardBackgroundModalOpen(false);
+                            }}
                         />
                     </div>
 
@@ -603,7 +675,7 @@ const ActivityOverview = () => {
                                 const title = slugify(item.animeTitle || 'anime');
                                 navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
                             }}
-                            className="aspect-video bg-[#1c1c1c] rounded-xl border border-white/5 flex flex-col items-center justify-center group cursor-pointer hover:border-yorumi-accent/50 transition-colors relative overflow-hidden"
+                            className="aspect-video bg-[#1c1c1c] rounded-xl flex flex-col items-center justify-center group cursor-pointer transition-colors relative overflow-hidden"
                         >
                             {item.animeImage ? (
                                 <>
@@ -717,7 +789,7 @@ const ActivityOverview = () => {
                                 const title = slugify(item.mangaTitle || 'manga');
                                 navigate(`/manga/read/${title}/${item.mangaId}/c${item.chapterNumber}`);
                             }}
-                            className="aspect-video bg-[#1c1c1c] rounded-xl border border-white/5 flex flex-col items-center justify-center group cursor-pointer hover:border-yorumi-accent/50 transition-colors relative overflow-hidden"
+                            className="aspect-video bg-[#1c1c1c] rounded-xl flex flex-col items-center justify-center group cursor-pointer transition-colors relative overflow-hidden"
                         >
                             {item.mangaImage ? (
                                 <>
