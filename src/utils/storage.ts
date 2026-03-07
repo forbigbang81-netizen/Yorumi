@@ -61,6 +61,12 @@ const STORAGE_KEYS = {
     MANGA_GENRE_CACHE: 'yorumi_manga_genre_cache'
 };
 
+const emitStorageUpdated = () => {
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('yorumi-storage-updated'));
+    }
+};
+
 export const storage = {
     // Continue Watching
     saveProgress: (progress: Omit<WatchProgress, 'lastWatched'>) => {
@@ -179,6 +185,7 @@ export const storage = {
             if (!history[animeId].includes(episodeNumber)) {
                 history[animeId].push(episodeNumber);
                 localStorage.setItem(STORAGE_KEYS.EPISODE_HISTORY, JSON.stringify(history));
+                emitStorageUpdated();
             }
         } catch (error) {
             console.error('Failed to mark episode as watched:', error);
@@ -207,6 +214,7 @@ export const storage = {
             const normalized = Math.floor(seconds);
             current[animeId] = (current[animeId] || 0) + normalized;
             localStorage.setItem(STORAGE_KEYS.ANIME_WATCH_TIME, JSON.stringify(current));
+            emitStorageUpdated();
         } catch (error) {
             console.error('Failed to add anime watch time:', error);
         }
@@ -241,6 +249,7 @@ export const storage = {
     setAnimeGenreCache: (cache: Record<string, string[]>) => {
         try {
             localStorage.setItem(STORAGE_KEYS.ANIME_GENRE_CACHE, JSON.stringify(cache || {}));
+            emitStorageUpdated();
         } catch (error) {
             console.error('Failed to set anime genre cache:', error);
         }
@@ -259,6 +268,7 @@ export const storage = {
     setMangaGenreCache: (cache: Record<string, string[]>) => {
         try {
             localStorage.setItem(STORAGE_KEYS.MANGA_GENRE_CACHE, JSON.stringify(cache || {}));
+            emitStorageUpdated();
         } catch (error) {
             console.error('Failed to set manga genre cache:', error);
         }
@@ -272,6 +282,7 @@ export const storage = {
             if (!history[mangaId].includes(chapterId)) {
                 history[mangaId].push(chapterId);
                 localStorage.setItem(STORAGE_KEYS.CHAPTER_HISTORY, JSON.stringify(history));
+                emitStorageUpdated();
             }
         } catch (error) {
             console.error('Failed to mark chapter as read:', error);

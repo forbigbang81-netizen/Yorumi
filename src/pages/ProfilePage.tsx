@@ -689,6 +689,13 @@ const ActivityOverview = () => {
     const MangaStatsOverview = () => {
         const { readList } = useReadList();
         const { continueReadingList } = useContinueReading();
+        const [, setStatsTick] = useState(0);
+
+        useEffect(() => {
+            const onStorageUpdated = () => setStatsTick((v) => v + 1);
+            window.addEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
+            return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
+        }, []);
         const chapterHistory = storage.getChapterHistory();
 
         const mangaIds = new Set<string>([
@@ -720,11 +727,18 @@ const ActivityOverview = () => {
         );
     };
 
-    const MangaGenreOverview = () => {
+    const MangaGenreOverview = () => <OverallGenreOverview theme="manga" />;
+
+    const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' }) => {
+        const { watchList } = useWatchList();
         const { readList } = useReadList();
+        const { continueWatchingList } = useContinueWatching();
         const { continueReadingList } = useContinueReading();
-        const [continueReadingGenres, setContinueReadingGenres] = useState<Record<string, string[]>>(() => storage.getMangaGenreCache());
-        const continueReadingGenreCacheRef = useRef<Record<string, string[]>>(storage.getMangaGenreCache());
+
+        const [animeGenreCache, setAnimeGenreCache] = useState<Record<string, string[]>>(() => storage.getAnimeGenreCache());
+        const [mangaGenreCache, setMangaGenreCache] = useState<Record<string, string[]>>(() => storage.getMangaGenreCache());
+        const animeCacheRef = useRef<Record<string, string[]>>(storage.getAnimeGenreCache());
+        const mangaCacheRef = useRef<Record<string, string[]>>(storage.getMangaGenreCache());
 
         const normalizeGenres = (genres: any): string[] => {
             if (!Array.isArray(genres)) return [];
@@ -736,33 +750,64 @@ const ActivityOverview = () => {
         useEffect(() => {
             let cancelled = false;
 
-            const loadMissingGenres = async () => {
-                const readListMap = new Map<string, string[]>(
-                    readList.map((item) => [item.id, normalizeGenres(item.genres)])
+            const loadMissingAnimeGenres = async () => {
+                const watchListMap = new Map<string, string[]>(
+                    watchList.map((item) => [item.id, normalizeGenres(item.genres)])
                 );
+                const unresolvedAnimeIds = continueWatchingList
+                    .map((item) => String(item.animeId))
+                    .filter((animeId) => !watchListMap.has(animeId) && !animeCacheRef.current[animeId]);
 
-                const unresolvedIds = continueReadingList
-                    .map((item) => String(item.mangaId))
-                    .filter((mangaId) => {
-                        const inReadList = readListMap.has(mangaId);
-                        const alreadyLoaded = Boolean(continueReadingGenreCacheRef.current[mangaId]);
-                        return !inReadList && !alreadyLoaded;
-                    });
-
-                if (unresolvedIds.length === 0) {
-                    if (!cancelled) {
-                        setContinueReadingGenres({ ...continueReadingGenreCacheRef.current });
-                    }
+                if (unresolvedAnimeIds.length === 0) {
+                    if (!cancelled) setAnimeGenreCache({ ...animeCacheRef.current });
                     return;
                 }
 
                 const updates: Record<string, string[]> = {};
                 await Promise.all(
-                    unresolvedIds.map(async (mangaId) => {
+                    unresolvedAnimeIds.map(async (animeId) => {
+                        try {
+                            const res = await animeService.getAnimeDetails(animeId);
+                            updates[animeId] = normalizeGenres(res?.data?.genres || []);
+                        } catch {
+                            updates[animeId] = [];
+                        }
+                    })
+                );
+
+                if (!cancelled) {
+                    animeCacheRef.current = { ...animeCacheRef.current, ...updates };
+                    storage.setAnimeGenreCache(animeCacheRef.current);
+                    setAnimeGenreCache({ ...animeCacheRef.current });
+                }
+            };
+
+            loadMissingAnimeGenres();
+            return () => { cancelled = true; };
+        }, [watchList, continueWatchingList]);
+
+        useEffect(() => {
+            let cancelled = false;
+
+            const loadMissingMangaGenres = async () => {
+                const readListMap = new Map<string, string[]>(
+                    readList.map((item) => [item.id, normalizeGenres(item.genres)])
+                );
+                const unresolvedMangaIds = continueReadingList
+                    .map((item) => String(item.mangaId))
+                    .filter((mangaId) => !readListMap.has(mangaId) && !mangaCacheRef.current[mangaId]);
+
+                if (unresolvedMangaIds.length === 0) {
+                    if (!cancelled) setMangaGenreCache({ ...mangaCacheRef.current });
+                    return;
+                }
+
+                const updates: Record<string, string[]> = {};
+                await Promise.all(
+                    unresolvedMangaIds.map(async (mangaId) => {
                         try {
                             const res = await mangaService.getMangaDetails(mangaId);
-                            const details = res?.data;
-                            updates[mangaId] = normalizeGenres(details?.genres || []);
+                            updates[mangaId] = normalizeGenres(res?.data?.genres || []);
                         } catch {
                             updates[mangaId] = [];
                         }
@@ -770,23 +815,23 @@ const ActivityOverview = () => {
                 );
 
                 if (!cancelled) {
-                    continueReadingGenreCacheRef.current = {
-                        ...continueReadingGenreCacheRef.current,
-                        ...updates
-                    };
-                    storage.setMangaGenreCache(continueReadingGenreCacheRef.current);
-                    setContinueReadingGenres({ ...continueReadingGenreCacheRef.current });
+                    mangaCacheRef.current = { ...mangaCacheRef.current, ...updates };
+                    storage.setMangaGenreCache(mangaCacheRef.current);
+                    setMangaGenreCache({ ...mangaCacheRef.current });
                 }
             };
 
-            loadMissingGenres();
-
-            return () => {
-                cancelled = true;
-            };
+            loadMissingMangaGenres();
+            return () => { cancelled = true; };
         }, [readList, continueReadingList]);
 
         const genreCounts: Record<string, number> = {};
+
+        watchList.forEach(item => {
+            normalizeGenres(item.genres).forEach((genreName) => {
+                genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
+            });
+        });
 
         readList.forEach(item => {
             normalizeGenres(item.genres).forEach((genreName) => {
@@ -794,10 +839,19 @@ const ActivityOverview = () => {
             });
         });
 
+        continueWatchingList.forEach(item => {
+            const animeId = String(item.animeId);
+            const fallbackFromWatchList = watchList.find((wl) => wl.id === animeId)?.genres || [];
+            const genres = normalizeGenres(animeGenreCache[animeId] || fallbackFromWatchList);
+            genres.forEach((genreName) => {
+                genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
+            });
+        });
+
         continueReadingList.forEach(item => {
             const mangaId = String(item.mangaId);
             const fallbackFromReadList = readList.find((rl) => rl.id === mangaId)?.genres || [];
-            const genres = normalizeGenres(continueReadingGenres[mangaId] || fallbackFromReadList);
+            const genres = normalizeGenres(mangaGenreCache[mangaId] || fallbackFromReadList);
             genres.forEach((genreName) => {
                 genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
             });
@@ -808,29 +862,34 @@ const ActivityOverview = () => {
             .sort((a, b) => b.count - a.count);
 
         const displayGenres = sortedGenres.length > 0 ? sortedGenres : [
+            { label: 'Romance', count: 0 },
             { label: 'Action', count: 0 },
             { label: 'Fantasy', count: 0 },
-            { label: 'Drama', count: 0 },
-            { label: 'Romance', count: 0 }
+            { label: 'Drama', count: 0 }
         ];
 
         const top4 = displayGenres.slice(0, 4).map((g, index) => {
-            const colors = [
-                { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
-                { bg: 'bg-[#9f7aea]', text: 'text-[#9f7aea]' },
-                { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
-                { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
-            ];
-            return { ...g, ...colors[index % colors.length] };
+            const themeColors = theme === 'manga'
+                ? [
+                    { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
+                    { bg: 'bg-[#9f7aea]', text: 'text-[#9f7aea]' },
+                    { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
+                    { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
+                ]
+                : [
+                    { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
+                    { bg: 'bg-[#518feb]', text: 'text-[#518feb]' },
+                    { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
+                    { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
+                ];
+            return { ...g, ...themeColors[index % themeColors.length] };
         });
 
         const barGenres = sortedGenres.length > 0 ? sortedGenres : displayGenres;
         const total = barGenres.reduce((acc, g) => acc + g.count, 0) || 1;
-
-        const allBarColors = [
-            'bg-[#ff579c]', 'bg-[#9f7aea]', 'bg-[#61ffb8]', 'bg-[#ffd768]',
-            'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]'
-        ];
+        const allBarColors = theme === 'manga'
+            ? ['bg-[#ff579c]', 'bg-[#9f7aea]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]']
+            : ['bg-[#ff579c]', 'bg-[#518feb]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]'];
 
         return (
             <div>
@@ -941,6 +1000,13 @@ const ActivityOverview = () => {
     const AnimeStatsOverview = () => {
         const { watchList } = useWatchList();
         const { continueWatchingList } = useContinueWatching();
+        const [, setStatsTick] = useState(0);
+
+        useEffect(() => {
+            const onStorageUpdated = () => setStatsTick((v) => v + 1);
+            window.addEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
+            return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
+        }, []);
 
         const animeIds = new Set<string>([
             ...watchList.map((item) => item.id),
@@ -975,174 +1041,7 @@ const ActivityOverview = () => {
         );
     };
 
-    const AnimeGenreOverview = () => {
-        const { watchList } = useWatchList();
-        const { continueWatchingList } = useContinueWatching();
-        const [continueWatchingGenres, setContinueWatchingGenres] = useState<Record<string, string[]>>(() => storage.getAnimeGenreCache());
-        const continueWatchingGenreCacheRef = useRef<Record<string, string[]>>(storage.getAnimeGenreCache());
-
-        const normalizeGenres = (genres: any): string[] => {
-            if (!Array.isArray(genres)) return [];
-            return genres
-                .map((genreObj: any) => (typeof genreObj === 'string' ? genreObj : (genreObj?.name || genreObj)))
-                .filter(Boolean);
-        };
-
-        useEffect(() => {
-            let cancelled = false;
-
-            const loadMissingGenres = async () => {
-                const watchListMap = new Map<string, string[]>(
-                    watchList.map((item) => [item.id, normalizeGenres(item.genres)])
-                );
-
-                const unresolvedIds = continueWatchingList
-                    .map((item) => String(item.animeId))
-                    .filter((animeId) => {
-                        const inWatchList = watchListMap.has(animeId);
-                        const alreadyLoaded = Boolean(continueWatchingGenreCacheRef.current[animeId]);
-                        return !inWatchList && !alreadyLoaded;
-                    });
-
-                if (unresolvedIds.length === 0) {
-                    if (!cancelled) {
-                        setContinueWatchingGenres({ ...continueWatchingGenreCacheRef.current });
-                    }
-                    return;
-                }
-
-                const updates: Record<string, string[]> = {};
-                await Promise.all(
-                    unresolvedIds.map(async (animeId) => {
-                        try {
-                            const res = await animeService.getAnimeDetails(animeId);
-                            const details = res?.data;
-                            updates[animeId] = normalizeGenres(details?.genres || []);
-                        } catch {
-                            updates[animeId] = [];
-                        }
-                    })
-                );
-
-                if (!cancelled) {
-                    continueWatchingGenreCacheRef.current = {
-                        ...continueWatchingGenreCacheRef.current,
-                        ...updates
-                    };
-                    storage.setAnimeGenreCache(continueWatchingGenreCacheRef.current);
-                    setContinueWatchingGenres({ ...continueWatchingGenreCacheRef.current });
-                }
-            };
-
-            loadMissingGenres();
-
-            return () => {
-                cancelled = true;
-            };
-        }, [watchList, continueWatchingList]);
-
-        const genreCounts: Record<string, number> = {};
-
-        watchList.forEach(item => {
-            normalizeGenres(item.genres).forEach((genreName) => {
-                genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
-            });
-        });
-
-        continueWatchingList.forEach(item => {
-            const animeId = String(item.animeId);
-            const fallbackFromWatchList = watchList.find((wl) => wl.id === animeId)?.genres || [];
-            const genres = normalizeGenres(continueWatchingGenres[animeId] || fallbackFromWatchList);
-            genres.forEach((genreName) => {
-                genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
-            });
-        });
-
-        const sortedGenres = Object.entries(genreCounts)
-            .map(([label, count]) => ({ label, count }))
-            .sort((a, b) => b.count - a.count);
-
-        const displayGenres = sortedGenres.length > 0 ? sortedGenres : [
-            { label: 'Romance', count: 0 },
-            { label: 'Action', count: 0 },
-            { label: 'Fantasy', count: 0 },
-            { label: 'Drama', count: 0 }
-        ];
-
-        const top4 = displayGenres.slice(0, 4).map((g, index) => {
-            const colors = [
-                { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
-                { bg: 'bg-[#518feb]', text: 'text-[#518feb]' },
-                { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
-                { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
-            ];
-            return { ...g, ...colors[index % colors.length] };
-        });
-
-        const barGenres = sortedGenres.length > 0 ? sortedGenres : displayGenres;
-        const total = barGenres.reduce((acc, g) => acc + g.count, 0) || 1;
-
-        const allBarColors = [
-            'bg-[#ff579c]', 'bg-[#518feb]', 'bg-[#61ffb8]', 'bg-[#ffd768]',
-            'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]'
-        ];
-
-        return (
-            <div>
-                <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Genre Overview</h3>
-                <div className="bg-[#1c1c1c] rounded-3xl overflow-visible">
-                    <div className="p-5 md:p-6 pb-6">
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                            {top4.map(g => (
-                                <div key={g.label} className="flex flex-col items-center">
-                                    <div className={`w-full py-2.5 ${g.bg} rounded-xl text-center font-bold text-[13px] text-white mb-2 shadow-lg truncate px-3`}>
-                                        {g.label}
-                                    </div>
-                                    <div className="mt-1.5 -mb-1 translate-y-1 text-[12px] text-gray-500 flex items-center gap-1 font-bold leading-none">
-                                        <span className={`font-black ${g.text} text-[14px]`}>{g.count}</span>
-                                        <span className="text-gray-500">Entries</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="h-4 flex w-full bg-transparent overflow-visible">
-                        {barGenres.map((g, i) => {
-                            const tooltipPositionClass =
-                                i === 0
-                                    ? 'left-0'
-                                    : i === barGenres.length - 1
-                                        ? 'right-0'
-                                        : 'left-1/2 -translate-x-1/2';
-                            const tooltipArrowClass =
-                                i === 0
-                                    ? 'left-4'
-                                    : i === barGenres.length - 1
-                                        ? 'right-4'
-                                        : 'left-1/2 -translate-x-1/2';
-
-                            return (
-                                <div
-                                    key={g.label}
-                                    className={`h-full ${allBarColors[i % allBarColors.length]} relative group/bar cursor-pointer transition-all duration-150 hover:brightness-110 ${i === 0 ? 'rounded-bl-3xl' : ''} ${i === barGenres.length - 1 ? 'rounded-br-3xl' : ''}`}
-                                    style={{ width: `${Math.max((g.count / total) * 100, 1)}%` }}
-                                >
-                                    <div className={`absolute bottom-full ${tooltipPositionClass} mb-2 w-max px-3 py-1.5 bg-[#1a1c23] text-white text-[13px] font-medium rounded-md opacity-0 invisible group-hover/bar:opacity-100 group-hover/bar:visible transition-all z-50 pointer-events-none shadow-xl border border-white/10 flex flex-col items-center`}>
-                                        <span className="font-bold">{g.label}</span>
-                                        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-400">
-                                            <span className="text-white font-bold">{g.count}</span> Entries
-                                        </div>
-                                        <div className={`absolute top-full ${tooltipArrowClass} border-4 border-transparent border-t-[#1a1c23]`}></div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            </div>
-        );
-    };
+    const AnimeGenreOverview = () => <OverallGenreOverview theme="anime" />;
 
     const AnimeContinueWatchingHighlights = () => {
         const { continueWatchingList: history } = useContinueWatching();
