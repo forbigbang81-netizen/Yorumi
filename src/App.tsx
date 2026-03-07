@@ -34,6 +34,7 @@ function App() {
     || queryParams.get('type') === 'manga'
     || queryParams.get('tab') === 'continue-reading'
     || queryParams.get('tab') === 'readlist'
+    || queryParams.get('tab') === 'manga-overview'
     ? 'manga' : 'anime';
 
   // Perform search when debounced term changes
