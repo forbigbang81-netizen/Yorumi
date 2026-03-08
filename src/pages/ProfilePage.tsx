@@ -786,6 +786,8 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
         .map(([label, count]) => ({ label, count }))
         .sort((a, b) => b.count - a.count);
 
+    const hasGenreHistory = sortedGenres.some((g) => g.count > 0);
+
     const displayGenres = sortedGenres.length > 0 ? sortedGenres : [
         { label: 'Romance', count: 0 },
         { label: 'Action', count: 0 },
@@ -794,27 +796,36 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
     ];
 
     const top4 = displayGenres.slice(0, 4).map((g, index) => {
-        const themeColors = theme === 'manga'
-            ? [
-                { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
-                { bg: 'bg-[#9f7aea]', text: 'text-[#9f7aea]' },
-                { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
-                { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
-            ]
+        const themeColors = hasGenreHistory
+            ? (theme === 'manga'
+                ? [
+                    { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
+                    { bg: 'bg-[#9f7aea]', text: 'text-[#9f7aea]' },
+                    { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
+                    { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
+                ]
+                : [
+                    { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
+                    { bg: 'bg-[#518feb]', text: 'text-[#518feb]' },
+                    { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
+                    { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
+                ])
             : [
-                { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
-                { bg: 'bg-[#518feb]', text: 'text-[#518feb]' },
-                { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
-                { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
+                { bg: 'bg-gray-600', text: 'text-gray-400' },
+                { bg: 'bg-gray-600', text: 'text-gray-400' },
+                { bg: 'bg-gray-600', text: 'text-gray-400' },
+                { bg: 'bg-gray-600', text: 'text-gray-400' }
             ];
         return { ...g, ...themeColors[index % themeColors.length] };
     });
 
-    const barGenres = sortedGenres.length > 0 ? sortedGenres : displayGenres;
+    const barGenres = hasGenreHistory ? sortedGenres : [{ label: 'No history yet', count: 1 }];
     const total = barGenres.reduce((acc, g) => acc + g.count, 0) || 1;
-    const allBarColors = theme === 'manga'
-        ? ['bg-[#ff579c]', 'bg-[#9f7aea]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]']
-        : ['bg-[#ff579c]', 'bg-[#518feb]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]'];
+    const allBarColors = hasGenreHistory
+        ? (theme === 'manga'
+            ? ['bg-[#ff579c]', 'bg-[#9f7aea]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]']
+            : ['bg-[#ff579c]', 'bg-[#518feb]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]'])
+        : ['bg-gray-600'];
 
     return (
         <div>
@@ -857,7 +868,7 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
                                 className={`h-full ${allBarColors[i % allBarColors.length]} relative group/bar cursor-pointer transition-all duration-150 hover:brightness-110 ${i === 0 ? 'rounded-bl-3xl' : ''} ${i === barGenres.length - 1 ? 'rounded-br-3xl' : ''}`}
                                 style={{ width: `${Math.max((g.count / total) * 100, 1)}%` }}
                             >
-                                <div className={`absolute bottom-full ${tooltipPositionClass} mb-2 w-max px-3 py-1.5 bg-[#1a1c23] text-white text-[13px] font-medium rounded-md opacity-0 invisible group-hover/bar:opacity-100 group-hover/bar:visible transition-all z-50 pointer-events-none shadow-xl border border-white/10 flex flex-col items-center`}>
+                                <div className={`absolute bottom-full ${tooltipPositionClass} mb-2 w-max px-3 py-1.5 bg-[#1a1c23] text-white text-[13px] font-medium rounded-md ${hasGenreHistory ? 'opacity-0 invisible group-hover/bar:opacity-100 group-hover/bar:visible' : 'opacity-0 invisible'} transition-all z-50 pointer-events-none shadow-xl border border-white/10 flex flex-col items-center`}>
                                     <span className="font-bold">{g.label}</span>
                                     <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-400">
                                         <span className="text-white font-bold">{g.count}</span> Entries
@@ -941,25 +952,31 @@ const AnimeStatsOverview = () => {
         return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
     }, []);
 
+    const hasAccountAnimeHistory = watchList.length > 0 || continueWatchingList.length > 0;
+    const valueClassName = hasAccountAnimeHistory ? 'text-[#3cb6ff]' : 'text-gray-400';
+
     const episodeHistory = storage.getEpisodeHistory();
     const animeWatchTime = storage.getAnimeWatchTime();
 
     const animeIds = new Set<string>([
         ...watchList.map((item) => item.id),
-        ...continueWatchingList.map((item) => item.animeId),
-        ...Object.keys(episodeHistory),
-        ...Object.keys(animeWatchTime)
+        ...continueWatchingList.map((item) => item.animeId)
     ]);
-    const totalAnime = animeIds.size;
 
-    const totalEpisodesWatched = Array.from(animeIds).reduce((sum, animeId) => {
-        const episodes = episodeHistory[animeId] || [];
-        return sum + episodes.length;
-    }, 0);
+    const totalAnime = hasAccountAnimeHistory ? animeIds.size : 0;
 
-    const totalWatchSeconds = Array.from(animeIds).reduce((sum, animeId) => {
-        return sum + (animeWatchTime[animeId] || 0);
-    }, 0);
+    const totalEpisodesWatched = hasAccountAnimeHistory
+        ? Array.from(animeIds).reduce((sum, animeId) => {
+            const episodes = episodeHistory[animeId] || [];
+            return sum + episodes.length;
+        }, 0)
+        : 0;
+
+    const totalWatchSeconds = hasAccountAnimeHistory
+        ? Array.from(animeIds).reduce((sum, animeId) => {
+            return sum + (animeWatchTime[animeId] || 0);
+        }, 0)
+        : 0;
     const totalHours = Math.floor(totalWatchSeconds / 3600);
     const fmt = new Intl.NumberFormat('en-US');
 
@@ -968,9 +985,9 @@ const AnimeStatsOverview = () => {
             <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Anime Stats</h3>
             <div className="bg-[#1c1c1c] rounded-3xl p-5 md:p-6">
                 <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
-                    <StatItem value={fmt.format(totalAnime)} label="TOTAL ANIMES" />
-                    <StatItem value={fmt.format(totalEpisodesWatched)} label="EPISODES WATCHED" />
-                    <StatItem value={fmt.format(totalHours)} label="TOTAL HOURS" />
+                    <StatItem value={fmt.format(totalAnime)} label="TOTAL ANIMES" valueClassName={valueClassName} />
+                    <StatItem value={fmt.format(totalEpisodesWatched)} label="EPISODES WATCHED" valueClassName={valueClassName} />
+                    <StatItem value={fmt.format(totalHours)} label="TOTAL HOURS" valueClassName={valueClassName} />
                 </div>
             </div>
         </div>
