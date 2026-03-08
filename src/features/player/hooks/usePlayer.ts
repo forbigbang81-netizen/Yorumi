@@ -141,8 +141,10 @@ export function usePlayer(animeId: string | undefined) {
     useEffect(() => {
         if (!selectedAnime || !currentStream?.url) return;
 
-        const animeId = String(selectedAnime.id || selectedAnime.mal_id || '');
-        if (!animeId) return;
+        const primaryAnimeId = String(selectedAnime.mal_id || '');
+        const secondaryAnimeId = String(selectedAnime.id || '');
+        const targetAnimeIds = [primaryAnimeId, secondaryAnimeId].filter((id, index, arr) => id && arr.indexOf(id) === index);
+        if (targetAnimeIds.length === 0) return;
 
         let accumulatedSeconds = 0;
         let lastTick = Date.now();
@@ -153,7 +155,7 @@ export function usePlayer(animeId: string | undefined) {
         const flush = () => {
             const seconds = Math.floor(accumulatedSeconds);
             if (seconds > 0) {
-                storage.addAnimeWatchTime(animeId, seconds);
+                targetAnimeIds.forEach((id) => storage.addAnimeWatchTime(id, seconds));
                 accumulatedSeconds = 0;
             }
         };
