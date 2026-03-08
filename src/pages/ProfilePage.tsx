@@ -961,24 +961,48 @@ const AnimeStatsOverview = () => {
 
     const episodeHistory = storage.getEpisodeHistory();
     const animeWatchTime = storage.getAnimeWatchTime();
+    const normalizeTitleKey = (title?: string) =>
+        (title || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '')
+            .trim();
 
-    const animeIds = new Set<string>([
-        ...watchList.map((item) => item.id),
-        ...continueWatchingList.map((item) => item.animeId)
-    ]);
+    const animeGroups = new Map<string, Set<string>>();
+    const ensureGroup = (groupKey: string) => {
+        if (!animeGroups.has(groupKey)) animeGroups.set(groupKey, new Set<string>());
+        return animeGroups.get(groupKey)!;
+    };
 
-    const totalAnime = hasAccountAnimeHistory ? animeIds.size : 0;
+    watchList.forEach((item) => {
+        const key = normalizeTitleKey(item.title) || `id:${String(item.id)}`;
+        ensureGroup(key).add(String(item.id));
+    });
+
+    continueWatchingList.forEach((item) => {
+        const key = normalizeTitleKey(item.animeTitle) || `id:${String(item.animeId)}`;
+        ensureGroup(key).add(String(item.animeId));
+    });
+
+    const totalAnime = hasAccountAnimeHistory ? animeGroups.size : 0;
 
     const totalEpisodesWatched = hasAccountAnimeHistory
-        ? Array.from(animeIds).reduce((sum, animeId) => {
-            const episodes = episodeHistory[animeId] || [];
-            return sum + episodes.length;
+        ? Array.from(animeGroups.values()).reduce((sum, ids) => {
+            const uniqueEpisodes = new Set<number>();
+            ids.forEach((id) => {
+                (episodeHistory[id] || []).forEach((ep) => uniqueEpisodes.add(ep));
+            });
+            return sum + uniqueEpisodes.size;
         }, 0)
         : 0;
 
     const totalWatchSeconds = hasAccountAnimeHistory
-        ? Array.from(animeIds).reduce((sum, animeId) => {
-            return sum + (animeWatchTime[animeId] || 0);
+        ? Array.from(animeGroups.values()).reduce((sum, ids) => {
+            // Use max per deduped anime group to avoid double counting mirrored ID records.
+            let groupSeconds = 0;
+            ids.forEach((id) => {
+                groupSeconds = Math.max(groupSeconds, animeWatchTime[id] || 0);
+            });
+            return sum + groupSeconds;
         }, 0)
         : 0;
     const totalHours = Math.floor(totalWatchSeconds / 3600);
