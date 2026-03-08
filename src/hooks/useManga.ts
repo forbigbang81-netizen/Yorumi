@@ -55,7 +55,7 @@ export function useManga() {
                         },
                         score: 0, // Not available in simple update
                         type: 'Manga',
-                        status: 'Publishing',
+                        status: update.status || 'Unknown',
                         chapters: parseInt(update.chapter) || 0,
                         volumes: null,
                         synopsis: 'Hot Update from MangaKatana',

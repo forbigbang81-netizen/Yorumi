@@ -40,7 +40,8 @@ export function useContinueWatching() {
         const image = anime.anilist_banner_image || anime.images.jpg.large_image_url;
         const poster = anime.images.jpg.image_url || anime.images.jpg.large_image_url;
 
-        const validId = anime.id || anime.mal_id;
+        const validId = anime.mal_id || anime.id;
+        if (!validId) return;
         const progress: WatchProgress = {
             animeId: validId.toString(),
             episodeId: episode.session || (episode as any).id || '',

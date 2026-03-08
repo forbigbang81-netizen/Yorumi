@@ -15,6 +15,8 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onReadClick, onMo
     const [rotation, setRotation] = React.useState({ x: 0, y: 0 });
     const [glare, setGlare] = React.useState({ x: 50, y: 50, opacity: 0 });
     const [isHovered, setIsHovered] = React.useState(false);
+    const normalizedStatus = String(manga.status || '').toUpperCase();
+    const isOngoing = normalizedStatus === 'RELEASING' || normalizedStatus === 'PUBLISHING' || normalizedStatus === 'ONGOING';
 
     // Determine count display (Chapters -> Volumes)
     const countDisplay = manga.chapters
@@ -114,8 +116,8 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onReadClick, onMo
                         </span>
                     ) : (
                         <span className="bg-white/20 backdrop-blur-sm text-white px-2 py-1 rounded text-xs font-bold flex items-center gap-1.5">
-                            <span className={`w-1.5 h-1.5 rounded-full ${manga.status === 'RELEASING' || manga.status === 'Publishing' ? 'bg-green-500' : 'bg-gray-500'}`}></span>
-                            <span className="uppercase text-[10px]">{manga.status === 'RELEASING' ? 'Ongoing' : manga.status}</span>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isOngoing ? 'bg-green-500' : 'bg-gray-500'}`}></span>
+                            <span className="uppercase text-[10px]">{isOngoing ? 'Ongoing' : manga.status}</span>
                         </span>
                     )}
                 </div>
@@ -124,8 +126,8 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onReadClick, onMo
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/90 to-black/70 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
                     {/* HD/Status Badge - Top Right on Hover */}
                     <div className="absolute top-2 right-2 translate-z-10">
-                        <span className={`px-2 py-1 rounded text-xs font-bold ${manga.status === 'Publishing' ? 'bg-green-500 text-black' : 'bg-gray-600 text-white'}`}>
-                            {manga.status === 'Publishing' ? 'ONGOING' : 'FINISHED'}
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${isOngoing ? 'bg-green-500 text-black' : 'bg-gray-600 text-white'}`}>
+                            {isOngoing ? 'ONGOING' : 'FINISHED'}
                         </span>
                     </div>
 

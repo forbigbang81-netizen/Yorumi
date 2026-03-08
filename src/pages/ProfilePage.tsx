@@ -249,61 +249,579 @@ const ActivityOverview = () => {
     );
 };
 
-    const GenreOverview = () => {
-        const { watchList } = useWatchList();
-        const { readList } = useReadList();
+const GenreOverview = () => <OverallGenreOverview theme="both" />;
 
-        // Aggregate genres
-        const genreCounts: Record<string, number> = {};
 
-        [...watchList, ...readList].forEach(item => {
-            if (item.genres && Array.isArray(item.genres)) {
-                item.genres.forEach((genreObj: any) => {
-                    const genreName = typeof genreObj === 'string' ? genreObj : (genreObj.name || genreObj);
-                    if (genreName) {
-                        genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
-                    }
-                });
-            }
+const RecentActivity = () => {
+    const { continueWatchingList } = useContinueWatching();
+    const { continueReadingList } = useContinueReading();
+    const navigate = useNavigate();
+
+    const [activities, setActivities] = useState<any[]>([]);
+
+    useEffect(() => {
+        const watching = continueWatchingList.map(item => {
+            const data = item as any;
+            const posterImage = data.posterImage || data.animePoster || data.image || item.animeImage;
+            const bannerImage = data.bannerImage || data.animeBannerImage || data.animeBanner || item.animeImage || posterImage;
+
+            return {
+                ...item,
+                id: `w-${item.animeId}`,
+                type: 'watching',
+                time: item.lastWatched || item.timestamp,
+                title: item.animeTitle,
+                posterImage,
+                bannerImage,
+                subtitle: `Watched Episode ${item.episodeNumber} of`,
+                titleColor: 'text-[#518feb]'
+            };
         });
 
-        const sortedGenres = Object.entries(genreCounts)
-            .map(([label, count]) => ({ label, count }))
-            .sort((a, b) => b.count - a.count);
+        const reading = continueReadingList.map(item => {
+            const data = item as any;
+            const posterImage = data.posterImage || data.mangaPoster || data.image || item.mangaImage;
+            const bannerImage = data.bannerImage || data.mangaBannerImage || data.mangaBanner || item.mangaImage || posterImage;
 
-        // If no genres, show placeholders
-        const displayGenres = sortedGenres.length > 0 ? sortedGenres : [
-            { label: 'Romance', count: 0 },
-            { label: 'Action', count: 0 },
-            { label: 'Fantasy', count: 0 },
-            { label: 'Drama', count: 0 }
-        ];
+            return {
+                ...item,
+                id: `r-${item.mangaId}`,
+                type: 'reading',
+                time: item.lastRead || item.timestamp,
+                title: item.mangaTitle,
+                posterImage,
+                bannerImage,
+                subtitle: `Read Chapter ${item.chapterNumber} of`,
+                titleColor: 'text-yorumi-manga'
+            };
+        });
 
-        const top4 = displayGenres.slice(0, 4).map((g, index) => {
-            const colors = [
+        const combined = [...watching, ...reading].sort((a, b) => b.time - a.time).slice(0, 3);
+        setActivities(combined);
+    }, [continueWatchingList, continueReadingList]);
+
+    if (activities.length === 0) return null;
+
+    return (
+        <div>
+            <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Recent Activity</h3>
+            <div className="space-y-3">
+                {activities.map((item) => (
+                    <div
+                        key={item.id}
+                        onClick={() => {
+                            if (item.type === 'watching') {
+                                const title = slugify(item.title || 'anime');
+                                navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
+                                return;
+                            }
+
+                            const title = slugify(item.title || 'manga');
+                            navigate(`/manga/read/${title}/${item.mangaId}/c${item.chapterNumber}`);
+                        }}
+                        className="relative flex rounded-xl overflow-hidden h-24 md:h-28 cursor-pointer"
+                        style={{
+                            backgroundImage: `linear-gradient(90deg, rgba(17,17,17,0.95) 0%, rgba(17,17,17,0.9) 45%, rgba(17,17,17,0.82) 100%), url(${item.bannerImage})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center'
+                        }}
+                    >
+                        <div className="h-full w-20 md:w-28 shrink-0">
+                            <img src={item.posterImage} alt={item.title} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 min-w-0 flex flex-col justify-center relative z-10 px-4 md:px-5 py-3 md:py-4">
+                            <p className="text-[13px] md:text-[15px] font-bold text-gray-100 mb-0.5 truncate">{item.subtitle}</p>
+                            <p className={`text-[13px] md:text-[15px] font-bold ${item.titleColor} truncate`}>{item.title}</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const ProfileTab = ({ user, avatar }: { user: any, avatar: string | null }) => {
+    const { updateName, updateAvatar, profileCardBackground, updateProfileCardBackground } = useAuth();
+    const [isEditing, setIsEditing] = useState(false);
+    const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+    const [isCardBackgroundModalOpen, setIsCardBackgroundModalOpen] = useState(false);
+    const [newName, setNewName] = useState(user.displayName || '');
+    const [loading, setLoading] = useState(false);
+
+    const handleSave = async () => {
+        if (!newName.trim() || newName === user.displayName) {
+            setIsEditing(false);
+            return;
+        }
+        setLoading(true);
+        try {
+            await updateName(newName);
+            setIsEditing(false);
+        } catch (error) {
+            console.error("Failed to update name", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAvatarSelect = async (path: string) => {
+        await updateAvatar(path);
+        setIsAvatarModalOpen(false);
+    };
+
+    return (
+        <div className="w-full max-w-[1180px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8 xl:gap-8">
+            <div className="space-y-6 md:space-y-8 min-w-0">
+                <div
+                    className="group relative bg-[#1c1c1c] rounded-2xl p-5 md:p-7 overflow-hidden"
+                    style={profileCardBackground
+                        ? {
+                            backgroundImage: `linear-gradient(90deg, rgba(28,28,28,0.94) 0%, rgba(28,28,28,0.9) 48%, rgba(28,28,28,0.84) 100%), url(${profileCardBackground})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center'
+                        }
+                        : undefined}
+                >
+                    <button
+                        onClick={() => setIsCardBackgroundModalOpen(true)}
+                        className="absolute top-4 right-4 z-10 text-white/70 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                        title="Change card background"
+                    >
+                        <Pencil className="w-4 h-4" />
+                    </button>
+                    <h2 className="text-[20px] md:text-[22px] font-bold mb-6 md:mb-7 flex items-center gap-3 text-white">
+                        <User className="w-6 h-6 text-[#518feb] fill-[#518feb]" />
+                        Profile Details
+                    </h2>
+
+                    <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
+                        <div className="flex justify-center sm:justify-start sm:pt-1">
+                            <div className="relative w-24 h-24 shrink-0">
+                                <div
+                                    className="group/avatar w-full h-full rounded-full overflow-hidden border-4 border-[#3cb6ff] shadow-xl bg-yorumi-main cursor-pointer"
+                                    onClick={() => setIsAvatarModalOpen(true)}
+                                >
+                                    {avatar ? (
+                                        <img src={avatar} alt="Profile" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-white font-bold text-4xl">
+                                            {user.displayName?.charAt(0).toUpperCase()}
+                                        </div>
+                                    )}
+
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center rounded-full pointer-events-none">
+                                        <Pencil className="w-7 h-7 text-white" />
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setIsAvatarModalOpen(true)}
+                                    className="absolute -bottom-1 -right-1 w-8 h-8 flex items-center justify-center bg-[#c37df0] rounded-full text-black shadow-lg transition-colors border-2 border-[#1c1c1c]"
+                                >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 space-y-5">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Display Name</label>
+                                {isEditing ? (
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={newName}
+                                            onChange={(e) => setNewName(e.target.value)}
+                                            className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-yorumi-accent flex-1 font-bold text-base"
+                                            placeholder="Enter display name"
+                                            autoFocus
+                                        />
+                                        <button
+                                            onClick={handleSave}
+                                            disabled={loading}
+                                            className="p-2 bg-yorumi-accent text-black rounded-lg hover:bg-yorumi-accent/80 transition-colors disabled:opacity-50"
+                                        >
+                                            <Check className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setIsEditing(false);
+                                                setNewName(user.displayName || '');
+                                            }}
+                                            disabled={loading}
+                                            className="p-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="min-w-0">
+                                        <div className="inline-flex items-center gap-2 group/name max-w-full">
+                                            <div className="text-xl md:text-2xl font-black text-white tracking-tight leading-none truncate">{user.displayName || 'No Name Set'}</div>
+                                            <button
+                                                onClick={() => setIsEditing(true)}
+                                                className="px-2 py-1 rounded-lg text-gray-400 opacity-0 group-hover/name:opacity-100 hover:text-white hover:bg-white/10 transition-all text-xs font-bold"
+                                            >
+                                                Edit
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Email Address</label>
+                                <div className="text-sm md:text-[15px] font-bold text-white break-all">{user.email}</div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Joined On</label>
+                                <div className="text-sm md:text-[15px] font-bold text-white">
+                                    {user.metadata?.creationTime
+                                        ? new Date(user.metadata.creationTime).toLocaleDateString('en-US', {
+                                            year: 'numeric',
+                                            month: 'long',
+                                            day: 'numeric'
+                                        })
+                                        : 'January 18, 2026'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <AvatarSelectionModal
+                        isOpen={isAvatarModalOpen}
+                        onClose={() => setIsAvatarModalOpen(false)}
+                        currentAvatar={avatar}
+                        onSelectAvatar={handleAvatarSelect}
+                    />
+                    <BannerSelectionModal
+                        isOpen={isCardBackgroundModalOpen}
+                        onClose={() => setIsCardBackgroundModalOpen(false)}
+                        currentBanner={profileCardBackground}
+                        onSelectBanner={async (path) => {
+                            await updateProfileCardBackground(path);
+                            setIsCardBackgroundModalOpen(false);
+                        }}
+                    />
+                </div>
+
+                <GenreOverview />
+            </div>
+
+            <div className="space-y-6 md:space-y-8 min-w-0">
+                <ActivityOverview />
+                <RecentActivity />
+            </div>
+        </div>
+    );
+};
+
+const AnimeOverviewTab = () => {
+    const { continueWatchingList } = useContinueWatching();
+    // Deduplicate by title for the threshold check
+    const seenTitles = new Set<string>();
+    const dedupedWatching = continueWatchingList.filter(item => {
+        const key = (item.animeTitle || item.animeId).toLowerCase();
+        if (seenTitles.has(key)) return false;
+        seenTitles.add(key);
+        return true;
+    });
+
+    return (
+        <div className="space-y-10">
+            <div className="w-full max-w-[1180px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8 xl:gap-8">
+                <div className="space-y-6 md:space-y-8 min-w-0">
+                    <AnimeStatsOverview />
+                    <AnimeGenreOverview />
+                </div>
+                <div className="space-y-6 md:space-y-8 min-w-0">
+                    <AnimeContinueWatchingHighlights />
+                </div>
+            </div>
+
+            {dedupedWatching.length > 3 && (
+                <div>
+                    <ContinueWatchingList skip={3} />
+                </div>
+            )}
+
+            <div>
+                <div className="flex items-center gap-3 mb-6">
+                    <Heart className="w-6 h-6 text-yorumi-accent" />
+                    <h3 className="text-xl font-bold text-white">Watch List</h3>
+                </div>
+                <WatchList />
+            </div>
+        </div>
+    );
+};
+
+const MangaOverviewTab = () => {
+    const { continueReadingList } = useContinueReading();
+    // Deduplicate by title for the threshold check
+    const seenTitles = new Set<string>();
+    const dedupedReading = continueReadingList.filter(item => {
+        const key = (item.mangaTitle || item.mangaId).toLowerCase();
+        if (seenTitles.has(key)) return false;
+        seenTitles.add(key);
+        return true;
+    });
+
+    return (
+        <div className="space-y-10">
+            <div className="w-full max-w-[1180px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8 xl:gap-8">
+                <div className="space-y-6 md:space-y-8 min-w-0">
+                    <MangaStatsOverview />
+                    <MangaGenreOverview />
+                </div>
+                <div className="space-y-6 md:space-y-8 min-w-0">
+                    <MangaContinueReadingHighlights />
+                </div>
+            </div>
+
+            {dedupedReading.length > 3 && (
+                <div>
+                    <div className="flex items-center gap-3 mb-6">
+                        <History className="w-6 h-6 text-yorumi-manga" />
+                        <h3 className="text-xl font-bold text-white">Continue Reading</h3>
+                    </div>
+                    <ContinueReadingList skip={3} />
+                </div>
+            )}
+
+            <div>
+                <div className="flex items-center gap-3 mb-6">
+                    <Heart className="w-6 h-6 text-yorumi-manga" />
+                    <h3 className="text-xl font-bold text-white">Read List</h3>
+                </div>
+                <ReadList />
+            </div>
+        </div>
+    );
+};
+
+const MangaStatsOverview = () => {
+    const { readList } = useReadList();
+    const { continueReadingList } = useContinueReading();
+    const [, setStatsTick] = useState(0);
+
+    useEffect(() => {
+        const onStorageUpdated = () => setStatsTick((v) => v + 1);
+        window.addEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
+        return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
+    }, []);
+    const chapterHistory = storage.getChapterHistory();
+
+    const mangaIds = new Set<string>([
+        ...readList.map((item) => item.id),
+        ...continueReadingList.map((item) => String(item.mangaId))
+    ]);
+    const totalManga = mangaIds.size;
+
+    const totalChaptersRead = Array.from(mangaIds).reduce((sum, mangaId) => {
+        const chapters = chapterHistory[mangaId] || [];
+        return sum + chapters.length;
+    }, 0);
+
+    // Approximate reading time: 6 minutes per chapter.
+    const minutesPerChapter = 6;
+    const totalHours = Math.floor((totalChaptersRead * minutesPerChapter) / 60);
+    const fmt = new Intl.NumberFormat('en-US');
+
+    return (
+        <div>
+            <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Manga Stats</h3>
+            <div className="bg-[#1c1c1c] rounded-3xl p-5 md:p-6">
+                <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
+                    <StatItem value={fmt.format(totalManga)} label="TOTAL MANGA" valueClassName="text-yorumi-manga" />
+                    <StatItem value={fmt.format(totalChaptersRead)} label="CHAPTERS READ" valueClassName="text-yorumi-manga" />
+                    <StatItem value={fmt.format(totalHours)} label="TOTAL HOURS" valueClassName="text-yorumi-manga" />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const MangaGenreOverview = () => <OverallGenreOverview theme="manga" />;
+
+const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) => {
+    const { watchList } = useWatchList();
+    const { readList } = useReadList();
+    const { continueWatchingList } = useContinueWatching();
+    const { continueReadingList } = useContinueReading();
+
+    const [animeGenreCache, setAnimeGenreCache] = useState<Record<string, string[]>>(() => storage.getAnimeGenreCache());
+    const [mangaGenreCache, setMangaGenreCache] = useState<Record<string, string[]>>(() => storage.getMangaGenreCache());
+    const animeCacheRef = useRef<Record<string, string[]>>(storage.getAnimeGenreCache());
+    const mangaCacheRef = useRef<Record<string, string[]>>(storage.getMangaGenreCache());
+
+    const normalizeGenres = (genres: any): string[] => {
+        if (!Array.isArray(genres)) return [];
+        return genres
+            .map((genreObj: any) => (typeof genreObj === 'string' ? genreObj : (genreObj?.name || genreObj)))
+            .filter(Boolean);
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadMissingAnimeGenres = async () => {
+            const watchListMap = new Map<string, string[]>(
+                watchList.map((item) => [item.id, normalizeGenres(item.genres)])
+            );
+            const unresolvedAnimeIds = continueWatchingList
+                .map((item) => String(item.animeId))
+                .filter((animeId) => !watchListMap.has(animeId) && !animeCacheRef.current[animeId]);
+
+            if (unresolvedAnimeIds.length === 0) {
+                if (!cancelled) setAnimeGenreCache({ ...animeCacheRef.current });
+                return;
+            }
+
+            const updates: Record<string, string[]> = {};
+            await Promise.all(
+                unresolvedAnimeIds.map(async (animeId) => {
+                    try {
+                        const res = await animeService.getAnimeDetails(animeId);
+                        updates[animeId] = normalizeGenres(res?.data?.genres || []);
+                    } catch {
+                        updates[animeId] = [];
+                    }
+                })
+            );
+
+            if (!cancelled) {
+                animeCacheRef.current = { ...animeCacheRef.current, ...updates };
+                storage.setAnimeGenreCache(animeCacheRef.current);
+                setAnimeGenreCache({ ...animeCacheRef.current });
+            }
+        };
+
+        loadMissingAnimeGenres();
+        return () => { cancelled = true; };
+    }, [watchList, continueWatchingList]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadMissingMangaGenres = async () => {
+            const readListMap = new Map<string, string[]>(
+                readList.map((item) => [item.id, normalizeGenres(item.genres)])
+            );
+            const unresolvedMangaIds = continueReadingList
+                .map((item) => String(item.mangaId))
+                .filter((mangaId) => !readListMap.has(mangaId) && !mangaCacheRef.current[mangaId]);
+
+            if (unresolvedMangaIds.length === 0) {
+                if (!cancelled) setMangaGenreCache({ ...mangaCacheRef.current });
+                return;
+            }
+
+            const updates: Record<string, string[]> = {};
+            await Promise.all(
+                unresolvedMangaIds.map(async (mangaId) => {
+                    try {
+                        const res = await mangaService.getMangaDetails(mangaId);
+                        updates[mangaId] = normalizeGenres(res?.data?.genres || []);
+                    } catch {
+                        updates[mangaId] = [];
+                    }
+                })
+            );
+
+            if (!cancelled) {
+                mangaCacheRef.current = { ...mangaCacheRef.current, ...updates };
+                storage.setMangaGenreCache(mangaCacheRef.current);
+                setMangaGenreCache({ ...mangaCacheRef.current });
+            }
+        };
+
+        loadMissingMangaGenres();
+        return () => { cancelled = true; };
+    }, [readList, continueReadingList]);
+
+    const genreCounts: Record<string, number> = {};
+
+    if (theme === 'anime' || theme === 'both') {
+        // Deduplicate: collect all unique anime IDs from watchList + continueWatchingList
+        const animeGenreMap = new Map<string, string[]>();
+        watchList.forEach(item => {
+            animeGenreMap.set(item.id, normalizeGenres(item.genres));
+        });
+        continueWatchingList.forEach(item => {
+            const animeId = String(item.animeId);
+            if (!animeGenreMap.has(animeId)) {
+                // Not in watchList — use cache
+                const genres = normalizeGenres(animeGenreCache[animeId] || []);
+                animeGenreMap.set(animeId, genres);
+            }
+        });
+        animeGenreMap.forEach(genres => {
+            genres.forEach(genreName => {
+                genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
+            });
+        });
+    }
+
+    if (theme === 'manga' || theme === 'both') {
+        // Deduplicate: collect all unique manga IDs from readList + continueReadingList
+        const mangaGenreMap = new Map<string, string[]>();
+        readList.forEach(item => {
+            mangaGenreMap.set(item.id, normalizeGenres(item.genres));
+        });
+        continueReadingList.forEach(item => {
+            const mangaId = String(item.mangaId);
+            if (!mangaGenreMap.has(mangaId)) {
+                // Not in readList — use cache
+                const genres = normalizeGenres(mangaGenreCache[mangaId] || []);
+                mangaGenreMap.set(mangaId, genres);
+            }
+        });
+        mangaGenreMap.forEach(genres => {
+            genres.forEach(genreName => {
+                genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
+            });
+        });
+    }
+
+    const sortedGenres = Object.entries(genreCounts)
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count);
+
+    const displayGenres = sortedGenres.length > 0 ? sortedGenres : [
+        { label: 'Romance', count: 0 },
+        { label: 'Action', count: 0 },
+        { label: 'Fantasy', count: 0 },
+        { label: 'Drama', count: 0 }
+    ];
+
+    const top4 = displayGenres.slice(0, 4).map((g, index) => {
+        const themeColors = theme === 'manga'
+            ? [
+                { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
+                { bg: 'bg-[#9f7aea]', text: 'text-[#9f7aea]' },
+                { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
+                { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
+            ]
+            : [
                 { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
                 { bg: 'bg-[#518feb]', text: 'text-[#518feb]' },
                 { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
                 { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
             ];
-            return { ...g, ...colors[index % colors.length] };
-        });
+        return { ...g, ...themeColors[index % themeColors.length] };
+    });
 
-        const barGenres = sortedGenres.length > 0 ? sortedGenres : displayGenres;
-        const total = barGenres.reduce((acc, g) => acc + g.count, 0) || 1;
+    const barGenres = sortedGenres.length > 0 ? sortedGenres : displayGenres;
+    const total = barGenres.reduce((acc, g) => acc + g.count, 0) || 1;
+    const allBarColors = theme === 'manga'
+        ? ['bg-[#ff579c]', 'bg-[#9f7aea]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]']
+        : ['bg-[#ff579c]', 'bg-[#518feb]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]'];
 
-        // Prepare full distribution bar colors
-        const allBarColors = [
-            'bg-[#ff579c]', 'bg-[#518feb]', 'bg-[#61ffb8]', 'bg-[#ffd768]',
-            'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]'
-        ];
-
-        return (
-            <div>
-                <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Genre Overview</h3>
-                <div className="bg-[#1c1c1c] rounded-3xl overflow-visible">
-                    <div className="p-5 md:p-6 pb-6">
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    return (
+        <div>
+            <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Genre Overview</h3>
+            <div className="bg-[#1c1c1c] rounded-3xl overflow-visible">
+                <div className="p-5 md:p-6 pb-6">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                         {top4.map(g => (
                             <div key={g.label} className="flex flex-col items-center">
                                 <div className={`w-full py-2.5 ${g.bg} rounded-xl text-center font-bold text-[13px] text-white mb-2 shadow-lg truncate px-3`}>
@@ -316,1015 +834,457 @@ const ActivityOverview = () => {
                             </div>
                         ))}
                     </div>
-                    </div>
-
-                    <div className="h-4 flex w-full bg-transparent overflow-visible">
-                        {barGenres.map((g, i) => {
-                            const tooltipPositionClass =
-                                i === 0
-                                    ? 'left-0'
-                                    : i === barGenres.length - 1
-                                        ? 'right-0'
-                                        : 'left-1/2 -translate-x-1/2';
-                            const tooltipArrowClass =
-                                i === 0
-                                    ? 'left-4'
-                                    : i === barGenres.length - 1
-                                        ? 'right-4'
-                                        : 'left-1/2 -translate-x-1/2';
-
-                            return (
-                                <div
-                                    key={g.label}
-                                    className={`h-full ${allBarColors[i % allBarColors.length]} relative group/bar cursor-pointer transition-all duration-150 hover:brightness-110 ${i === 0 ? 'rounded-bl-3xl' : ''} ${i === barGenres.length - 1 ? 'rounded-br-3xl' : ''}`}
-                                    style={{ width: `${Math.max((g.count / total) * 100, 1)}%` }}
-                                >
-                                    {/* Hover tooltip for distribution bar */}
-                                    <div className={`absolute bottom-full ${tooltipPositionClass} mb-2 w-max px-3 py-1.5 bg-[#1a1c23] text-white text-[13px] font-medium rounded-md opacity-0 invisible group-hover/bar:opacity-100 group-hover/bar:visible transition-all z-50 pointer-events-none shadow-xl border border-white/10 flex flex-col items-center`}>
-                                        <span className="font-bold">{g.label}</span>
-                                        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-400">
-                                            <span className="text-white font-bold">{g.count}</span> Entries
-                                        </div>
-                                        <div className={`absolute top-full ${tooltipArrowClass} border-4 border-transparent border-t-[#1a1c23]`}></div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
                 </div>
-            </div>
-        );
-    };
 
-    const RecentActivity = () => {
-        const { continueWatchingList } = useContinueWatching();
-        const { continueReadingList } = useContinueReading();
-        const navigate = useNavigate();
+                <div className="h-4 flex w-full bg-transparent overflow-visible">
+                    {barGenres.map((g, i) => {
+                        const tooltipPositionClass =
+                            i === 0
+                                ? 'left-0'
+                                : i === barGenres.length - 1
+                                    ? 'right-0'
+                                    : 'left-1/2 -translate-x-1/2';
+                        const tooltipArrowClass =
+                            i === 0
+                                ? 'left-4'
+                                : i === barGenres.length - 1
+                                    ? 'right-4'
+                                    : 'left-1/2 -translate-x-1/2';
 
-        const [activities, setActivities] = useState<any[]>([]);
-
-        useEffect(() => {
-            const watching = continueWatchingList.map(item => {
-                const data = item as any;
-                const posterImage = data.posterImage || data.animePoster || data.image || item.animeImage;
-                const bannerImage = data.bannerImage || data.animeBannerImage || data.animeBanner || item.animeImage || posterImage;
-
-                return {
-                    ...item,
-                    id: `w-${item.animeId}`,
-                    type: 'watching',
-                    time: item.lastWatched || item.timestamp,
-                    title: item.animeTitle,
-                    posterImage,
-                    bannerImage,
-                    subtitle: `Watched Episode ${item.episodeNumber} of`,
-                    titleColor: 'text-[#518feb]'
-                };
-            });
-
-            const reading = continueReadingList.map(item => {
-                const data = item as any;
-                const posterImage = data.posterImage || data.mangaPoster || data.image || item.mangaImage;
-                const bannerImage = data.bannerImage || data.mangaBannerImage || data.mangaBanner || item.mangaImage || posterImage;
-
-                return {
-                    ...item,
-                    id: `r-${item.mangaId}`,
-                    type: 'reading',
-                    time: item.lastRead || item.timestamp,
-                    title: item.mangaTitle,
-                    posterImage,
-                    bannerImage,
-                    subtitle: `Read Chapter ${item.chapterNumber} of`,
-                    titleColor: 'text-yorumi-manga'
-                };
-            });
-
-            const combined = [...watching, ...reading].sort((a, b) => b.time - a.time).slice(0, 3);
-            setActivities(combined);
-        }, [continueWatchingList, continueReadingList]);
-
-        if (activities.length === 0) return null;
-
-        return (
-            <div>
-                <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Recent Activity</h3>
-                <div className="space-y-3">
-                    {activities.map((item) => (
-                        <div
-                            key={item.id}
-                            onClick={() => {
-                                if (item.type === 'watching') {
-                                    const title = slugify(item.title || 'anime');
-                                    navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
-                                    return;
-                                }
-
-                                const title = slugify(item.title || 'manga');
-                                navigate(`/manga/read/${title}/${item.mangaId}/c${item.chapterNumber}`);
-                            }}
-                            className="relative flex rounded-xl overflow-hidden h-24 md:h-28 cursor-pointer"
-                            style={{
-                                backgroundImage: `linear-gradient(90deg, rgba(17,17,17,0.95) 0%, rgba(17,17,17,0.9) 45%, rgba(17,17,17,0.82) 100%), url(${item.bannerImage})`,
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center'
-                            }}
-                        >
-                            <div className="h-full w-20 md:w-28 shrink-0">
-                                <img src={item.posterImage} alt={item.title} className="w-full h-full object-cover" />
-                            </div>
-                            <div className="flex-1 min-w-0 flex flex-col justify-center relative z-10 px-4 md:px-5 py-3 md:py-4">
-                                <p className="text-[13px] md:text-[15px] font-bold text-gray-100 mb-0.5 truncate">{item.subtitle}</p>
-                                <p className={`text-[13px] md:text-[15px] font-bold ${item.titleColor} truncate`}>{item.title}</p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    };
-
-    const ProfileTab = ({ user, avatar }: { user: any, avatar: string | null }) => {
-        const { updateName, updateAvatar, profileCardBackground, updateProfileCardBackground } = useAuth();
-        const [isEditing, setIsEditing] = useState(false);
-        const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
-        const [isCardBackgroundModalOpen, setIsCardBackgroundModalOpen] = useState(false);
-        const [newName, setNewName] = useState(user.displayName || '');
-        const [loading, setLoading] = useState(false);
-
-        const handleSave = async () => {
-            if (!newName.trim() || newName === user.displayName) {
-                setIsEditing(false);
-                return;
-            }
-            setLoading(true);
-            try {
-                await updateName(newName);
-                setIsEditing(false);
-            } catch (error) {
-                console.error("Failed to update name", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        const handleAvatarSelect = async (path: string) => {
-            await updateAvatar(path);
-            setIsAvatarModalOpen(false);
-        };
-
-        return (
-            <div className="w-full max-w-[1180px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8 xl:gap-8">
-                <div className="space-y-6 md:space-y-8 min-w-0">
-                    <div
-                        className="group relative bg-[#1c1c1c] rounded-2xl p-5 md:p-7 overflow-hidden"
-                        style={profileCardBackground
-                            ? {
-                                backgroundImage: `linear-gradient(90deg, rgba(28,28,28,0.94) 0%, rgba(28,28,28,0.9) 48%, rgba(28,28,28,0.84) 100%), url(${profileCardBackground})`,
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center'
-                            }
-                            : undefined}
-                    >
-                        <button
-                            onClick={() => setIsCardBackgroundModalOpen(true)}
-                            className="absolute top-4 right-4 z-10 text-white/70 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
-                            title="Change card background"
-                        >
-                            <Pencil className="w-4 h-4" />
-                        </button>
-                        <h2 className="text-[20px] md:text-[22px] font-bold mb-6 md:mb-7 flex items-center gap-3 text-white">
-                            <User className="w-6 h-6 text-[#518feb] fill-[#518feb]" />
-                            Profile Details
-                        </h2>
-
-                        <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
-                            <div className="flex justify-center sm:justify-start sm:pt-1">
-                                <div className="relative w-24 h-24 shrink-0">
-                                    <div
-                                        className="group/avatar w-full h-full rounded-full overflow-hidden border-4 border-[#3cb6ff] shadow-xl bg-yorumi-main cursor-pointer"
-                                        onClick={() => setIsAvatarModalOpen(true)}
-                                    >
-                                        {avatar ? (
-                                            <img src={avatar} alt="Profile" className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-white font-bold text-4xl">
-                                                {user.displayName?.charAt(0).toUpperCase()}
-                                            </div>
-                                        )}
-
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center rounded-full pointer-events-none">
-                                            <Pencil className="w-7 h-7 text-white" />
-                                        </div>
+                        return (
+                            <div
+                                key={g.label}
+                                className={`h-full ${allBarColors[i % allBarColors.length]} relative group/bar cursor-pointer transition-all duration-150 hover:brightness-110 ${i === 0 ? 'rounded-bl-3xl' : ''} ${i === barGenres.length - 1 ? 'rounded-br-3xl' : ''}`}
+                                style={{ width: `${Math.max((g.count / total) * 100, 1)}%` }}
+                            >
+                                <div className={`absolute bottom-full ${tooltipPositionClass} mb-2 w-max px-3 py-1.5 bg-[#1a1c23] text-white text-[13px] font-medium rounded-md opacity-0 invisible group-hover/bar:opacity-100 group-hover/bar:visible transition-all z-50 pointer-events-none shadow-xl border border-white/10 flex flex-col items-center`}>
+                                    <span className="font-bold">{g.label}</span>
+                                    <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-400">
+                                        <span className="text-white font-bold">{g.count}</span> Entries
                                     </div>
-                                    <button
-                                        onClick={() => setIsAvatarModalOpen(true)}
-                                        className="absolute -bottom-1 -right-1 w-8 h-8 flex items-center justify-center bg-[#c37df0] rounded-full text-black shadow-lg transition-colors border-2 border-[#1c1c1c]"
-                                    >
-                                        <Pencil className="w-3.5 h-3.5" />
-                                    </button>
+                                    <div className={`absolute top-full ${tooltipArrowClass} border-4 border-transparent border-t-[#1a1c23]`}></div>
                                 </div>
                             </div>
-
-                            <div className="flex-1 space-y-5">
-                                <div>
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Display Name</label>
-                                    {isEditing ? (
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="text"
-                                                value={newName}
-                                                onChange={(e) => setNewName(e.target.value)}
-                                                className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-yorumi-accent flex-1 font-bold text-base"
-                                                placeholder="Enter display name"
-                                                autoFocus
-                                            />
-                                            <button
-                                                onClick={handleSave}
-                                                disabled={loading}
-                                                className="p-2 bg-yorumi-accent text-black rounded-lg hover:bg-yorumi-accent/80 transition-colors disabled:opacity-50"
-                                            >
-                                                <Check className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setIsEditing(false);
-                                                    setNewName(user.displayName || '');
-                                                }}
-                                                disabled={loading}
-                                                className="p-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
-                                            >
-                                                <X className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="min-w-0">
-                                            <div className="inline-flex items-center gap-2 group/name max-w-full">
-                                                <div className="text-xl md:text-2xl font-black text-white tracking-tight leading-none truncate">{user.displayName || 'No Name Set'}</div>
-                                                <button
-                                                    onClick={() => setIsEditing(true)}
-                                                    className="px-2 py-1 rounded-lg text-gray-400 opacity-0 group-hover/name:opacity-100 hover:text-white hover:bg-white/10 transition-all text-xs font-bold"
-                                                >
-                                                    Edit
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Email Address</label>
-                                    <div className="text-sm md:text-[15px] font-bold text-white break-all">{user.email}</div>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Joined On</label>
-                                    <div className="text-sm md:text-[15px] font-bold text-white">
-                                        {user.metadata?.creationTime
-                                            ? new Date(user.metadata.creationTime).toLocaleDateString('en-US', {
-                                                year: 'numeric',
-                                                month: 'long',
-                                                day: 'numeric'
-                                            })
-                                            : 'January 18, 2026'}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <AvatarSelectionModal
-                            isOpen={isAvatarModalOpen}
-                            onClose={() => setIsAvatarModalOpen(false)}
-                            currentAvatar={avatar}
-                            onSelectAvatar={handleAvatarSelect}
-                        />
-                        <BannerSelectionModal
-                            isOpen={isCardBackgroundModalOpen}
-                            onClose={() => setIsCardBackgroundModalOpen(false)}
-                            currentBanner={profileCardBackground}
-                            onSelectBanner={async (path) => {
-                                await updateProfileCardBackground(path);
-                                setIsCardBackgroundModalOpen(false);
-                            }}
-                        />
-                    </div>
-
-                    <GenreOverview />
-                </div>
-
-                <div className="space-y-6 md:space-y-8 min-w-0">
-                    <ActivityOverview />
-                    <RecentActivity />
+                        );
+                    })}
                 </div>
             </div>
-        );
-    };
+        </div>
+    );
+};
 
-    const AnimeOverviewTab = () => {
-        const { continueWatchingList } = useContinueWatching();
+const MangaContinueReadingHighlights = () => {
+    const { continueReadingList: history } = useContinueReading();
+    const navigate = useNavigate();
+    // Deduplicate by title (keep first/most-recent occurrence per title)
+    const seen = new Set<string>();
+    const dedupedHistory = history.filter(item => {
+        const key = (item.mangaTitle || item.mangaId).toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    const topThree = dedupedHistory.slice(0, 3);
 
-        return (
-            <div className="space-y-10">
-                <div className="w-full max-w-[1180px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8 xl:gap-8">
-                    <div className="space-y-6 md:space-y-8 min-w-0">
-                        <AnimeStatsOverview />
-                        <AnimeGenreOverview />
-                    </div>
-                    <div className="space-y-6 md:space-y-8 min-w-0">
-                        <AnimeContinueWatchingHighlights />
-                    </div>
-                </div>
-
-                {continueWatchingList.length > 3 && (
-                    <div>
-                        <ContinueWatchingList skip={3} />
-                    </div>
-                )}
-
-                <div>
-                    <div className="flex items-center gap-3 mb-6">
-                        <Heart className="w-6 h-6 text-yorumi-accent" />
-                        <h3 className="text-xl font-bold text-white">Watch List</h3>
-                    </div>
-                    <WatchList />
-                </div>
-            </div>
-        );
-    };
-
-    const MangaOverviewTab = () => {
-        const { continueReadingList } = useContinueReading();
-
-        return (
-            <div className="space-y-10">
-                <div className="w-full max-w-[1180px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8 xl:gap-8">
-                    <div className="space-y-6 md:space-y-8 min-w-0">
-                        <MangaStatsOverview />
-                        <MangaGenreOverview />
-                    </div>
-                    <div className="space-y-6 md:space-y-8 min-w-0">
-                        <MangaContinueReadingHighlights />
-                    </div>
-                </div>
-
-                {continueReadingList.length > 3 && (
-                    <div>
-                        <div className="flex items-center gap-3 mb-6">
-                            <History className="w-6 h-6 text-yorumi-manga" />
-                            <h3 className="text-xl font-bold text-white">Continue Reading</h3>
-                        </div>
-                        <ContinueReadingList skip={3} />
-                    </div>
-                )}
-
-                <div>
-                    <div className="flex items-center gap-3 mb-6">
-                        <Heart className="w-6 h-6 text-yorumi-manga" />
-                        <h3 className="text-xl font-bold text-white">Read List</h3>
-                    </div>
-                    <ReadList />
-                </div>
-            </div>
-        );
-    };
-
-    const MangaStatsOverview = () => {
-        const { readList } = useReadList();
-        const { continueReadingList } = useContinueReading();
-        const [, setStatsTick] = useState(0);
-
-        useEffect(() => {
-            const onStorageUpdated = () => setStatsTick((v) => v + 1);
-            window.addEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
-            return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
-        }, []);
-        const chapterHistory = storage.getChapterHistory();
-
-        const mangaIds = new Set<string>([
-            ...readList.map((item) => item.id),
-            ...continueReadingList.map((item) => String(item.mangaId))
-        ]);
-        const totalManga = mangaIds.size;
-
-        const totalChaptersRead = Array.from(mangaIds).reduce((sum, mangaId) => {
-            const chapters = chapterHistory[mangaId] || [];
-            return sum + chapters.length;
-        }, 0);
-
-        // Approximate reading time: 6 minutes per chapter.
-        const totalHours = Math.floor((totalChaptersRead * 6) / 60);
-        const fmt = new Intl.NumberFormat('en-US');
-
-        return (
-            <div>
-                <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Manga Stats</h3>
-                <div className="bg-[#1c1c1c] rounded-3xl p-5 md:p-6">
-                    <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
-                        <StatItem value={fmt.format(totalManga)} label="TOTAL MANGA" valueClassName="text-yorumi-manga" />
-                        <StatItem value={fmt.format(totalChaptersRead)} label="CHAPTERS READ" valueClassName="text-yorumi-manga" />
-                        <StatItem value={fmt.format(totalHours)} label="TOTAL HOURS" valueClassName="text-yorumi-manga" />
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-    const MangaGenreOverview = () => <OverallGenreOverview theme="manga" />;
-
-    const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' }) => {
-        const { watchList } = useWatchList();
-        const { readList } = useReadList();
-        const { continueWatchingList } = useContinueWatching();
-        const { continueReadingList } = useContinueReading();
-
-        const [animeGenreCache, setAnimeGenreCache] = useState<Record<string, string[]>>(() => storage.getAnimeGenreCache());
-        const [mangaGenreCache, setMangaGenreCache] = useState<Record<string, string[]>>(() => storage.getMangaGenreCache());
-        const animeCacheRef = useRef<Record<string, string[]>>(storage.getAnimeGenreCache());
-        const mangaCacheRef = useRef<Record<string, string[]>>(storage.getMangaGenreCache());
-
-        const normalizeGenres = (genres: any): string[] => {
-            if (!Array.isArray(genres)) return [];
-            return genres
-                .map((genreObj: any) => (typeof genreObj === 'string' ? genreObj : (genreObj?.name || genreObj)))
-                .filter(Boolean);
-        };
-
-        useEffect(() => {
-            let cancelled = false;
-
-            const loadMissingAnimeGenres = async () => {
-                const watchListMap = new Map<string, string[]>(
-                    watchList.map((item) => [item.id, normalizeGenres(item.genres)])
-                );
-                const unresolvedAnimeIds = continueWatchingList
-                    .map((item) => String(item.animeId))
-                    .filter((animeId) => !watchListMap.has(animeId) && !animeCacheRef.current[animeId]);
-
-                if (unresolvedAnimeIds.length === 0) {
-                    if (!cancelled) setAnimeGenreCache({ ...animeCacheRef.current });
-                    return;
-                }
-
-                const updates: Record<string, string[]> = {};
-                await Promise.all(
-                    unresolvedAnimeIds.map(async (animeId) => {
-                        try {
-                            const res = await animeService.getAnimeDetails(animeId);
-                            updates[animeId] = normalizeGenres(res?.data?.genres || []);
-                        } catch {
-                            updates[animeId] = [];
-                        }
-                    })
-                );
-
-                if (!cancelled) {
-                    animeCacheRef.current = { ...animeCacheRef.current, ...updates };
-                    storage.setAnimeGenreCache(animeCacheRef.current);
-                    setAnimeGenreCache({ ...animeCacheRef.current });
-                }
-            };
-
-            loadMissingAnimeGenres();
-            return () => { cancelled = true; };
-        }, [watchList, continueWatchingList]);
-
-        useEffect(() => {
-            let cancelled = false;
-
-            const loadMissingMangaGenres = async () => {
-                const readListMap = new Map<string, string[]>(
-                    readList.map((item) => [item.id, normalizeGenres(item.genres)])
-                );
-                const unresolvedMangaIds = continueReadingList
-                    .map((item) => String(item.mangaId))
-                    .filter((mangaId) => !readListMap.has(mangaId) && !mangaCacheRef.current[mangaId]);
-
-                if (unresolvedMangaIds.length === 0) {
-                    if (!cancelled) setMangaGenreCache({ ...mangaCacheRef.current });
-                    return;
-                }
-
-                const updates: Record<string, string[]> = {};
-                await Promise.all(
-                    unresolvedMangaIds.map(async (mangaId) => {
-                        try {
-                            const res = await mangaService.getMangaDetails(mangaId);
-                            updates[mangaId] = normalizeGenres(res?.data?.genres || []);
-                        } catch {
-                            updates[mangaId] = [];
-                        }
-                    })
-                );
-
-                if (!cancelled) {
-                    mangaCacheRef.current = { ...mangaCacheRef.current, ...updates };
-                    storage.setMangaGenreCache(mangaCacheRef.current);
-                    setMangaGenreCache({ ...mangaCacheRef.current });
-                }
-            };
-
-            loadMissingMangaGenres();
-            return () => { cancelled = true; };
-        }, [readList, continueReadingList]);
-
-        const genreCounts: Record<string, number> = {};
-
-        watchList.forEach(item => {
-            normalizeGenres(item.genres).forEach((genreName) => {
-                genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
-            });
-        });
-
-        readList.forEach(item => {
-            normalizeGenres(item.genres).forEach((genreName) => {
-                genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
-            });
-        });
-
-        continueWatchingList.forEach(item => {
-            const animeId = String(item.animeId);
-            const fallbackFromWatchList = watchList.find((wl) => wl.id === animeId)?.genres || [];
-            const genres = normalizeGenres(animeGenreCache[animeId] || fallbackFromWatchList);
-            genres.forEach((genreName) => {
-                genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
-            });
-        });
-
-        continueReadingList.forEach(item => {
-            const mangaId = String(item.mangaId);
-            const fallbackFromReadList = readList.find((rl) => rl.id === mangaId)?.genres || [];
-            const genres = normalizeGenres(mangaGenreCache[mangaId] || fallbackFromReadList);
-            genres.forEach((genreName) => {
-                genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
-            });
-        });
-
-        const sortedGenres = Object.entries(genreCounts)
-            .map(([label, count]) => ({ label, count }))
-            .sort((a, b) => b.count - a.count);
-
-        const displayGenres = sortedGenres.length > 0 ? sortedGenres : [
-            { label: 'Romance', count: 0 },
-            { label: 'Action', count: 0 },
-            { label: 'Fantasy', count: 0 },
-            { label: 'Drama', count: 0 }
-        ];
-
-        const top4 = displayGenres.slice(0, 4).map((g, index) => {
-            const themeColors = theme === 'manga'
-                ? [
-                    { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
-                    { bg: 'bg-[#9f7aea]', text: 'text-[#9f7aea]' },
-                    { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
-                    { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
-                ]
-                : [
-                    { bg: 'bg-[#ff579c]', text: 'text-[#ff579c]' },
-                    { bg: 'bg-[#518feb]', text: 'text-[#518feb]' },
-                    { bg: 'bg-[#61ffb8]', text: 'text-[#61ffb8]' },
-                    { bg: 'bg-[#ffd768]', text: 'text-[#ffd768]' }
-                ];
-            return { ...g, ...themeColors[index % themeColors.length] };
-        });
-
-        const barGenres = sortedGenres.length > 0 ? sortedGenres : displayGenres;
-        const total = barGenres.reduce((acc, g) => acc + g.count, 0) || 1;
-        const allBarColors = theme === 'manga'
-            ? ['bg-[#ff579c]', 'bg-[#9f7aea]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]']
-            : ['bg-[#ff579c]', 'bg-[#518feb]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]'];
-
-        return (
-            <div>
-                <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Genre Overview</h3>
-                <div className="bg-[#1c1c1c] rounded-3xl overflow-visible">
-                    <div className="p-5 md:p-6 pb-6">
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                            {top4.map(g => (
-                                <div key={g.label} className="flex flex-col items-center">
-                                    <div className={`w-full py-2.5 ${g.bg} rounded-xl text-center font-bold text-[13px] text-white mb-2 shadow-lg truncate px-3`}>
-                                        {g.label}
-                                    </div>
-                                    <div className="mt-1.5 -mb-1 translate-y-1 text-[12px] text-gray-500 flex items-center gap-1 font-bold leading-none">
-                                        <span className={`font-black ${g.text} text-[14px]`}>{g.count}</span>
-                                        <span className="text-gray-500">Entries</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="h-4 flex w-full bg-transparent overflow-visible">
-                        {barGenres.map((g, i) => {
-                            const tooltipPositionClass =
-                                i === 0
-                                    ? 'left-0'
-                                    : i === barGenres.length - 1
-                                        ? 'right-0'
-                                        : 'left-1/2 -translate-x-1/2';
-                            const tooltipArrowClass =
-                                i === 0
-                                    ? 'left-4'
-                                    : i === barGenres.length - 1
-                                        ? 'right-4'
-                                        : 'left-1/2 -translate-x-1/2';
-
-                            return (
-                                <div
-                                    key={g.label}
-                                    className={`h-full ${allBarColors[i % allBarColors.length]} relative group/bar cursor-pointer transition-all duration-150 hover:brightness-110 ${i === 0 ? 'rounded-bl-3xl' : ''} ${i === barGenres.length - 1 ? 'rounded-br-3xl' : ''}`}
-                                    style={{ width: `${Math.max((g.count / total) * 100, 1)}%` }}
-                                >
-                                    <div className={`absolute bottom-full ${tooltipPositionClass} mb-2 w-max px-3 py-1.5 bg-[#1a1c23] text-white text-[13px] font-medium rounded-md opacity-0 invisible group-hover/bar:opacity-100 group-hover/bar:visible transition-all z-50 pointer-events-none shadow-xl border border-white/10 flex flex-col items-center`}>
-                                        <span className="font-bold">{g.label}</span>
-                                        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-400">
-                                            <span className="text-white font-bold">{g.count}</span> Entries
-                                        </div>
-                                        <div className={`absolute top-full ${tooltipArrowClass} border-4 border-transparent border-t-[#1a1c23]`}></div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-    const MangaContinueReadingHighlights = () => {
-        const { continueReadingList: history } = useContinueReading();
-        const navigate = useNavigate();
-        const topThree = history.slice(0, 3);
-
-        if (topThree.length === 0) {
-            return (
-                <div>
-                    <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Continue Reading</h3>
-                    <div className="bg-[#1c1c1c] rounded-2xl p-8 text-center">
-                        <BookOpen className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-                        <p className="text-gray-400 text-sm">No recent manga progress yet.</p>
-                    </div>
-                </div>
-            );
-        }
-
+    if (topThree.length === 0) {
         return (
             <div>
                 <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Continue Reading</h3>
-                <div className="space-y-3">
-                    {topThree.map((item) => (
-                        <div
-                            key={item.mangaId}
-                            onClick={() => {
-                                const title = slugify(item.mangaTitle || 'manga');
-                                navigate(`/manga/read/${title}/${item.mangaId}/c${item.chapterNumber}`);
-                            }}
-                            className="relative flex rounded-xl overflow-hidden h-24 md:h-28 cursor-pointer"
-                            style={{
-                                backgroundImage: `linear-gradient(90deg, rgba(17,17,17,0.95) 0%, rgba(17,17,17,0.9) 45%, rgba(17,17,17,0.82) 100%), url(${item.mangaImage})`,
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center'
-                            }}
-                        >
-                            <div className="h-full w-20 md:w-28 shrink-0">
-                                <img src={item.mangaPoster || item.mangaImage} alt={item.mangaTitle} className="w-full h-full object-cover" />
-                            </div>
-                            <div className="flex-1 min-w-0 flex flex-col justify-center relative z-10 px-4 md:px-5 py-3 md:py-4">
-                                <p className="text-[13px] md:text-[15px] font-bold text-gray-100 mb-0.5 truncate">Read Chapter {item.chapterNumber} of</p>
-                                <p className="text-[13px] md:text-[15px] font-bold text-yorumi-manga truncate">{item.mangaTitle}</p>
-                            </div>
+                <div className="bg-[#1c1c1c] rounded-2xl p-8 text-center">
+                    <BookOpen className="w-10 h-10 text-gray-700 mx-auto mb-3" />
+                    <p className="text-gray-400 text-sm">No recent manga progress yet.</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Continue Reading</h3>
+            <div className="space-y-3">
+                {topThree.map((item) => (
+                    <div
+                        key={item.mangaId}
+                        onClick={() => {
+                            const title = slugify(item.mangaTitle || 'manga');
+                            navigate(`/manga/read/${title}/${item.mangaId}/c${item.chapterNumber}`);
+                        }}
+                        className="relative flex rounded-xl overflow-hidden h-24 md:h-28 cursor-pointer"
+                        style={{
+                            backgroundImage: `linear-gradient(90deg, rgba(17,17,17,0.95) 0%, rgba(17,17,17,0.9) 45%, rgba(17,17,17,0.82) 100%), url(${item.mangaImage})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center'
+                        }}
+                    >
+                        <div className="h-full w-20 md:w-28 shrink-0">
+                            <img src={item.mangaPoster || item.mangaImage} alt={item.mangaTitle} className="w-full h-full object-cover" />
                         </div>
-                    ))}
+                        <div className="flex-1 min-w-0 flex flex-col justify-center relative z-10 px-4 md:px-5 py-3 md:py-4">
+                            <p className="text-[13px] md:text-[15px] font-bold text-gray-100 mb-0.5 truncate">Read Chapter {item.chapterNumber} of</p>
+                            <p className="text-[13px] md:text-[15px] font-bold text-yorumi-manga truncate">{item.mangaTitle}</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const AnimeStatsOverview = () => {
+    const { watchList } = useWatchList();
+    const { continueWatchingList } = useContinueWatching();
+    const [, setStatsTick] = useState(0);
+
+    useEffect(() => {
+        const onStorageUpdated = () => setStatsTick((v) => v + 1);
+        window.addEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
+        return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
+    }, []);
+
+    const episodeHistory = storage.getEpisodeHistory();
+    const animeWatchTime = storage.getAnimeWatchTime();
+
+    const animeIds = new Set<string>([
+        ...watchList.map((item) => item.id),
+        ...continueWatchingList.map((item) => item.animeId),
+        ...Object.keys(episodeHistory),
+        ...Object.keys(animeWatchTime)
+    ]);
+    const totalAnime = animeIds.size;
+
+    const totalEpisodesWatched = Array.from(animeIds).reduce((sum, animeId) => {
+        const episodes = episodeHistory[animeId] || [];
+        return sum + episodes.length;
+    }, 0);
+
+    const totalWatchSeconds = Array.from(animeIds).reduce((sum, animeId) => {
+        return sum + (animeWatchTime[animeId] || 0);
+    }, 0);
+    const totalHours = Math.floor(totalWatchSeconds / 3600);
+    const fmt = new Intl.NumberFormat('en-US');
+
+    return (
+        <div>
+            <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Anime Stats</h3>
+            <div className="bg-[#1c1c1c] rounded-3xl p-5 md:p-6">
+                <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
+                    <StatItem value={fmt.format(totalAnime)} label="TOTAL ANIMES" />
+                    <StatItem value={fmt.format(totalEpisodesWatched)} label="EPISODES WATCHED" />
+                    <StatItem value={fmt.format(totalHours)} label="TOTAL HOURS" />
                 </div>
             </div>
-        );
-    };
+        </div>
+    );
+};
 
-    const AnimeStatsOverview = () => {
-        const { watchList } = useWatchList();
-        const { continueWatchingList } = useContinueWatching();
-        const [, setStatsTick] = useState(0);
+const AnimeGenreOverview = () => <OverallGenreOverview theme="anime" />;
 
-        useEffect(() => {
-            const onStorageUpdated = () => setStatsTick((v) => v + 1);
-            window.addEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
-            return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
-        }, []);
+const AnimeContinueWatchingHighlights = () => {
+    const { continueWatchingList: history } = useContinueWatching();
+    const navigate = useNavigate();
+    // Deduplicate by title (keep first/most-recent occurrence per title)
+    const seen = new Set<string>();
+    const dedupedHistory = history.filter(item => {
+        const key = (item.animeTitle || item.animeId).toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    const topThree = dedupedHistory.slice(0, 3);
 
-        const animeIds = new Set<string>([
-            ...watchList.map((item) => item.id),
-            ...continueWatchingList.map((item) => item.animeId)
-        ]);
-        const totalAnime = animeIds.size;
-        const episodeHistory = storage.getEpisodeHistory();
-        const animeWatchTime = storage.getAnimeWatchTime();
-
-        const totalEpisodesWatched = Array.from(animeIds).reduce((sum, animeId) => {
-            const episodes = episodeHistory[animeId] || [];
-            return sum + episodes.length;
-        }, 0);
-
-        const totalWatchSeconds = Array.from(animeIds).reduce((sum, animeId) => {
-            return sum + (animeWatchTime[animeId] || 0);
-        }, 0);
-        const totalHours = Math.floor(totalWatchSeconds / 3600);
-        const fmt = new Intl.NumberFormat('en-US');
-
-        return (
-            <div>
-                <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Anime Stats</h3>
-                <div className="bg-[#1c1c1c] rounded-3xl p-5 md:p-6">
-                    <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
-                        <StatItem value={fmt.format(totalAnime)} label="TOTAL ANIMES" />
-                        <StatItem value={fmt.format(totalEpisodesWatched)} label="EPISODES WATCHED" />
-                        <StatItem value={fmt.format(totalHours)} label="TOTAL HOURS" />
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-    const AnimeGenreOverview = () => <OverallGenreOverview theme="anime" />;
-
-    const AnimeContinueWatchingHighlights = () => {
-        const { continueWatchingList: history } = useContinueWatching();
-        const navigate = useNavigate();
-        const topThree = history.slice(0, 3);
-
-        if (topThree.length === 0) {
-            return (
-                <div>
-                    <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Continue Watching</h3>
-                    <div className="bg-[#1c1c1c] rounded-2xl p-8 text-center">
-                        <History className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-                        <p className="text-gray-400 text-sm">No recent anime progress yet.</p>
-                    </div>
-                </div>
-            );
-        }
-
+    if (topThree.length === 0) {
         return (
             <div>
                 <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Continue Watching</h3>
-                <div className="space-y-3">
-                    {topThree.map((item) => (
-                        <div
-                            key={item.animeId}
-                            onClick={() => {
-                                const title = slugify(item.animeTitle || 'anime');
-                                navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
-                            }}
-                            className="relative flex rounded-xl overflow-hidden h-24 md:h-28 cursor-pointer"
-                            style={{
-                                backgroundImage: `linear-gradient(90deg, rgba(17,17,17,0.95) 0%, rgba(17,17,17,0.9) 45%, rgba(17,17,17,0.82) 100%), url(${item.animeImage})`,
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center'
-                            }}
-                        >
-                            <div className="h-full w-20 md:w-28 shrink-0">
-                                <img src={item.animePoster || item.animeImage} alt={item.animeTitle} className="w-full h-full object-cover" />
-                            </div>
-                            <div className="flex-1 min-w-0 flex flex-col justify-center relative z-10 px-4 md:px-5 py-3 md:py-4">
-                                <p className="text-[13px] md:text-[15px] font-bold text-gray-100 mb-0.5 truncate">Watched Episode {item.episodeNumber} of</p>
-                                <p className="text-[13px] md:text-[15px] font-bold text-[#518feb] truncate">{item.animeTitle}</p>
-                            </div>
-                        </div>
-                    ))}
+                <div className="bg-[#1c1c1c] rounded-2xl p-8 text-center">
+                    <History className="w-10 h-10 text-gray-700 mx-auto mb-3" />
+                    <p className="text-gray-400 text-sm">No recent anime progress yet.</p>
                 </div>
             </div>
         );
-    };
+    }
 
-    const StatItem = ({ value, label, valueClassName = 'text-[#3cb6ff]' }: { value: string; label: string; valueClassName?: string }) => (
-        <div className="text-center">
-            <div className={`text-3xl md:text-4xl font-black leading-none mb-2 ${valueClassName}`}>{value}</div>
-            <div className="text-[10px] md:text-[11px] font-bold text-gray-500 tracking-widest">{label}</div>
+    return (
+        <div>
+            <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Continue Watching</h3>
+            <div className="space-y-3">
+                {topThree.map((item) => (
+                    <div
+                        key={item.animeId}
+                        onClick={() => {
+                            const title = slugify(item.animeTitle || 'anime');
+                            navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
+                        }}
+                        className="relative flex rounded-xl overflow-hidden h-24 md:h-28 cursor-pointer"
+                        style={{
+                            backgroundImage: `linear-gradient(90deg, rgba(17,17,17,0.95) 0%, rgba(17,17,17,0.9) 45%, rgba(17,17,17,0.82) 100%), url(${item.animeImage})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center'
+                        }}
+                    >
+                        <div className="h-full w-20 md:w-28 shrink-0">
+                            <img src={item.animePoster || item.animeImage} alt={item.animeTitle} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 min-w-0 flex flex-col justify-center relative z-10 px-4 md:px-5 py-3 md:py-4">
+                            <p className="text-[13px] md:text-[15px] font-bold text-gray-100 mb-0.5 truncate">Watched Episode {item.episodeNumber} of</p>
+                            <p className="text-[13px] md:text-[15px] font-bold text-[#518feb] truncate">{item.animeTitle}</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
     );
+};
 
-    const ContinueWatchingList = ({ skip = 0 }: { skip?: number }) => {
-        const { continueWatchingList: history, removeFromHistory } = useContinueWatching();
-        const navigate = useNavigate();
-        const visibleHistory = history.slice(skip);
+const StatItem = ({ value, label, valueClassName = 'text-[#3cb6ff]' }: { value: string; label: string; valueClassName?: string }) => (
+    <div className="text-center">
+        <div className={`text-3xl md:text-4xl font-black leading-none mb-2 ${valueClassName}`}>{value}</div>
+        <div className="text-[10px] md:text-[11px] font-bold text-gray-500 tracking-widest">{label}</div>
+    </div>
+);
 
-        if (history.length === 0 && skip === 0) {
-            return (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <History className="w-16 h-16 text-gray-700 mb-4" />
-                    <h3 className="text-xl font-bold text-white mb-2">No History Yet</h3>
-                    <p className="text-gray-400">Start watching anime to see them appear here!</p>
-                </div>
-            );
-        }
+const ContinueWatchingList = ({ skip = 0 }: { skip?: number }) => {
+    const { continueWatchingList: history, removeFromHistory } = useContinueWatching();
+    const navigate = useNavigate();
+    // Deduplicate by title before slicing
+    const seen = new Set<string>();
+    const dedupedHistory = history.filter(item => {
+        const key = (item.animeTitle || item.animeId).toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    const visibleHistory = dedupedHistory.slice(skip);
 
-        if (visibleHistory.length === 0) return null;
-
+    if (dedupedHistory.length === 0 && skip === 0) {
         return (
-            <div className="space-y-6">
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+                <History className="w-16 h-16 text-gray-700 mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">No History Yet</h3>
+                <p className="text-gray-400">Start watching anime to see them appear here!</p>
+            </div>
+        );
+    }
+
+    if (visibleHistory.length === 0) return null;
+
+    return (
+        <div className="space-y-6">
 
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {visibleHistory.map((item) => (
-                        <div
-                            key={item.animeId}
-                            onClick={() => {
-                                const title = slugify(item.animeTitle || 'anime');
-                                navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {visibleHistory.map((item) => (
+                    <div
+                        key={item.animeId}
+                        onClick={() => {
+                            const title = slugify(item.animeTitle || 'anime');
+                            navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
+                        }}
+                        className="aspect-video bg-[#1c1c1c] rounded-xl flex flex-col items-center justify-center group cursor-pointer transition-colors relative overflow-hidden"
+                    >
+                        {item.animeImage ? (
+                            <>
+                                <img src={item.animeImage} alt={item.animeTitle} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent" />
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeFromHistory(parseInt(item.animeId));
+                                    }}
+                                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-red-500/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all z-20"
+                                    title="Remove from history"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                                <div className="absolute bottom-4 left-4 right-4">
+                                    <h4 className="font-bold text-white truncate">{item.animeTitle}</h4>
+                                    <p className="text-xs text-yorumi-accent">Episode {item.episodeNumber}</p>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <History className="w-8 h-8 text-gray-600 mb-2 group-hover:text-yorumi-accent transition-colors" />
+                                <span className="text-gray-500 text-sm font-medium">History Item</span>
+                            </>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const WatchList = () => {
+    const { watchList, removeFromWatchList, loading } = useWatchList();
+    const navigate = useNavigate();
+
+    // Migrating local to cloud could happen here once, but for now just show cloud
+    // Optionally: If cloud is empty and local has items, prompt?
+
+    if (loading) {
+        return <div className="py-20 text-center text-gray-400">Loading Watch List...</div>;
+    }
+
+    if (watchList.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+                <Heart className="w-16 h-16 text-gray-700 mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">Your List is Empty</h3>
+                <p className="text-gray-400">Add anime to your list to track them here!</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+                {watchList.map((item) => {
+                    const animeData: any = {
+                        mal_id: parseInt(item.id),
+                        title: item.title,
+                        images: { jpg: { large_image_url: item.image, image_url: item.image } },
+                        score: item.score || 0,
+                        type: item.type,
+                        status: item.mediaStatus,
+                        episodes: item.totalCount,
+                        genres: item.genres?.map((g: string) => ({ name: g })) || [],
+                        synopsis: item.synopsis
+                    };
+
+                    return (
+                        <AnimeCard
+                            key={item.id}
+                            anime={animeData}
+                            onClick={() => navigate(`/anime/details/${item.id}`)}
+                            onWatchClick={() => {
+                                const title = slugify(item.title || 'anime');
+                                navigate(`/anime/watch/${title}/${item.id}`);
                             }}
-                            className="aspect-video bg-[#1c1c1c] rounded-xl flex flex-col items-center justify-center group cursor-pointer transition-colors relative overflow-hidden"
-                        >
-                            {item.animeImage ? (
-                                <>
-                                    <img src={item.animeImage} alt={item.animeTitle} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent" />
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            removeFromHistory(parseInt(item.animeId));
-                                        }}
-                                        className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-red-500/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all z-20"
-                                        title="Remove from history"
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                    <div className="absolute bottom-4 left-4 right-4">
-                                        <h4 className="font-bold text-white truncate">{item.animeTitle}</h4>
-                                        <p className="text-xs text-yorumi-accent">Episode {item.episodeNumber}</p>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <History className="w-8 h-8 text-gray-600 mb-2 group-hover:text-yorumi-accent transition-colors" />
-                                    <span className="text-gray-500 text-sm font-medium">History Item</span>
-                                </>
-                            )}
-                        </div>
-                    ))}
-                </div>
+                            inList={true}
+                            onToggleList={() => removeFromWatchList(item.id)}
+                        />
+                    );
+                })}
             </div>
-        );
-    };
+        </div>
+    );
+};
 
-    const WatchList = () => {
-        const { watchList, removeFromWatchList, loading } = useWatchList();
-        const navigate = useNavigate();
+const ContinueReadingList = ({ skip = 0 }: { skip?: number }) => {
+    const { continueReadingList: history, removeFromHistory } = useContinueReading();
+    const navigate = useNavigate();
+    // Deduplicate by title before slicing
+    const seen = new Set<string>();
+    const dedupedHistory = history.filter(item => {
+        const key = (item.mangaTitle || item.mangaId).toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    const visibleHistory = dedupedHistory.slice(skip);
 
-        // Migrating local to cloud could happen here once, but for now just show cloud
-        // Optionally: If cloud is empty and local has items, prompt?
-
-        if (loading) {
-            return <div className="py-20 text-center text-gray-400">Loading Watch List...</div>;
-        }
-
-        if (watchList.length === 0) {
-            return (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <Heart className="w-16 h-16 text-gray-700 mb-4" />
-                    <h3 className="text-xl font-bold text-white mb-2">Your List is Empty</h3>
-                    <p className="text-gray-400">Add anime to your list to track them here!</p>
-                </div>
-            );
-        }
-
+    if (dedupedHistory.length === 0 && skip === 0) {
         return (
-            <div className="space-y-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
-                    {watchList.map((item) => {
-                        const animeData: any = {
-                            mal_id: parseInt(item.id),
-                            title: item.title,
-                            images: { jpg: { large_image_url: item.image, image_url: item.image } },
-                            score: item.score || 0,
-                            type: item.type,
-                            status: item.mediaStatus,
-                            episodes: item.totalCount,
-                            genres: item.genres?.map((g: string) => ({ name: g })) || [],
-                            synopsis: item.synopsis
-                        };
-
-                        return (
-                            <AnimeCard
-                                key={item.id}
-                                anime={animeData}
-                                onClick={() => navigate(`/anime/details/${item.id}`)}
-                                onWatchClick={() => {
-                                    const title = slugify(item.title || 'anime');
-                                    navigate(`/anime/watch/${title}/${item.id}`);
-                                }}
-                                inList={true}
-                                onToggleList={() => removeFromWatchList(item.id)}
-                            />
-                        );
-                    })}
-                </div>
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+                <BookOpen className="w-16 h-16 text-gray-700 mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">No Reading History Yet</h3>
+                <p className="text-gray-400">Start reading manga to see them appear here!</p>
             </div>
         );
-    };
+    }
 
-    const ContinueReadingList = ({ skip = 0 }: { skip?: number }) => {
-        const { continueReadingList: history, removeFromHistory } = useContinueReading();
-        const navigate = useNavigate();
-        const visibleHistory = history.slice(skip);
+    if (visibleHistory.length === 0) return null;
 
-        if (history.length === 0 && skip === 0) {
-            return (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <BookOpen className="w-16 h-16 text-gray-700 mb-4" />
-                    <h3 className="text-xl font-bold text-white mb-2">No Reading History Yet</h3>
-                    <p className="text-gray-400">Start reading manga to see them appear here!</p>
-                </div>
-            );
-        }
+    return (
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {visibleHistory.map((item) => (
+                    <div
+                        key={item.mangaId}
+                        onClick={() => {
+                            const title = slugify(item.mangaTitle || 'manga');
+                            navigate(`/manga/read/${title}/${item.mangaId}/c${item.chapterNumber}`);
+                        }}
+                        className="aspect-video bg-[#1c1c1c] rounded-xl flex flex-col items-center justify-center group cursor-pointer transition-colors relative overflow-hidden"
+                    >
+                        {item.mangaImage ? (
+                            <>
+                                <img src={item.mangaImage} alt={item.mangaTitle} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent" />
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeFromHistory(item.mangaId);
+                                    }}
+                                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-red-500/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all z-20"
+                                    title="Remove from history"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                                <div className="absolute bottom-4 left-4 right-4">
+                                    <h4 className="font-bold text-white truncate">{item.mangaTitle}</h4>
+                                    <p className="text-xs text-yorumi-accent">Chapter {item.chapterNumber}</p>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <BookOpen className="w-8 h-8 text-gray-600 mb-2 group-hover:text-yorumi-accent transition-colors" />
+                                <span className="text-gray-500 text-sm font-medium">History Item</span>
+                            </>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
-        if (visibleHistory.length === 0) return null;
+const ReadList = () => {
+    const { readList, removeFromReadList, loading } = useReadList();
+    const navigate = useNavigate();
 
+    if (loading) {
+        return <div className="py-20 text-center text-gray-400">Loading Read List...</div>;
+    }
+
+    if (readList.length === 0) {
         return (
-            <div className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {visibleHistory.map((item) => (
-                        <div
-                            key={item.mangaId}
-                            onClick={() => {
-                                const title = slugify(item.mangaTitle || 'manga');
-                                navigate(`/manga/read/${title}/${item.mangaId}/c${item.chapterNumber}`);
-                            }}
-                            className="aspect-video bg-[#1c1c1c] rounded-xl flex flex-col items-center justify-center group cursor-pointer transition-colors relative overflow-hidden"
-                        >
-                            {item.mangaImage ? (
-                                <>
-                                    <img src={item.mangaImage} alt={item.mangaTitle} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent" />
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            removeFromHistory(item.mangaId);
-                                        }}
-                                        className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-red-500/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all z-20"
-                                        title="Remove from history"
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                    <div className="absolute bottom-4 left-4 right-4">
-                                        <h4 className="font-bold text-white truncate">{item.mangaTitle}</h4>
-                                        <p className="text-xs text-yorumi-accent">Chapter {item.chapterNumber}</p>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <BookOpen className="w-8 h-8 text-gray-600 mb-2 group-hover:text-yorumi-accent transition-colors" />
-                                    <span className="text-gray-500 text-sm font-medium">History Item</span>
-                                </>
-                            )}
-                        </div>
-                    ))}
-                </div>
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+                <BookOpen className="w-16 h-16 text-gray-700 mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">Your List is Empty</h3>
+                <p className="text-gray-400">Add manga to your list to track them here!</p>
             </div>
         );
-    };
+    }
 
-    const ReadList = () => {
-        const { readList, removeFromReadList, loading } = useReadList();
-        const navigate = useNavigate();
+    return (
+        <div className="space-y-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+                {readList.map((item) => {
+                    const mangaData: any = {
+                        mal_id: parseInt(item.id),
+                        title: item.title,
+                        images: { jpg: { large_image_url: item.image, image_url: item.image } },
+                        score: item.score || 0,
+                        type: item.type,
+                        status: item.mediaStatus,
+                        chapters: item.totalCount,
+                        genres: item.genres?.map((g: string) => ({ name: g })) || [],
+                        synopsis: item.synopsis
+                    };
 
-        if (loading) {
-            return <div className="py-20 text-center text-gray-400">Loading Read List...</div>;
-        }
-
-        if (readList.length === 0) {
-            return (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <BookOpen className="w-16 h-16 text-gray-700 mb-4" />
-                    <h3 className="text-xl font-bold text-white mb-2">Your List is Empty</h3>
-                    <p className="text-gray-400">Add manga to your list to track them here!</p>
-                </div>
-            );
-        }
-
-        return (
-            <div className="space-y-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
-                    {readList.map((item) => {
-                        const mangaData: any = {
-                            mal_id: parseInt(item.id),
-                            title: item.title,
-                            images: { jpg: { large_image_url: item.image, image_url: item.image } },
-                            score: item.score || 0,
-                            type: item.type,
-                            status: item.mediaStatus,
-                            chapters: item.totalCount,
-                            genres: item.genres?.map((g: string) => ({ name: g })) || [],
-                            synopsis: item.synopsis
-                        };
-
-                        return (
-                            <MangaCard
-                                key={item.id}
-                                manga={mangaData}
-                                onClick={() => navigate(`/manga/details/${item.id}`)}
-                                onReadClick={() => navigate(`/manga/details/${item.id}`)}
-                                inList={true}
-                                onToggleList={() => removeFromReadList(item.id)}
-                            />
-                        );
-                    })}
-                </div>
+                    return (
+                        <MangaCard
+                            key={item.id}
+                            manga={mangaData}
+                            onClick={() => navigate(`/manga/details/${item.id}`)}
+                            onReadClick={() => navigate(`/manga/details/${item.id}`)}
+                            inList={true}
+                            onToggleList={() => removeFromReadList(item.id)}
+                        />
+                    );
+                })}
             </div>
-        );
-    };
+        </div>
+    );
+};

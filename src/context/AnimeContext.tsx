@@ -483,8 +483,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // --- Episode Tracking ---
     useEffect(() => {
         if (selectedAnime) {
-            const history = storage.getWatchedEpisodes(String(selectedAnime.mal_id));
-            setWatchedEpisodes(new Set(history));
+            const primaryId = String(selectedAnime.mal_id || '');
+            const secondaryId = String(selectedAnime.id || '');
+            const primaryHistory = primaryId ? storage.getWatchedEpisodes(primaryId) : [];
+            const secondaryHistory = secondaryId && secondaryId !== primaryId
+                ? storage.getWatchedEpisodes(secondaryId)
+                : [];
+            setWatchedEpisodes(new Set([...primaryHistory, ...secondaryHistory]));
         } else {
             setWatchedEpisodes(new Set());
         }
@@ -492,7 +497,16 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
     const markEpisodeComplete = (episodeNumber: number) => {
         if (!selectedAnime) return;
-        storage.markEpisodeAsWatched(String(selectedAnime.mal_id), episodeNumber);
+        const primaryId = String(selectedAnime.mal_id || '');
+        const secondaryId = String(selectedAnime.id || '');
+
+        if (primaryId) {
+            storage.markEpisodeAsWatched(primaryId, episodeNumber);
+        }
+        if (secondaryId && secondaryId !== primaryId) {
+            storage.markEpisodeAsWatched(secondaryId, episodeNumber);
+        }
+
         setWatchedEpisodes(prev => new Set(prev).add(episodeNumber));
     };
 
