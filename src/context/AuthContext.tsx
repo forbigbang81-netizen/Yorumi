@@ -3,7 +3,7 @@ import { type User, signInWithPopup, signOut, onAuthStateChanged, updateProfile 
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../services/firebase';
 import { getDeterministicAvatar } from '../utils/avatars';
-import { syncStorage } from '../utils/storage';
+import { clearLocalProgressStorage, syncStorage } from '../utils/storage';
 
 interface AuthContextType {
     user: User | null;
@@ -62,6 +62,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(currentUser);
 
             if (currentUser) {
+                // Prevent cross-account carryover from local storage.
+                clearLocalProgressStorage();
+
                 // Sync data from cloud
                 try {
                     await syncStorage.pullFromCloud();
@@ -132,6 +135,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     setProfileCardBackground(null);
                 }
             } else {
+                // Keep local progress clean when signed out.
+                clearLocalProgressStorage();
                 setAvatar(null);
                 setBanner(null);
                 setProfileCardBackground(null);

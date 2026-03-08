@@ -61,6 +61,16 @@ const STORAGE_KEYS = {
     MANGA_GENRE_CACHE: 'yorumi_manga_genre_cache'
 };
 
+export const clearLocalProgressStorage = () => {
+    try {
+        Object.values(STORAGE_KEYS).forEach((key) => {
+            localStorage.removeItem(key);
+        });
+    } catch (error) {
+        console.error('Failed to clear local progress storage:', error);
+    }
+};
+
 const emitStorageUpdated = () => {
     if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('yorumi-storage-updated'));
