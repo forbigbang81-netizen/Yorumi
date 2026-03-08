@@ -556,6 +556,7 @@ const MangaOverviewTab = () => {
 const MangaStatsOverview = () => {
     const { readList } = useReadList();
     const { continueReadingList } = useContinueReading();
+    const { favorites } = useFavoriteManga();
     const [, setStatsTick] = useState(0);
 
     useEffect(() => {
@@ -563,20 +564,45 @@ const MangaStatsOverview = () => {
         window.addEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
         return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
     }, []);
-    const hasAccountMangaHistory = readList.length > 0 || continueReadingList.length > 0;
+    const hasAccountMangaHistory = readList.length > 0 || continueReadingList.length > 0 || favorites.length > 0;
     const valueClassName = hasAccountMangaHistory ? 'text-yorumi-manga' : 'text-gray-400';
     const chapterHistory = storage.getChapterHistory();
+    const normalizeTitleKey = (title?: string) =>
+        (title || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '')
+            .trim();
 
-    const mangaIds = new Set<string>([
-        ...readList.map((item) => item.id),
-        ...continueReadingList.map((item) => String(item.mangaId))
-    ]);
-    const totalManga = hasAccountMangaHistory ? mangaIds.size : 0;
+    const mangaGroups = new Map<string, Set<string>>();
+    const ensureGroup = (groupKey: string) => {
+        if (!mangaGroups.has(groupKey)) mangaGroups.set(groupKey, new Set<string>());
+        return mangaGroups.get(groupKey)!;
+    };
+
+    readList.forEach((item) => {
+        const key = normalizeTitleKey(item.title) || `id:${String(item.id)}`;
+        ensureGroup(key).add(String(item.id));
+    });
+
+    continueReadingList.forEach((item) => {
+        const key = normalizeTitleKey(item.mangaTitle) || `id:${String(item.mangaId)}`;
+        ensureGroup(key).add(String(item.mangaId));
+    });
+
+    favorites.forEach((item) => {
+        const key = normalizeTitleKey(item.title) || `id:${String(item.id)}`;
+        ensureGroup(key).add(String(item.id));
+    });
+
+    const totalManga = hasAccountMangaHistory ? mangaGroups.size : 0;
 
     const totalChaptersRead = hasAccountMangaHistory
-        ? Array.from(mangaIds).reduce((sum, mangaId) => {
-            const chapters = chapterHistory[mangaId] || [];
-            return sum + chapters.length;
+        ? Array.from(mangaGroups.values()).reduce((sum, ids) => {
+            const uniqueChapters = new Set<string>();
+            ids.forEach((id) => {
+                (chapterHistory[id] || []).forEach((chapter) => uniqueChapters.add(String(chapter)));
+            });
+            return sum + uniqueChapters.size;
         }, 0)
         : 0;
 
@@ -733,6 +759,8 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
     const { readList } = useReadList();
     const { continueWatchingList } = useContinueWatching();
     const { continueReadingList } = useContinueReading();
+    const { favorites: favoriteAnime } = useFavoriteAnime();
+    const { favorites: favoriteManga } = useFavoriteManga();
 
     const [animeGenreCache, setAnimeGenreCache] = useState<Record<string, string[]>>(() => storage.getAnimeGenreCache());
     const [mangaGenreCache, setMangaGenreCache] = useState<Record<string, string[]>>(() => storage.getMangaGenreCache());
@@ -753,9 +781,10 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
             const watchListMap = new Map<string, string[]>(
                 watchList.map((item) => [item.id, normalizeGenres(item.genres)])
             );
-            const unresolvedAnimeIds = continueWatchingList
-                .map((item) => String(item.animeId))
-                .filter((animeId) => !watchListMap.has(animeId) && !animeCacheRef.current[animeId]);
+            const unresolvedAnimeIds = Array.from(new Set([
+                ...continueWatchingList.map((item) => String(item.animeId)),
+                ...favoriteAnime.map((item) => String(item.id))
+            ])).filter((animeId) => !watchListMap.has(animeId) && !animeCacheRef.current[animeId]);
 
             if (unresolvedAnimeIds.length === 0) {
                 if (!cancelled) setAnimeGenreCache({ ...animeCacheRef.current });
@@ -783,7 +812,7 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
 
         loadMissingAnimeGenres();
         return () => { cancelled = true; };
-    }, [watchList, continueWatchingList]);
+    }, [watchList, continueWatchingList, favoriteAnime]);
 
     useEffect(() => {
         let cancelled = false;
@@ -792,9 +821,10 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
             const readListMap = new Map<string, string[]>(
                 readList.map((item) => [item.id, normalizeGenres(item.genres)])
             );
-            const unresolvedMangaIds = continueReadingList
-                .map((item) => String(item.mangaId))
-                .filter((mangaId) => !readListMap.has(mangaId) && !mangaCacheRef.current[mangaId]);
+            const unresolvedMangaIds = Array.from(new Set([
+                ...continueReadingList.map((item) => String(item.mangaId)),
+                ...favoriteManga.map((item) => String(item.id))
+            ])).filter((mangaId) => !readListMap.has(mangaId) && !mangaCacheRef.current[mangaId]);
 
             if (unresolvedMangaIds.length === 0) {
                 if (!cancelled) setMangaGenreCache({ ...mangaCacheRef.current });
@@ -822,12 +852,12 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
 
         loadMissingMangaGenres();
         return () => { cancelled = true; };
-    }, [readList, continueReadingList]);
+    }, [readList, continueReadingList, favoriteManga]);
 
     const genreCounts: Record<string, number> = {};
 
     if (theme === 'anime' || theme === 'both') {
-        // Deduplicate: collect all unique anime IDs from watchList + continueWatchingList
+        // Deduplicate: collect all unique anime IDs from watchList + continueWatchingList + favorites
         const animeGenreMap = new Map<string, string[]>();
         watchList.forEach(item => {
             animeGenreMap.set(item.id, normalizeGenres(item.genres));
@@ -840,6 +870,13 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
                 animeGenreMap.set(animeId, genres);
             }
         });
+        favoriteAnime.forEach(item => {
+            const animeId = String(item.id);
+            if (!animeGenreMap.has(animeId)) {
+                const genres = normalizeGenres(animeGenreCache[animeId] || []);
+                animeGenreMap.set(animeId, genres);
+            }
+        });
         animeGenreMap.forEach(genres => {
             genres.forEach(genreName => {
                 genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
@@ -848,7 +885,7 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
     }
 
     if (theme === 'manga' || theme === 'both') {
-        // Deduplicate: collect all unique manga IDs from readList + continueReadingList
+        // Deduplicate: collect all unique manga IDs from readList + continueReadingList + favorites
         const mangaGenreMap = new Map<string, string[]>();
         readList.forEach(item => {
             mangaGenreMap.set(item.id, normalizeGenres(item.genres));
@@ -857,6 +894,13 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
             const mangaId = String(item.mangaId);
             if (!mangaGenreMap.has(mangaId)) {
                 // Not in readList — use cache
+                const genres = normalizeGenres(mangaGenreCache[mangaId] || []);
+                mangaGenreMap.set(mangaId, genres);
+            }
+        });
+        favoriteManga.forEach(item => {
+            const mangaId = String(item.id);
+            if (!mangaGenreMap.has(mangaId)) {
                 const genres = normalizeGenres(mangaGenreCache[mangaId] || []);
                 mangaGenreMap.set(mangaId, genres);
             }
@@ -1044,6 +1088,7 @@ const MangaContinueReadingHighlights = ({ showSeeAll = false }: { showSeeAll?: b
 const AnimeStatsOverview = () => {
     const { watchList } = useWatchList();
     const { continueWatchingList } = useContinueWatching();
+    const { favorites } = useFavoriteAnime();
     const [, setStatsTick] = useState(0);
 
     useEffect(() => {
@@ -1052,7 +1097,7 @@ const AnimeStatsOverview = () => {
         return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
     }, []);
 
-    const hasAccountAnimeHistory = watchList.length > 0 || continueWatchingList.length > 0;
+    const hasAccountAnimeHistory = watchList.length > 0 || continueWatchingList.length > 0 || favorites.length > 0;
     const valueClassName = hasAccountAnimeHistory ? 'text-[#3cb6ff]' : 'text-gray-400';
 
     const episodeHistory = storage.getEpisodeHistory();
@@ -1077,6 +1122,11 @@ const AnimeStatsOverview = () => {
     continueWatchingList.forEach((item) => {
         const key = normalizeTitleKey(item.animeTitle) || `id:${String(item.animeId)}`;
         ensureGroup(key).add(String(item.animeId));
+    });
+
+    favorites.forEach((item) => {
+        const key = normalizeTitleKey(item.title) || `id:${String(item.id)}`;
+        ensureGroup(key).add(String(item.id));
     });
 
     const totalAnime = hasAccountAnimeHistory ? animeGroups.size : 0;
