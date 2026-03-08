@@ -582,8 +582,12 @@ const MangaStatsOverview = () => {
 
     // Approximate reading time: 6 minutes per chapter.
     const minutesPerChapter = 6;
-    const totalHours = Math.floor((totalChaptersRead * minutesPerChapter) / 60);
+    const totalHours = Math.round(((totalChaptersRead * minutesPerChapter) / 60) * 10) / 10;
     const fmt = new Intl.NumberFormat('en-US');
+    const hoursFmt = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 1
+    });
 
     return (
         <div>
@@ -592,7 +596,7 @@ const MangaStatsOverview = () => {
                 <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
                     <StatItem value={fmt.format(totalManga)} label="TOTAL MANGA" valueClassName={valueClassName} />
                     <StatItem value={fmt.format(totalChaptersRead)} label="CHAPTERS READ" valueClassName={valueClassName} />
-                    <StatItem value={fmt.format(totalHours)} label="TOTAL HOURS" valueClassName={valueClassName} />
+                    <StatItem value={hoursFmt.format(totalHours)} label="TOTAL HOURS" valueClassName={valueClassName} />
                 </div>
             </div>
         </div>
@@ -1097,8 +1101,12 @@ const AnimeStatsOverview = () => {
             return sum + groupSeconds;
         }, 0)
         : 0;
-    const totalHours = Math.floor(totalWatchSeconds / 3600);
+    const totalHours = Math.round((totalWatchSeconds / 3600) * 10) / 10;
     const fmt = new Intl.NumberFormat('en-US');
+    const hoursFmt = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 1
+    });
 
     return (
         <div>
@@ -1107,7 +1115,7 @@ const AnimeStatsOverview = () => {
                 <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
                     <StatItem value={fmt.format(totalAnime)} label="TOTAL ANIMES" valueClassName={valueClassName} />
                     <StatItem value={fmt.format(totalEpisodesWatched)} label="EPISODES WATCHED" valueClassName={valueClassName} />
-                    <StatItem value={fmt.format(totalHours)} label="TOTAL HOURS" valueClassName={valueClassName} />
+                    <StatItem value={hoursFmt.format(totalHours)} label="TOTAL HOURS" valueClassName={valueClassName} />
                 </div>
             </div>
         </div>
