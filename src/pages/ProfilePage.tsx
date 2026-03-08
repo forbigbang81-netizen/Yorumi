@@ -608,18 +608,22 @@ const MangaStatsOverview = () => {
         window.addEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
         return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
     }, []);
+    const hasAccountMangaHistory = readList.length > 0 || continueReadingList.length > 0;
+    const valueClassName = hasAccountMangaHistory ? 'text-yorumi-manga' : 'text-gray-400';
     const chapterHistory = storage.getChapterHistory();
 
     const mangaIds = new Set<string>([
         ...readList.map((item) => item.id),
         ...continueReadingList.map((item) => String(item.mangaId))
     ]);
-    const totalManga = mangaIds.size;
+    const totalManga = hasAccountMangaHistory ? mangaIds.size : 0;
 
-    const totalChaptersRead = Array.from(mangaIds).reduce((sum, mangaId) => {
-        const chapters = chapterHistory[mangaId] || [];
-        return sum + chapters.length;
-    }, 0);
+    const totalChaptersRead = hasAccountMangaHistory
+        ? Array.from(mangaIds).reduce((sum, mangaId) => {
+            const chapters = chapterHistory[mangaId] || [];
+            return sum + chapters.length;
+        }, 0)
+        : 0;
 
     // Approximate reading time: 6 minutes per chapter.
     const minutesPerChapter = 6;
@@ -631,9 +635,9 @@ const MangaStatsOverview = () => {
             <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">Manga Stats</h3>
             <div className="bg-[#1c1c1c] rounded-3xl p-5 md:p-6">
                 <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
-                    <StatItem value={fmt.format(totalManga)} label="TOTAL MANGA" valueClassName="text-yorumi-manga" />
-                    <StatItem value={fmt.format(totalChaptersRead)} label="CHAPTERS READ" valueClassName="text-yorumi-manga" />
-                    <StatItem value={fmt.format(totalHours)} label="TOTAL HOURS" valueClassName="text-yorumi-manga" />
+                    <StatItem value={fmt.format(totalManga)} label="TOTAL MANGA" valueClassName={valueClassName} />
+                    <StatItem value={fmt.format(totalChaptersRead)} label="CHAPTERS READ" valueClassName={valueClassName} />
+                    <StatItem value={fmt.format(totalHours)} label="TOTAL HOURS" valueClassName={valueClassName} />
                 </div>
             </div>
         </div>
