@@ -2,15 +2,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { User, History, Heart, Pencil, Check, X, BookOpen, Cat, Book } from 'lucide-react';
+import { User, History, Pencil, Check, X, BookOpen, Cat, Book, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useContinueWatching } from '../hooks/useContinueWatching';
 import { useContinueReading } from '../hooks/useContinueReading';
 import { useWatchList } from '../hooks/useWatchList';
 import { useReadList } from '../hooks/useReadList';
+import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
+import { useFavoriteManga } from '../hooks/useFavoriteManga';
 import { slugify } from '../utils/slugify';
 import { storage } from '../utils/storage';
 import { animeService } from '../services/animeService';
 import { mangaService } from '../services/mangaService';
+import useEmblaCarousel from 'embla-carousel-react';
 
 type TabType = 'profile' | 'anime-overview' | 'manga-overview';
 
@@ -515,84 +518,36 @@ const ProfileTab = ({ user, avatar }: { user: any, avatar: string | null }) => {
 };
 
 const AnimeOverviewTab = () => {
-    const { continueWatchingList } = useContinueWatching();
-    // Deduplicate by title for the threshold check
-    const seenTitles = new Set<string>();
-    const dedupedWatching = continueWatchingList.filter(item => {
-        const key = (item.animeTitle || item.animeId).toLowerCase();
-        if (seenTitles.has(key)) return false;
-        seenTitles.add(key);
-        return true;
-    });
-
     return (
         <div className="space-y-10">
             <div className="w-full max-w-[1180px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8 xl:gap-8">
                 <div className="space-y-6 md:space-y-8 min-w-0">
                     <AnimeStatsOverview />
                     <AnimeGenreOverview />
+                    <FavoriteAnimeBoard />
                 </div>
                 <div className="space-y-6 md:space-y-8 min-w-0">
-                    <AnimeContinueWatchingHighlights />
+                    <AnimeContinueWatchingHighlights showSeeAll />
+                    <AnimeWatchListCarousel />
                 </div>
-            </div>
-
-            {dedupedWatching.length > 3 && (
-                <div>
-                    <ContinueWatchingList skip={3} />
-                </div>
-            )}
-
-            <div>
-                <div className="flex items-center gap-3 mb-6">
-                    <Heart className="w-6 h-6 text-yorumi-accent" />
-                    <h3 className="text-xl font-bold text-white">Watch List</h3>
-                </div>
-                <WatchList />
             </div>
         </div>
     );
 };
 
 const MangaOverviewTab = () => {
-    const { continueReadingList } = useContinueReading();
-    // Deduplicate by title for the threshold check
-    const seenTitles = new Set<string>();
-    const dedupedReading = continueReadingList.filter(item => {
-        const key = (item.mangaTitle || item.mangaId).toLowerCase();
-        if (seenTitles.has(key)) return false;
-        seenTitles.add(key);
-        return true;
-    });
-
     return (
         <div className="space-y-10">
             <div className="w-full max-w-[1180px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 md:gap-8 xl:gap-8">
                 <div className="space-y-6 md:space-y-8 min-w-0">
                     <MangaStatsOverview />
                     <MangaGenreOverview />
+                    <MangaFavoriteBoard />
                 </div>
                 <div className="space-y-6 md:space-y-8 min-w-0">
-                    <MangaContinueReadingHighlights />
+                    <MangaContinueReadingHighlights showSeeAll />
+                    <MangaReadListCarousel />
                 </div>
-            </div>
-
-            {dedupedReading.length > 3 && (
-                <div>
-                    <div className="flex items-center gap-3 mb-6">
-                        <History className="w-6 h-6 text-yorumi-manga" />
-                        <h3 className="text-xl font-bold text-white">Continue Reading</h3>
-                    </div>
-                    <ContinueReadingList skip={3} />
-                </div>
-            )}
-
-            <div>
-                <div className="flex items-center gap-3 mb-6">
-                    <Heart className="w-6 h-6 text-yorumi-manga" />
-                    <h3 className="text-xl font-bold text-white">Read List</h3>
-                </div>
-                <ReadList />
             </div>
         </div>
     );
@@ -645,6 +600,129 @@ const MangaStatsOverview = () => {
 };
 
 const MangaGenreOverview = () => <OverallGenreOverview theme="manga" />;
+
+const MangaFavoriteBoard = () => {
+    const { favorites } = useFavoriteManga();
+    const navigate = useNavigate();
+
+    return (
+        <div>
+            <div className="flex items-center justify-between mb-3 px-1">
+                <h3 className="text-xs font-bold text-gray-500">Favorite Mangas</h3>
+                <button
+                    onClick={() => navigate('/manga/favorites')}
+                    className="text-xs text-yorumi-manga hover:text-yorumi-manga/80 font-semibold"
+                >
+                    See All
+                </button>
+            </div>
+            <div className="bg-[#1c1c1c] rounded-3xl p-5 md:p-6">
+                {favorites.length === 0 ? (
+                    <div className="h-[160px] rounded-xl border border-dashed border-white/15 flex items-center justify-center text-sm text-gray-500">
+                        Add favorites using the heart button in manga details.
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-6 gap-3">
+                        {favorites.slice(0, 12).map((item) => (
+                            <button
+                                key={item.id}
+                                onClick={() => navigate(`/manga/details/${item.id}`)}
+                                className="aspect-[2/3] rounded-lg overflow-hidden border border-white/10 hover:border-yorumi-manga/70 transition-colors"
+                            >
+                                <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const MangaReadListCarousel = () => {
+    const { readList, loading, removeFromReadList } = useReadList();
+    const navigate = useNavigate();
+    const [emblaRef, emblaApi] = useEmblaCarousel({
+        align: 'start',
+        containScroll: 'trimSnaps',
+        dragFree: true
+    });
+
+    const previewList = readList.slice(0, 10);
+
+    const scrollByCards = (direction: 'left' | 'right') => {
+        if (!emblaApi) return;
+        if (direction === 'right') emblaApi.scrollNext();
+        else emblaApi.scrollPrev();
+    };
+
+    return (
+        <div>
+            <div className="flex items-center justify-between mb-3 px-1">
+                <h3 className="text-xs font-bold text-gray-500">Read List</h3>
+                <div className="flex items-center gap-3">
+                    {previewList.length > 3 && (
+                        <div className="flex gap-1">
+                            <button
+                                onClick={() => scrollByCards('left')}
+                                className="p-1 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
+                                aria-label="Scroll read list left"
+                            >
+                                <ChevronLeft className="w-3.5 h-3.5 text-gray-300" />
+                            </button>
+                            <button
+                                onClick={() => scrollByCards('right')}
+                                className="p-1 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
+                                aria-label="Scroll read list right"
+                            >
+                                <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
+                            </button>
+                        </div>
+                    )}
+                    <button onClick={() => navigate('/manga/read-list')} className="text-xs text-yorumi-manga hover:text-yorumi-manga/80 font-semibold">
+                        View All
+                    </button>
+                </div>
+            </div>
+            <div className="overflow-hidden" ref={emblaRef}>
+                <div className="flex gap-5">
+                    {(loading ? [] : previewList).map((item) => {
+                        const mangaData: any = {
+                            mal_id: parseInt(item.id),
+                            title: item.title,
+                            images: { jpg: { large_image_url: item.image, image_url: item.image } },
+                            score: item.score || 0,
+                            type: item.type || 'Manga',
+                            status: item.mediaStatus || 'UNKNOWN',
+                            chapters: item.totalCount || null,
+                            volumes: null,
+                            genres: item.genres?.map((g: string) => ({ name: g })) || [],
+                            synopsis: item.synopsis || ''
+                        };
+
+                        return (
+                            <div key={item.id} className="flex-[0_0_165px] min-w-0">
+                                <MangaCard
+                                    manga={mangaData}
+                                    onClick={() => navigate(`/manga/details/${item.id}`)}
+                                    onReadClick={() => navigate(`/manga/details/${item.id}`)}
+                                    inList={true}
+                                    onToggleList={() => removeFromReadList(item.id)}
+                                    disableTilt
+                                />
+                            </div>
+                        );
+                    })}
+                    {!loading && readList.length === 0 && (
+                        <div className="w-full bg-[#1c1c1c] rounded-xl p-6 text-center text-sm text-gray-500 border border-white/10">
+                            Your read list is empty.
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) => {
     const { watchList } = useWatchList();
@@ -888,7 +966,7 @@ const OverallGenreOverview = ({ theme }: { theme: 'anime' | 'manga' | 'both' }) 
     );
 };
 
-const MangaContinueReadingHighlights = () => {
+const MangaContinueReadingHighlights = ({ showSeeAll = false }: { showSeeAll?: boolean }) => {
     const { continueReadingList: history } = useContinueReading();
     const navigate = useNavigate();
     // Deduplicate by title (keep first/most-recent occurrence per title)
@@ -904,7 +982,14 @@ const MangaContinueReadingHighlights = () => {
     if (topThree.length === 0) {
         return (
             <div>
-                <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Continue Reading</h3>
+                <div className="flex items-center justify-between mb-4 px-1">
+                    <h3 className="text-xs font-bold text-gray-500">Continue Reading</h3>
+                    {showSeeAll && (
+                        <button onClick={() => navigate('/manga/continue-reading')} className="text-xs text-yorumi-manga hover:text-yorumi-manga/80 font-semibold">
+                            View All
+                        </button>
+                    )}
+                </div>
                 <div className="bg-[#1c1c1c] rounded-2xl p-8 text-center">
                     <BookOpen className="w-10 h-10 text-gray-700 mx-auto mb-3" />
                     <p className="text-gray-400 text-sm">No recent manga progress yet.</p>
@@ -915,7 +1000,14 @@ const MangaContinueReadingHighlights = () => {
 
     return (
         <div>
-            <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Continue Reading</h3>
+            <div className="flex items-center justify-between mb-4 px-1">
+                <h3 className="text-xs font-bold text-gray-500">Continue Reading</h3>
+                {showSeeAll && (
+                    <button onClick={() => navigate('/manga/continue-reading')} className="text-xs text-yorumi-manga hover:text-yorumi-manga/80 font-semibold">
+                        View All
+                    </button>
+                )}
+            </div>
             <div className="space-y-3">
                 {topThree.map((item) => (
                     <div
@@ -1024,7 +1116,132 @@ const AnimeStatsOverview = () => {
 
 const AnimeGenreOverview = () => <OverallGenreOverview theme="anime" />;
 
-const AnimeContinueWatchingHighlights = () => {
+const FavoriteAnimeBoard = () => {
+    const { favorites } = useFavoriteAnime();
+    const navigate = useNavigate();
+
+    return (
+        <div>
+            <div className="flex items-center justify-between mb-3 px-1">
+                <h3 className="text-xs font-bold text-gray-500">Favorite Animes</h3>
+                <button
+                    onClick={() => navigate('/anime/favorites')}
+                    className="text-xs text-yorumi-accent hover:text-yorumi-accent/80 font-semibold"
+                >
+                    See All
+                </button>
+            </div>
+            <div className="bg-[#1c1c1c] rounded-3xl p-5 md:p-6">
+                {favorites.length === 0 ? (
+                    <div className="h-[160px] rounded-xl border border-dashed border-white/15 flex items-center justify-center text-sm text-gray-500">
+                        Add favorites using the heart button in anime details.
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-6 gap-3">
+                        {favorites.slice(0, 12).map((item) => (
+                            <button
+                                key={item.id}
+                                onClick={() => navigate(`/anime/details/${item.id}`)}
+                                className="aspect-[2/3] rounded-lg overflow-hidden border border-white/10 hover:border-yorumi-accent/70 transition-colors"
+                            >
+                                <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const AnimeWatchListCarousel = () => {
+    const { watchList, loading, removeFromWatchList } = useWatchList();
+    const navigate = useNavigate();
+    const [emblaRef, emblaApi] = useEmblaCarousel({
+        align: 'start',
+        containScroll: 'trimSnaps',
+        dragFree: true
+    });
+
+    const previewList = watchList.slice(0, 10);
+
+    const scrollByCards = (direction: 'left' | 'right') => {
+        if (!emblaApi) return;
+        if (direction === 'right') emblaApi.scrollNext();
+        else emblaApi.scrollPrev();
+    };
+
+    return (
+        <div>
+            <div className="flex items-center justify-between mb-3 px-1">
+                <h3 className="text-xs font-bold text-gray-500">Watch List</h3>
+                <div className="flex items-center gap-3">
+                    {previewList.length > 3 && (
+                        <div className="flex gap-1">
+                            <button
+                                onClick={() => scrollByCards('left')}
+                                className="p-1 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
+                                aria-label="Scroll watch list left"
+                            >
+                                <ChevronLeft className="w-3.5 h-3.5 text-gray-300" />
+                            </button>
+                            <button
+                                onClick={() => scrollByCards('right')}
+                                className="p-1 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
+                                aria-label="Scroll watch list right"
+                            >
+                                <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
+                            </button>
+                        </div>
+                    )}
+                    <button onClick={() => navigate('/anime/watch-list')} className="text-xs text-yorumi-accent hover:text-yorumi-accent/80 font-semibold">
+                        View All
+                    </button>
+                </div>
+            </div>
+            <div className="overflow-hidden" ref={emblaRef}>
+                <div className="flex gap-5">
+                    {(loading ? [] : previewList).map((item) => {
+                        const animeData: any = {
+                            mal_id: parseInt(item.id),
+                            title: item.title,
+                            images: { jpg: { large_image_url: item.image, image_url: item.image } },
+                            score: item.score || 0,
+                            type: item.type || 'TV',
+                            status: item.mediaStatus || 'UNKNOWN',
+                            episodes: item.totalCount,
+                            genres: item.genres?.map((g: string) => ({ name: g })) || [],
+                            synopsis: item.synopsis || ''
+                        };
+
+                        return (
+                            <div key={item.id} className="flex-[0_0_165px] min-w-0">
+                                <AnimeCard
+                                    anime={animeData}
+                                    onClick={() => navigate(`/anime/details/${item.id}`)}
+                                    onWatchClick={() => {
+                                        const title = slugify(item.title || 'anime');
+                                        navigate(`/anime/watch/${title}/${item.id}`);
+                                    }}
+                                    inList={true}
+                                    onToggleList={() => removeFromWatchList(item.id)}
+                                    disableTilt
+                                />
+                            </div>
+                        );
+                    })}
+                    {!loading && watchList.length === 0 && (
+                        <div className="w-full bg-[#1c1c1c] rounded-xl p-6 text-center text-sm text-gray-500 border border-white/10">
+                            Your watch list is empty.
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const AnimeContinueWatchingHighlights = ({ showSeeAll = false }: { showSeeAll?: boolean }) => {
     const { continueWatchingList: history } = useContinueWatching();
     const navigate = useNavigate();
     // Deduplicate by title (keep first/most-recent occurrence per title)
@@ -1040,7 +1257,14 @@ const AnimeContinueWatchingHighlights = () => {
     if (topThree.length === 0) {
         return (
             <div>
-                <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Continue Watching</h3>
+                <div className="flex items-center justify-between mb-4 px-1">
+                    <h3 className="text-xs font-bold text-gray-500">Continue Watching</h3>
+                    {showSeeAll && (
+                        <button onClick={() => navigate('/anime/continue-watching')} className="text-xs text-yorumi-accent hover:text-yorumi-accent/80 font-semibold">
+                            View All
+                        </button>
+                    )}
+                </div>
                 <div className="bg-[#1c1c1c] rounded-2xl p-8 text-center">
                     <History className="w-10 h-10 text-gray-700 mx-auto mb-3" />
                     <p className="text-gray-400 text-sm">No recent anime progress yet.</p>
@@ -1051,7 +1275,14 @@ const AnimeContinueWatchingHighlights = () => {
 
     return (
         <div>
-            <h3 className="text-xs font-bold text-gray-500 mb-4 px-1">Continue Watching</h3>
+            <div className="flex items-center justify-between mb-4 px-1">
+                <h3 className="text-xs font-bold text-gray-500">Continue Watching</h3>
+                {showSeeAll && (
+                    <button onClick={() => navigate('/anime/continue-watching')} className="text-xs text-yorumi-accent hover:text-yorumi-accent/80 font-semibold">
+                        View All
+                    </button>
+                )}
+            </div>
             <div className="space-y-3">
                 {topThree.map((item) => (
                     <div
@@ -1087,249 +1318,3 @@ const StatItem = ({ value, label, valueClassName = 'text-[#3cb6ff]' }: { value: 
         <div className="text-[10px] md:text-[11px] font-bold text-gray-500 tracking-widest">{label}</div>
     </div>
 );
-
-const ContinueWatchingList = ({ skip = 0 }: { skip?: number }) => {
-    const { continueWatchingList: history, removeFromHistory } = useContinueWatching();
-    const navigate = useNavigate();
-    // Deduplicate by title before slicing
-    const seen = new Set<string>();
-    const dedupedHistory = history.filter(item => {
-        const key = (item.animeTitle || item.animeId).toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-    const visibleHistory = dedupedHistory.slice(skip);
-
-    if (dedupedHistory.length === 0 && skip === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-                <History className="w-16 h-16 text-gray-700 mb-4" />
-                <h3 className="text-xl font-bold text-white mb-2">No History Yet</h3>
-                <p className="text-gray-400">Start watching anime to see them appear here!</p>
-            </div>
-        );
-    }
-
-    if (visibleHistory.length === 0) return null;
-
-    return (
-        <div className="space-y-6">
-
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {visibleHistory.map((item) => (
-                    <div
-                        key={item.animeId}
-                        onClick={() => {
-                            const title = slugify(item.animeTitle || 'anime');
-                            navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
-                        }}
-                        className="aspect-video bg-[#1c1c1c] rounded-xl flex flex-col items-center justify-center group cursor-pointer transition-colors relative overflow-hidden"
-                    >
-                        {item.animeImage ? (
-                            <>
-                                <img src={item.animeImage} alt={item.animeTitle} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent" />
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        removeFromHistory(parseInt(item.animeId));
-                                    }}
-                                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-red-500/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all z-20"
-                                    title="Remove from history"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                                <div className="absolute bottom-4 left-4 right-4">
-                                    <h4 className="font-bold text-white truncate">{item.animeTitle}</h4>
-                                    <p className="text-xs text-yorumi-accent">Episode {item.episodeNumber}</p>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <History className="w-8 h-8 text-gray-600 mb-2 group-hover:text-yorumi-accent transition-colors" />
-                                <span className="text-gray-500 text-sm font-medium">History Item</span>
-                            </>
-                        )}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-const WatchList = () => {
-    const { watchList, removeFromWatchList, loading } = useWatchList();
-    const navigate = useNavigate();
-
-    // Migrating local to cloud could happen here once, but for now just show cloud
-    // Optionally: If cloud is empty and local has items, prompt?
-
-    if (loading) {
-        return <div className="py-20 text-center text-gray-400">Loading Watch List...</div>;
-    }
-
-    if (watchList.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-                <Heart className="w-16 h-16 text-gray-700 mb-4" />
-                <h3 className="text-xl font-bold text-white mb-2">Your List is Empty</h3>
-                <p className="text-gray-400">Add anime to your list to track them here!</p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
-                {watchList.map((item) => {
-                    const animeData: any = {
-                        mal_id: parseInt(item.id),
-                        title: item.title,
-                        images: { jpg: { large_image_url: item.image, image_url: item.image } },
-                        score: item.score || 0,
-                        type: item.type,
-                        status: item.mediaStatus,
-                        episodes: item.totalCount,
-                        genres: item.genres?.map((g: string) => ({ name: g })) || [],
-                        synopsis: item.synopsis
-                    };
-
-                    return (
-                        <AnimeCard
-                            key={item.id}
-                            anime={animeData}
-                            onClick={() => navigate(`/anime/details/${item.id}`)}
-                            onWatchClick={() => {
-                                const title = slugify(item.title || 'anime');
-                                navigate(`/anime/watch/${title}/${item.id}`);
-                            }}
-                            inList={true}
-                            onToggleList={() => removeFromWatchList(item.id)}
-                        />
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
-const ContinueReadingList = ({ skip = 0 }: { skip?: number }) => {
-    const { continueReadingList: history, removeFromHistory } = useContinueReading();
-    const navigate = useNavigate();
-    // Deduplicate by title before slicing
-    const seen = new Set<string>();
-    const dedupedHistory = history.filter(item => {
-        const key = (item.mangaTitle || item.mangaId).toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-    const visibleHistory = dedupedHistory.slice(skip);
-
-    if (dedupedHistory.length === 0 && skip === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-                <BookOpen className="w-16 h-16 text-gray-700 mb-4" />
-                <h3 className="text-xl font-bold text-white mb-2">No Reading History Yet</h3>
-                <p className="text-gray-400">Start reading manga to see them appear here!</p>
-            </div>
-        );
-    }
-
-    if (visibleHistory.length === 0) return null;
-
-    return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {visibleHistory.map((item) => (
-                    <div
-                        key={item.mangaId}
-                        onClick={() => {
-                            const title = slugify(item.mangaTitle || 'manga');
-                            navigate(`/manga/read/${title}/${item.mangaId}/c${item.chapterNumber}`);
-                        }}
-                        className="aspect-video bg-[#1c1c1c] rounded-xl flex flex-col items-center justify-center group cursor-pointer transition-colors relative overflow-hidden"
-                    >
-                        {item.mangaImage ? (
-                            <>
-                                <img src={item.mangaImage} alt={item.mangaTitle} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent" />
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        removeFromHistory(item.mangaId);
-                                    }}
-                                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-red-500/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all z-20"
-                                    title="Remove from history"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                                <div className="absolute bottom-4 left-4 right-4">
-                                    <h4 className="font-bold text-white truncate">{item.mangaTitle}</h4>
-                                    <p className="text-xs text-yorumi-accent">Chapter {item.chapterNumber}</p>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <BookOpen className="w-8 h-8 text-gray-600 mb-2 group-hover:text-yorumi-accent transition-colors" />
-                                <span className="text-gray-500 text-sm font-medium">History Item</span>
-                            </>
-                        )}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-const ReadList = () => {
-    const { readList, removeFromReadList, loading } = useReadList();
-    const navigate = useNavigate();
-
-    if (loading) {
-        return <div className="py-20 text-center text-gray-400">Loading Read List...</div>;
-    }
-
-    if (readList.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-                <BookOpen className="w-16 h-16 text-gray-700 mb-4" />
-                <h3 className="text-xl font-bold text-white mb-2">Your List is Empty</h3>
-                <p className="text-gray-400">Add manga to your list to track them here!</p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
-                {readList.map((item) => {
-                    const mangaData: any = {
-                        mal_id: parseInt(item.id),
-                        title: item.title,
-                        images: { jpg: { large_image_url: item.image, image_url: item.image } },
-                        score: item.score || 0,
-                        type: item.type,
-                        status: item.mediaStatus,
-                        chapters: item.totalCount,
-                        genres: item.genres?.map((g: string) => ({ name: g })) || [],
-                        synopsis: item.synopsis
-                    };
-
-                    return (
-                        <MangaCard
-                            key={item.id}
-                            manga={mangaData}
-                            onClick={() => navigate(`/manga/details/${item.id}`)}
-                            onReadClick={() => navigate(`/manga/details/${item.id}`)}
-                            inList={true}
-                            onToggleList={() => removeFromReadList(item.id)}
-                        />
-                    );
-                })}
-            </div>
-        </div>
-    );
-};

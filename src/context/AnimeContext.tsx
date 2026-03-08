@@ -4,6 +4,7 @@ import { animeService } from '../services/animeService';
 import { useContinueWatching } from '../hooks/useContinueWatching';
 import { storage } from '../utils/storage';
 import { preloadLogos } from '../components/anime/AnimeLogoImage';
+import { useAuth } from './AuthContext';
 
 interface AnimeContextType {
     // State
@@ -67,6 +68,7 @@ const AnimeContext = createContext<AnimeContextType | undefined>(undefined);
 
 export function AnimeProvider({ children }: { children: ReactNode }) {
     const { continueWatchingList, saveProgress, removeFromHistory } = useContinueWatching();
+    const { user } = useAuth();
 
     // Data State
     const [topAnime, setTopAnime] = useState<Anime[]>([]);
@@ -481,19 +483,30 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
 
     // --- Episode Tracking ---
-    useEffect(() => {
-        if (selectedAnime) {
-            const primaryId = String(selectedAnime.mal_id || '');
-            const secondaryId = String(selectedAnime.id || '');
-            const primaryHistory = primaryId ? storage.getWatchedEpisodes(primaryId) : [];
-            const secondaryHistory = secondaryId && secondaryId !== primaryId
-                ? storage.getWatchedEpisodes(secondaryId)
-                : [];
-            setWatchedEpisodes(new Set([...primaryHistory, ...secondaryHistory]));
-        } else {
+    const refreshWatchedEpisodes = () => {
+        if (!selectedAnime) {
             setWatchedEpisodes(new Set());
+            return;
         }
-    }, [selectedAnime]);
+
+        const primaryId = String(selectedAnime.mal_id || '');
+        const secondaryId = String(selectedAnime.id || '');
+        const primaryHistory = primaryId ? storage.getWatchedEpisodes(primaryId) : [];
+        const secondaryHistory = secondaryId && secondaryId !== primaryId
+            ? storage.getWatchedEpisodes(secondaryId)
+            : [];
+        setWatchedEpisodes(new Set([...primaryHistory, ...secondaryHistory]));
+    };
+
+    useEffect(() => {
+        refreshWatchedEpisodes();
+    }, [selectedAnime, user?.uid]);
+
+    useEffect(() => {
+        const handleStorageUpdated = () => refreshWatchedEpisodes();
+        window.addEventListener('yorumi-storage-updated', handleStorageUpdated);
+        return () => window.removeEventListener('yorumi-storage-updated', handleStorageUpdated);
+    }, [selectedAnime, user?.uid]);
 
     const markEpisodeComplete = (episodeNumber: number) => {
         if (!selectedAnime) return;

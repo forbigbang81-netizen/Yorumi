@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAnime } from '../hooks/useAnime';
 import { useWatchList } from '../hooks/useWatchList';
+import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
 import { slugify } from '../utils/slugify';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import type { Anime } from '../types/anime';
@@ -47,11 +48,13 @@ export default function AnimeDetailsPage() {
 
     const { selectedAnime, episodes, epLoading, detailsLoading, error, watchedEpisodes } = animeHook;
     const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
+    const { isFavorite, addFavorite, removeFavorite } = useFavoriteAnime();
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
 
     // Derived state for button, but useWatchList is reactive so we can just use isInWatchList(id)
     const animeId = selectedAnime ? (selectedAnime.scraperId || selectedAnime.id || selectedAnime.mal_id).toString() : '';
     const inList = isInWatchList(animeId);
+    const inFavorites = isFavorite(animeId);
 
     const handleToggleList = () => {
         if (!selectedAnime || !animeId) return;
@@ -70,6 +73,20 @@ export default function AnimeDetailsPage() {
                 mediaStatus: selectedAnime.status,
                 synopsis: selectedAnime.synopsis,
                 status: 'watching'
+            });
+        }
+    };
+
+    const handleToggleFavorite = () => {
+        if (!selectedAnime || !animeId) return;
+
+        if (inFavorites) {
+            removeFavorite(animeId);
+        } else {
+            addFavorite({
+                id: animeId,
+                title: selectedAnime.title,
+                image: selectedAnime.images.jpg.large_image_url
             });
         }
     };
@@ -119,6 +136,7 @@ export default function AnimeDetailsPage() {
                     anime={selectedAnime}
                     episodesCount={episodes.length}
                     inList={inList}
+                    inFavorites={inFavorites}
                     onWatch={() => {
                         const title = slugify(selectedAnime.title || selectedAnime.title_english || 'anime');
 
@@ -136,6 +154,7 @@ export default function AnimeDetailsPage() {
                         navigate(`/anime/watch/${title}/${id}?ep=${targetEp}`);
                     }}
                     onToggleList={handleToggleList}
+                    onToggleFavorite={handleToggleFavorite}
                 >
                     {/* Tabs */}
                     <div className="flex items-center gap-8 border-b border-white/10 mb-6 mt-4">

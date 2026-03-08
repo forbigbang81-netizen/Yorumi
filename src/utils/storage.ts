@@ -61,11 +61,32 @@ const STORAGE_KEYS = {
     MANGA_GENRE_CACHE: 'yorumi_manga_genre_cache'
 };
 
+const getScopedStorageKey = (key: string) => {
+    const uid = auth.currentUser?.uid;
+    return uid ? `${key}_${uid}` : key;
+};
+
+const setScopedItem = (key: string, value: string) => {
+    localStorage.setItem(getScopedStorageKey(key), value);
+};
+
+const getScopedItem = (key: string) => {
+    return localStorage.getItem(getScopedStorageKey(key));
+};
+
 export const clearLocalProgressStorage = () => {
     try {
         Object.values(STORAGE_KEYS).forEach((key) => {
             localStorage.removeItem(key);
+            const scopedPrefix = `${key}_`;
+            for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith(scopedPrefix)) {
+                    localStorage.removeItem(k);
+                }
+            }
         });
+        emitStorageUpdated();
     } catch (error) {
         console.error('Failed to clear local progress storage:', error);
     }
@@ -87,7 +108,7 @@ export const storage = {
                 ...current.filter(item => item.animeId !== progress.animeId)
             ].slice(0, 20); // Keep last 20
 
-            localStorage.setItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(updated));
+            setScopedItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(updated));
         } catch (error) {
             console.error('Failed to save progress:', error);
         }
@@ -95,7 +116,7 @@ export const storage = {
 
     getContinueWatching: (): WatchProgress[] => {
         try {
-            const data = localStorage.getItem(STORAGE_KEYS.CONTINUE_WATCHING);
+            const data = getScopedItem(STORAGE_KEYS.CONTINUE_WATCHING);
             return data ? JSON.parse(data) : [];
         } catch (error) {
             console.error('Failed to get continue watching:', error);
@@ -114,7 +135,7 @@ export const storage = {
                 ...current
             ];
 
-            localStorage.setItem(STORAGE_KEYS.WATCH_LIST, JSON.stringify(updated));
+            setScopedItem(STORAGE_KEYS.WATCH_LIST, JSON.stringify(updated));
         } catch (error) {
             console.error('Failed to add to watch list:', error);
         }
@@ -124,7 +145,7 @@ export const storage = {
         try {
             const current = storage.getWatchList();
             const updated = current.filter(item => item.id !== animeId);
-            localStorage.setItem(STORAGE_KEYS.WATCH_LIST, JSON.stringify(updated));
+            setScopedItem(STORAGE_KEYS.WATCH_LIST, JSON.stringify(updated));
         } catch (error) {
             console.error('Failed to remove from watch list:', error);
         }
@@ -132,7 +153,7 @@ export const storage = {
 
     getWatchList: (): WatchListItem[] => {
         try {
-            const data = localStorage.getItem(STORAGE_KEYS.WATCH_LIST);
+            const data = getScopedItem(STORAGE_KEYS.WATCH_LIST);
             return data ? JSON.parse(data) : [];
         } catch (error) {
             console.error('Failed to get watch list:', error);
@@ -156,7 +177,7 @@ export const storage = {
                 ...current
             ];
 
-            localStorage.setItem(STORAGE_KEYS.READ_LIST, JSON.stringify(updated));
+            setScopedItem(STORAGE_KEYS.READ_LIST, JSON.stringify(updated));
         } catch (error) {
             console.error('Failed to add to read list:', error);
         }
@@ -166,7 +187,7 @@ export const storage = {
         try {
             const current = storage.getReadList();
             const updated = current.filter(item => item.id !== mangaId);
-            localStorage.setItem(STORAGE_KEYS.READ_LIST, JSON.stringify(updated));
+            setScopedItem(STORAGE_KEYS.READ_LIST, JSON.stringify(updated));
         } catch (error) {
             console.error('Failed to remove from read list:', error);
         }
@@ -174,7 +195,7 @@ export const storage = {
 
     getReadList: (): ReadListItem[] => {
         try {
-            const data = localStorage.getItem(STORAGE_KEYS.READ_LIST);
+            const data = getScopedItem(STORAGE_KEYS.READ_LIST);
             return data ? JSON.parse(data) : [];
         } catch (error) {
             console.error('Failed to get read list:', error);
@@ -194,7 +215,7 @@ export const storage = {
             if (!history[animeId]) history[animeId] = [];
             if (!history[animeId].includes(episodeNumber)) {
                 history[animeId].push(episodeNumber);
-                localStorage.setItem(STORAGE_KEYS.EPISODE_HISTORY, JSON.stringify(history));
+                setScopedItem(STORAGE_KEYS.EPISODE_HISTORY, JSON.stringify(history));
                 emitStorageUpdated();
             }
         } catch (error) {
@@ -204,7 +225,7 @@ export const storage = {
 
     getEpisodeHistory: (): Record<string, number[]> => {
         try {
-            const data = localStorage.getItem(STORAGE_KEYS.EPISODE_HISTORY);
+            const data = getScopedItem(STORAGE_KEYS.EPISODE_HISTORY);
             return data ? JSON.parse(data) : {};
         } catch (error) {
             return {};
@@ -223,7 +244,7 @@ export const storage = {
             const current = storage.getAnimeWatchTime();
             const normalized = Math.floor(seconds);
             current[animeId] = (current[animeId] || 0) + normalized;
-            localStorage.setItem(STORAGE_KEYS.ANIME_WATCH_TIME, JSON.stringify(current));
+            setScopedItem(STORAGE_KEYS.ANIME_WATCH_TIME, JSON.stringify(current));
             emitStorageUpdated();
         } catch (error) {
             console.error('Failed to add anime watch time:', error);
@@ -232,7 +253,7 @@ export const storage = {
 
     getAnimeWatchTime: (): Record<string, number> => {
         try {
-            const data = localStorage.getItem(STORAGE_KEYS.ANIME_WATCH_TIME);
+            const data = getScopedItem(STORAGE_KEYS.ANIME_WATCH_TIME);
             return data ? JSON.parse(data) : {};
         } catch (error) {
             console.error('Failed to get anime watch time:', error);
@@ -248,7 +269,7 @@ export const storage = {
     // Genre caches
     getAnimeGenreCache: (): Record<string, string[]> => {
         try {
-            const data = localStorage.getItem(STORAGE_KEYS.ANIME_GENRE_CACHE);
+            const data = getScopedItem(STORAGE_KEYS.ANIME_GENRE_CACHE);
             return data ? JSON.parse(data) : {};
         } catch (error) {
             console.error('Failed to get anime genre cache:', error);
@@ -258,7 +279,7 @@ export const storage = {
 
     setAnimeGenreCache: (cache: Record<string, string[]>) => {
         try {
-            localStorage.setItem(STORAGE_KEYS.ANIME_GENRE_CACHE, JSON.stringify(cache || {}));
+            setScopedItem(STORAGE_KEYS.ANIME_GENRE_CACHE, JSON.stringify(cache || {}));
             emitStorageUpdated();
         } catch (error) {
             console.error('Failed to set anime genre cache:', error);
@@ -267,7 +288,7 @@ export const storage = {
 
     getMangaGenreCache: (): Record<string, string[]> => {
         try {
-            const data = localStorage.getItem(STORAGE_KEYS.MANGA_GENRE_CACHE);
+            const data = getScopedItem(STORAGE_KEYS.MANGA_GENRE_CACHE);
             return data ? JSON.parse(data) : {};
         } catch (error) {
             console.error('Failed to get manga genre cache:', error);
@@ -277,7 +298,7 @@ export const storage = {
 
     setMangaGenreCache: (cache: Record<string, string[]>) => {
         try {
-            localStorage.setItem(STORAGE_KEYS.MANGA_GENRE_CACHE, JSON.stringify(cache || {}));
+            setScopedItem(STORAGE_KEYS.MANGA_GENRE_CACHE, JSON.stringify(cache || {}));
             emitStorageUpdated();
         } catch (error) {
             console.error('Failed to set manga genre cache:', error);
@@ -291,7 +312,7 @@ export const storage = {
             if (!history[mangaId]) history[mangaId] = [];
             if (!history[mangaId].includes(chapterId)) {
                 history[mangaId].push(chapterId);
-                localStorage.setItem(STORAGE_KEYS.CHAPTER_HISTORY, JSON.stringify(history));
+                setScopedItem(STORAGE_KEYS.CHAPTER_HISTORY, JSON.stringify(history));
                 emitStorageUpdated();
             }
         } catch (error) {
@@ -301,7 +322,7 @@ export const storage = {
 
     getChapterHistory: (): Record<string, string[]> => {
         try {
-            const data = localStorage.getItem(STORAGE_KEYS.CHAPTER_HISTORY);
+            const data = getScopedItem(STORAGE_KEYS.CHAPTER_HISTORY);
             return data ? JSON.parse(data) : {};
         } catch (error) {
             return {};
@@ -379,7 +400,7 @@ export const syncStorage = {
                             merged.push(cloudItem);
                         }
                     });
-                    localStorage.setItem(STORAGE_KEYS.WATCH_LIST, JSON.stringify(merged));
+                    setScopedItem(STORAGE_KEYS.WATCH_LIST, JSON.stringify(merged));
                 }
 
                 if (data.readList) {
@@ -390,7 +411,7 @@ export const syncStorage = {
                             merged.push(cloudItem);
                         }
                     });
-                    localStorage.setItem(STORAGE_KEYS.READ_LIST, JSON.stringify(merged));
+                    setScopedItem(STORAGE_KEYS.READ_LIST, JSON.stringify(merged));
                 }
 
                 if (data.continueWatching) {
@@ -400,21 +421,11 @@ export const syncStorage = {
                     const merged = [...data.continueWatching, ...local]
                         .filter((v, i, a) => a.findIndex(t => t.animeId === v.animeId) === i) // Unique by ID
                         .slice(0, 20);
-                    localStorage.setItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(merged));
+                    setScopedItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(merged));
                 }
 
-                // Merge Episode History
-                if (data.episodeHistory) {
-                    const local = storage.getEpisodeHistory();
-                    const merged: Record<string, number[]> = { ...local };
-                    Object.entries(data.episodeHistory as Record<string, number[]>).forEach(([animeId, episodes]) => {
-                        if (!merged[animeId]) merged[animeId] = [];
-                        episodes.forEach(ep => {
-                            if (!merged[animeId].includes(ep)) merged[animeId].push(ep);
-                        });
-                    });
-                    localStorage.setItem(STORAGE_KEYS.EPISODE_HISTORY, JSON.stringify(merged));
-                }
+                // Do not import episode history from cloud.
+                // This avoids stale/contaminated watched flags being re-applied across account switches.
 
                 // Merge Chapter History
                 if (data.chapterHistory) {
@@ -426,7 +437,7 @@ export const syncStorage = {
                             if (!merged[mangaId].includes(ch)) merged[mangaId].push(ch);
                         });
                     });
-                    localStorage.setItem(STORAGE_KEYS.CHAPTER_HISTORY, JSON.stringify(merged));
+                    setScopedItem(STORAGE_KEYS.CHAPTER_HISTORY, JSON.stringify(merged));
                 }
 
                 // Merge Anime Watch Time (keep the larger value per anime to avoid sync double-counting)
@@ -439,7 +450,7 @@ export const syncStorage = {
                         merged[animeId] = Math.max(merged[animeId] || 0, safeSeconds);
                     });
 
-                    localStorage.setItem(STORAGE_KEYS.ANIME_WATCH_TIME, JSON.stringify(merged));
+                    setScopedItem(STORAGE_KEYS.ANIME_WATCH_TIME, JSON.stringify(merged));
                 }
 
                 // Merge Anime Genre Cache
@@ -451,7 +462,7 @@ export const syncStorage = {
                         const cloudGenres = Array.isArray(genres) ? genres : [];
                         merged[animeId] = Array.from(new Set([...localGenres, ...cloudGenres]));
                     });
-                    localStorage.setItem(STORAGE_KEYS.ANIME_GENRE_CACHE, JSON.stringify(merged));
+                    setScopedItem(STORAGE_KEYS.ANIME_GENRE_CACHE, JSON.stringify(merged));
                 }
 
                 // Merge Manga Genre Cache
@@ -463,7 +474,7 @@ export const syncStorage = {
                         const cloudGenres = Array.isArray(genres) ? genres : [];
                         merged[mangaId] = Array.from(new Set([...localGenres, ...cloudGenres]));
                     });
-                    localStorage.setItem(STORAGE_KEYS.MANGA_GENRE_CACHE, JSON.stringify(merged));
+                    setScopedItem(STORAGE_KEYS.MANGA_GENRE_CACHE, JSON.stringify(merged));
                 }
             }
         } catch (error) {

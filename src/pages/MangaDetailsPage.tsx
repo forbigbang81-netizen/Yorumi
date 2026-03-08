@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Check, Plus } from 'lucide-react';
+import { ArrowLeft, Check, Plus, Heart } from 'lucide-react';
 import { useManga } from '../hooks/useManga';
 import { useReadList } from '../hooks/useReadList';
+import { useFavoriteManga } from '../hooks/useFavoriteManga';
 import { slugify } from '../utils/slugify';
 import MangaCard from '../features/manga/components/MangaCard';
 import type { MangaChapter } from '../types/manga';
@@ -92,6 +93,7 @@ export default function MangaDetailsPage() {
     } = useManga();
 
     const { isInReadList, addToReadList, removeFromReadList } = useReadList();
+    const { isFavorite, addFavorite, removeFavorite } = useFavoriteManga();
 
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
 
@@ -209,6 +211,9 @@ export default function MangaDetailsPage() {
     // If we have no banner, use the large cover logic or a blur
     const bannerImage = selectedManga.images.jpg.large_image_url;
 
+    const mangaId = selectedManga.mal_id.toString();
+    const inFavorites = isFavorite(mangaId);
+
     return (
         <div className="min-h-screen bg-[#0a0a0a] pb-20 fade-in animate-in duration-300">
             {/* 1. Header Hero */}
@@ -299,8 +304,6 @@ export default function MangaDetailsPage() {
                             <button
                                 onClick={() => {
                                     if (!selectedManga) return;
-                                    const mangaId = selectedManga.mal_id.toString();
-
                                     if (isInReadList(mangaId)) {
                                         removeFromReadList(mangaId);
                                     } else {
@@ -318,12 +321,12 @@ export default function MangaDetailsPage() {
                                         });
                                     }
                                 }}
-                                className={`h-12 px-8 text-lg font-bold rounded-full transition-colors border flex items-center gap-2 ${isInReadList(selectedManga.mal_id.toString())
+                                className={`h-12 px-8 text-lg font-bold rounded-full transition-colors border flex items-center gap-2 ${isInReadList(mangaId)
                                     ? 'bg-yorumi-manga text-white border-yorumi-manga'
                                     : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
                                     }`}
                             >
-                                {isInReadList(selectedManga.mal_id.toString()) ? (
+                                {isInReadList(mangaId) ? (
                                     <>
                                         <Check className="w-5 h-5" />
                                         In List
@@ -334,6 +337,26 @@ export default function MangaDetailsPage() {
                                         Add to List
                                     </>
                                 )}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (inFavorites) {
+                                        removeFavorite(mangaId);
+                                    } else {
+                                        addFavorite({
+                                            id: mangaId,
+                                            title: selectedManga.title,
+                                            image: selectedManga.images.jpg.large_image_url
+                                        });
+                                    }
+                                }}
+                                className={`h-12 w-12 rounded-full transition-all border flex items-center justify-center ${inFavorites
+                                    ? 'bg-red-500/20 text-red-400 border-red-400/40'
+                                    : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+                                    }`}
+                                title={inFavorites ? 'Remove Favorite' : 'Add Favorite'}
+                            >
+                                <Heart className={`w-5 h-5 ${inFavorites ? 'fill-current' : ''}`} />
                             </button>
                         </div>
 

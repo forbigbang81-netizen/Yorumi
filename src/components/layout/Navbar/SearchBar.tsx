@@ -7,12 +7,13 @@ interface SearchBarProps {
     searchResults: any[];
     isSearching: boolean;
     onSearchChange: (query: string) => void;
-    onSearchSubmit: (e: React.FormEvent) => void;
+    onSearchSubmit: (e: React.FormEvent, queryOverride?: string) => void;
     onClearSearch: () => void;
     onResultSelect: (item: any) => void;
     placeholder?: string;
     showShortcut?: boolean;
     autoFocus?: boolean;
+    theme?: 'anime' | 'manga';
 }
 
 const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(({
@@ -26,6 +27,7 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(({
     placeholder = 'Search...',
     showShortcut = true,
     autoFocus = false,
+    theme = 'anime',
 }, ref) => {
     return (
         <div className="relative group w-full">
@@ -71,9 +73,10 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(({
                 isLoading={isSearching}
                 onSelect={onResultSelect}
                 onViewAll={() => {
-                    onSearchSubmit({ preventDefault: () => { } } as React.FormEvent);
-                    onSearchChange('');
+                    onSearchSubmit({ preventDefault: () => { } } as React.FormEvent, searchQuery);
+                    onClearSearch();
                 }}
+                theme={theme}
             />
         </div>
     );

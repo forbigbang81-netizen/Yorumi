@@ -8,14 +8,13 @@ import SearchBar from './SearchBar';
 import NavToggle from './NavToggle';
 import UserMenu from './UserMenu';
 import RandomButton from './RandomButton';
-import { useDebounce } from '../../../hooks/useDebounce';
 
 interface NavbarProps {
     activeTab: 'anime' | 'manga';
     searchQuery: string;
     onTabChange: (tab: 'anime' | 'manga') => void;
     onSearchChange: (query: string) => void;
-    onSearchSubmit: (e: React.FormEvent) => void;
+    onSearchSubmit: (e: React.FormEvent, queryOverride?: string) => void;
     onClearSearch: () => void;
     onLogoClick?: () => void;
     searchResults?: any[];
@@ -42,21 +41,18 @@ export default function Navbar({
     const [isLoadingRandom, setIsLoadingRandom] = useState(false);
     const [showMobileSearch, setShowMobileSearch] = useState(false);
 
-    // Debounce Logic
+    // Local input state for instant typing UX
     const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
-    const debouncedSearchQuery = useDebounce(localSearchQuery, 220);
 
     // Sync local state when prop changes (e.g. clear button from parent)
     useEffect(() => {
         setLocalSearchQuery(searchQuery);
     }, [searchQuery]);
 
-    // Trigger parent search when debounced value changes
-    useEffect(() => {
-        if (debouncedSearchQuery === localSearchQuery && debouncedSearchQuery !== searchQuery) {
-            onSearchChange(debouncedSearchQuery);
-        }
-    }, [debouncedSearchQuery, localSearchQuery, onSearchChange, searchQuery]);
+    const handleLocalSearchChange = (value: string) => {
+        setLocalSearchQuery(value);
+        onSearchChange(value);
+    };
 
     // Handle scroll for transparent navbar
     useEffect(() => {
@@ -112,11 +108,13 @@ export default function Navbar({
     };
 
     const handleResultSelect = (item: any) => {
+        setLocalSearchQuery('');
         navigate(item.url);
         onClearSearch();
     };
 
     const handleMobileResultSelect = (item: any) => {
+        setLocalSearchQuery('');
         navigate(item.url);
         onClearSearch();
         setShowMobileSearch(false);
@@ -156,10 +154,15 @@ export default function Navbar({
                             searchQuery={localSearchQuery}
                             searchResults={searchResults}
                             isSearching={isSearching}
-                            onSearchChange={setLocalSearchQuery}
-                            onSearchSubmit={onSearchSubmit}
+                            onSearchChange={handleLocalSearchChange}
+                            onSearchSubmit={(e) => {
+                                onSearchSubmit(e, localSearchQuery);
+                                setLocalSearchQuery('');
+                                onClearSearch();
+                            }}
                             onClearSearch={handleClearAndFocus}
                             onResultSelect={handleResultSelect}
+                            theme={activeTab}
                         />
                     </div>
 
@@ -212,12 +215,18 @@ export default function Navbar({
                         searchQuery={localSearchQuery}
                         searchResults={searchResults}
                         isSearching={isSearching}
-                        onSearchChange={setLocalSearchQuery}
-                        onSearchSubmit={(e) => { onSearchSubmit(e); setShowMobileSearch(false); }}
+                        onSearchChange={handleLocalSearchChange}
+                        onSearchSubmit={(e) => {
+                            onSearchSubmit(e, localSearchQuery);
+                            setLocalSearchQuery('');
+                            onClearSearch();
+                            setShowMobileSearch(false);
+                        }}
                         onClearSearch={onClearSearch}
                         onResultSelect={handleMobileResultSelect}
                         showShortcut={false}
                         autoFocus={showMobileSearch}
+                        theme={activeTab}
                     />
 
                     <div className="flex items-center justify-between">

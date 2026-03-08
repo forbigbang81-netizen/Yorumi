@@ -11,6 +11,12 @@ import MangaPage from './pages/MangaPage';
 import GenrePage from './pages/GenrePage';
 import MangaGenrePage from './pages/MangaGenrePage';
 import ProfilePage from './pages/ProfilePage';
+import ContinueWatchingPage from './pages/ContinueWatchingPage';
+import WatchListPage from './pages/WatchListPage';
+import FavoriteAnimePage from './pages/FavoriteAnimePage';
+import MangaContinueReadingPage from './pages/MangaContinueReadingPage';
+import MangaReadListPage from './pages/MangaReadListPage';
+import FavoriteMangaPage from './pages/FavoriteMangaPage';
 import Footer from './components/layout/Footer';
 import { useAnime } from './hooks/useAnime';
 import { animeService } from './services/animeService';
@@ -140,10 +146,11 @@ function App() {
     else navigate('/manga');
   };
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
+  const handleSearchSubmit = (e: React.FormEvent, queryOverride?: string) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
-    navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=${activeTab}`);
+    const queryToUse = (queryOverride ?? searchQuery).trim();
+    if (!queryToUse) return;
+    navigate(`/search?q=${encodeURIComponent(queryToUse)}&type=${activeTab}`);
     setSearchQuery('');
     setSearchResults([]);
   };
@@ -192,6 +199,12 @@ function App() {
         <Route path="/genre/:name" element={<GenrePage />} />
         <Route path="/manga/genre/:name" element={<MangaGenrePage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/anime/continue-watching" element={<ContinueWatchingPage />} />
+        <Route path="/anime/watch-list" element={<WatchListPage />} />
+        <Route path="/anime/favorites" element={<FavoriteAnimePage />} />
+        <Route path="/manga/continue-reading" element={<MangaContinueReadingPage />} />
+        <Route path="/manga/read-list" element={<MangaReadListPage />} />
+        <Route path="/manga/favorites" element={<FavoriteMangaPage />} />
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

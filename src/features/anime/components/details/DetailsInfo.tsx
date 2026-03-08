@@ -1,4 +1,4 @@
-import { Play, Plus, Check } from 'lucide-react';
+import { Play, Plus, Check, Heart } from 'lucide-react';
 import type { Anime } from '../../../../types/anime';
 import AnimeLogoImage from '../../../../components/anime/AnimeLogoImage';
 
@@ -6,12 +6,14 @@ interface DetailsInfoProps {
     anime: Anime;
     episodesCount: number;
     inList: boolean;
+    inFavorites?: boolean;
     onWatch: () => void;
     onToggleList: () => void;
+    onToggleFavorite?: () => void;
     children?: React.ReactNode;
 }
 
-export default function DetailsInfo({ anime, episodesCount, inList, onWatch, onToggleList, children }: DetailsInfoProps) {
+export default function DetailsInfo({ anime, episodesCount, inList, inFavorites = false, onWatch, onToggleList, onToggleFavorite, children }: DetailsInfoProps) {
     // ... helper ...
     const getLatestEpisode = () => {
         if (anime.status === 'NOT_YET_RELEASED') return null;
@@ -88,6 +90,16 @@ export default function DetailsInfo({ anime, episodesCount, inList, onWatch, onT
                                 <span className="whitespace-nowrap">Add to List</span>
                             </>
                         )}
+                    </button>
+                    <button
+                        onClick={onToggleFavorite}
+                        className={`h-10 md:h-12 w-10 md:w-12 rounded-full transition-all border flex items-center justify-center ${inFavorites
+                            ? 'bg-red-500/20 text-red-400 border-red-400/40'
+                            : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+                            }`}
+                        title={inFavorites ? 'Remove Favorite' : 'Add Favorite'}
+                    >
+                        <Heart className={`w-4 h-4 md:w-5 md:h-5 ${inFavorites ? 'fill-current' : ''}`} />
                     </button>
                 </div>
 

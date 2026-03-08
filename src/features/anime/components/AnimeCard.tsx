@@ -8,9 +8,10 @@ interface AnimeCardProps {
     onMouseEnter?: (anime: Anime) => void;
     inList?: boolean;
     onToggleList?: (anime: Anime) => void;
+    disableTilt?: boolean;
 }
 
-const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onMouseEnter, inList, onToggleList }) => {
+const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onMouseEnter, inList, onToggleList, disableTilt = false }) => {
     const cardRef = React.useRef<HTMLDivElement>(null);
     const [rotation, setRotation] = React.useState({ x: 0, y: 0 });
     const [glare, setGlare] = React.useState({ x: 50, y: 50, opacity: 0 });
@@ -21,6 +22,10 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
     const episodeCount = isUnreleased ? null : (anime.latestEpisode || anime.episodes);
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (disableTilt) {
+            onMouseEnter?.(anime);
+            return;
+        }
         if (!cardRef.current) return;
         const rect = cardRef.current.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -43,6 +48,10 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
     };
 
     const handleMouseLeave = () => {
+        if (disableTilt) {
+            setIsHovered(false);
+            return;
+        }
         setRotation({ x: 0, y: 0 });
         setGlare(prev => ({ ...prev, opacity: 0 }));
         setIsHovered(false);
@@ -65,7 +74,9 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
             <div
                 className="relative aspect-[2/3] rounded-lg overflow-hidden mb-3 shadow-lg ring-0 outline-none transition-all duration-75 ease-out"
                 style={{
-                    transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovered ? 1.05 : 1}, ${isHovered ? 1.05 : 1}, 1)`,
+                    transform: disableTilt
+                        ? 'none'
+                        : `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg) scale3d(${isHovered ? 1.05 : 1}, ${isHovered ? 1.05 : 1}, 1)`,
                     transformStyle: 'preserve-3d',
                     boxShadow: isHovered
                         ? '0 20px 40px -5px rgba(0,0,0,0.4), 0 10px 20px -5px rgba(0,0,0,0.2)'
@@ -77,7 +88,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
                     className="absolute inset-0 z-30 pointer-events-none mix-blend-overlay transition-opacity duration-300"
                     style={{
                         background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,0.3) 0%, transparent 80%)`,
-                        opacity: glare.opacity
+                        opacity: disableTilt ? 0 : glare.opacity
                     }}
                 />
 
