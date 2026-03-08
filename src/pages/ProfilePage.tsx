@@ -574,9 +574,14 @@ const MangaStatsOverview = () => {
             .trim();
 
     const mangaGroups = new Map<string, Set<string>>();
+    const groupProgressChapters = new Map<string, Set<string>>();
     const ensureGroup = (groupKey: string) => {
         if (!mangaGroups.has(groupKey)) mangaGroups.set(groupKey, new Set<string>());
         return mangaGroups.get(groupKey)!;
+    };
+    const ensureGroupProgress = (groupKey: string) => {
+        if (!groupProgressChapters.has(groupKey)) groupProgressChapters.set(groupKey, new Set<string>());
+        return groupProgressChapters.get(groupKey)!;
     };
 
     readList.forEach((item) => {
@@ -587,6 +592,10 @@ const MangaStatsOverview = () => {
     continueReadingList.forEach((item) => {
         const key = normalizeTitleKey(item.mangaTitle) || `id:${String(item.mangaId)}`;
         ensureGroup(key).add(String(item.mangaId));
+        const chapter = String(item.chapterNumber || '').trim();
+        if (chapter) {
+            ensureGroupProgress(key).add(chapter);
+        }
     });
 
     favorites.forEach((item) => {
@@ -597,11 +606,12 @@ const MangaStatsOverview = () => {
     const totalManga = hasAccountMangaHistory ? mangaGroups.size : 0;
 
     const totalChaptersRead = hasAccountMangaHistory
-        ? Array.from(mangaGroups.values()).reduce((sum, ids) => {
+        ? Array.from(mangaGroups.entries()).reduce((sum, [groupKey, ids]) => {
             const uniqueChapters = new Set<string>();
             ids.forEach((id) => {
                 (chapterHistory[id] || []).forEach((chapter) => uniqueChapters.add(String(chapter)));
             });
+            (groupProgressChapters.get(groupKey) || new Set<string>()).forEach((chapter) => uniqueChapters.add(chapter));
             return sum + uniqueChapters.size;
         }, 0)
         : 0;
@@ -1109,9 +1119,14 @@ const AnimeStatsOverview = () => {
             .trim();
 
     const animeGroups = new Map<string, Set<string>>();
+    const groupProgressEpisodes = new Map<string, Set<number>>();
     const ensureGroup = (groupKey: string) => {
         if (!animeGroups.has(groupKey)) animeGroups.set(groupKey, new Set<string>());
         return animeGroups.get(groupKey)!;
+    };
+    const ensureGroupProgress = (groupKey: string) => {
+        if (!groupProgressEpisodes.has(groupKey)) groupProgressEpisodes.set(groupKey, new Set<number>());
+        return groupProgressEpisodes.get(groupKey)!;
     };
 
     watchList.forEach((item) => {
@@ -1122,6 +1137,10 @@ const AnimeStatsOverview = () => {
     continueWatchingList.forEach((item) => {
         const key = normalizeTitleKey(item.animeTitle) || `id:${String(item.animeId)}`;
         ensureGroup(key).add(String(item.animeId));
+        const epNum = Number(item.episodeNumber);
+        if (Number.isFinite(epNum) && epNum > 0) {
+            ensureGroupProgress(key).add(epNum);
+        }
     });
 
     favorites.forEach((item) => {
@@ -1132,11 +1151,12 @@ const AnimeStatsOverview = () => {
     const totalAnime = hasAccountAnimeHistory ? animeGroups.size : 0;
 
     const totalEpisodesWatched = hasAccountAnimeHistory
-        ? Array.from(animeGroups.values()).reduce((sum, ids) => {
+        ? Array.from(animeGroups.entries()).reduce((sum, [groupKey, ids]) => {
             const uniqueEpisodes = new Set<number>();
             ids.forEach((id) => {
                 (episodeHistory[id] || []).forEach((ep) => uniqueEpisodes.add(ep));
             });
+            (groupProgressEpisodes.get(groupKey) || new Set<number>()).forEach((ep) => uniqueEpisodes.add(ep));
             return sum + uniqueEpisodes.size;
         }, 0)
         : 0;
