@@ -70,6 +70,8 @@ const mapAnilistToAnime = (item: any) => {
 // Simple in-memory cache
 const cache = new Map<string, { data: any, timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const streamCache = new Map<string, { data: any, timestamp: number }>();
+const STREAM_CACHE_TTL = 20 * 60 * 1000; // 20 minutes
 
 const getCached = (key: string) => {
     if (cache.has(key)) {
@@ -84,6 +86,17 @@ const getCached = (key: string) => {
 
 const setCache = (key: string, data: any) => {
     cache.set(key, { data, timestamp: Date.now() });
+};
+
+const getCachedStream = (key: string) => {
+    if (streamCache.has(key)) {
+        const entry = streamCache.get(key)!;
+        if (Date.now() - entry.timestamp < STREAM_CACHE_TTL) {
+            return entry.data;
+        }
+        streamCache.delete(key);
+    }
+    return null;
 };
 
 // Track in-flight requests to prevent duplicates
@@ -336,8 +349,43 @@ export const animeService = {
 
     // Get stream links from scraper
     async getStreams(animeSession: string, episodeSession: string) {
-        const res = await fetch(`${API_BASE}/scraper/streams?anime_session=${animeSession}&ep_session=${episodeSession}`);
-        return res.json();
+        const cacheKey = `streams:${animeSession}:${episodeSession}`;
+        const cached = getCachedStream(cacheKey);
+        if (cached) return cached;
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/scraper/streams?anime_session=${animeSession}&ep_session=${episodeSession}`);
+                const data = await res.json();
+                if (Array.isArray(data) && data.length > 0) {
+                    streamCache.set(cacheKey, { data, timestamp: Date.now() });
+                }
+                return data;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
+    },
+
+    async prefetchStreams(animeSession: string, episodeSessions: string[]) {
+        const sessions = [...new Set(episodeSessions.filter(Boolean))];
+        if (!animeSession || sessions.length === 0) return;
+
+        await fetch(`${API_BASE}/scraper/prefetch/streams`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                anime_session: animeSession,
+                ep_sessions: sessions,
+            }),
+        }).catch(() => undefined);
     },
 
     // Get HiAnime spotlight (enriched with AniList data)

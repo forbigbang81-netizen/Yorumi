@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 
 import type { Episode } from '../types/anime';
 import type { StreamLink } from '../types/stream';
@@ -17,7 +17,7 @@ export function useStreams(scraperSession: string | null) {
 
 
 
-    const ensureStreamData = (episode: Episode): Promise<StreamLink[]> => {
+    const ensureStreamData = useCallback((episode: Episode): Promise<StreamLink[]> => {
         if (!scraperSession) return Promise.resolve([]);
         if (!streamCache.current.has(episode.session)) {
             const promise = getStreamData(episode, scraperSession)
@@ -29,13 +29,13 @@ export function useStreams(scraperSession: string | null) {
             streamCache.current.set(episode.session, promise);
         }
         return streamCache.current.get(episode.session)!;
-    };
+    }, [scraperSession]);
 
-    const prefetchStream = (episode: Episode) => {
+    const prefetchStream = useCallback((episode: Episode) => {
         if (scraperSession) ensureStreamData(episode);
-    };
+    }, [scraperSession, ensureStreamData]);
 
-    const loadStream = async (episode: Episode) => {
+    const loadStream = useCallback(async (episode: Episode) => {
         setCurrentEpisode(episode);
         setStreamLoading(true);
         setStreams([]);
@@ -52,28 +52,28 @@ export function useStreams(scraperSession: string | null) {
         } finally {
             setStreamLoading(false);
         }
-    };
+    }, [ensureStreamData]);
 
-    const handleQualityChange = (index: number) => {
+    const handleQualityChange = useCallback((index: number) => {
         setSelectedStreamIndex(index);
         setIsAutoQuality(false);
         setShowQualityMenu(false);
-    };
+    }, []);
 
-    const setAutoQuality = () => {
+    const setAutoQuality = useCallback(() => {
         setSelectedStreamIndex(0);
         setIsAutoQuality(true);
         setShowQualityMenu(false);
-    };
+    }, []);
 
     // Clear all stream state when switching anime
-    const clearStreams = () => {
+    const clearStreams = useCallback(() => {
         setCurrentEpisode(null);
         setStreams([]);
         setSelectedStreamIndex(0);
         setStreamLoading(false);
         streamCache.current.clear();
-    };
+    }, []);
 
     return {
         // State

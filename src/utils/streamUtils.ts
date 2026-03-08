@@ -1,5 +1,6 @@
 import type { StreamLink } from '../types/stream';
 import type { Episode } from '../types/anime';
+import { animeService } from '../services/animeService';
 
 /**
  * Maps numerical quality to standard quality labels
@@ -18,11 +19,7 @@ export const getStreamData = async (
     episode: Episode,
     scraperSession: string
 ): Promise<StreamLink[]> => {
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-    const res = await fetch(
-        `${API_BASE}/scraper/streams?anime_session=${scraperSession}&ep_session=${episode.session}`
-    );
-    const data = await res.json();
+    const data = await animeService.getStreams(scraperSession, episode.session);
 
     if (data && data.length > 0) {
         const qualityMap = new Map<string, StreamLink>();

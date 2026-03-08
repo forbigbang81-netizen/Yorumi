@@ -35,6 +35,16 @@ export function useManga() {
     const chapterPagesCache = useRef(new Map<string, Promise<MangaPage[]>>());
     const latestChapterId = useRef<string | null>(null);
 
+    const prefetchPageImages = useCallback((pages: MangaPage[], limit: number = 4) => {
+        pages.slice(0, limit).forEach((page) => {
+            if (!page?.imageUrl) return;
+            const img = new Image();
+            img.decoding = 'async';
+            img.loading = 'eager';
+            img.src = page.imageUrl;
+        });
+    }, []);
+
     // Fetch manga (Hot Updates for grid)
     useEffect(() => {
         const fetchManga = async () => {
@@ -512,6 +522,8 @@ export function useManga() {
             // Only update if this is still the latest requested chapter
             if (latestChapterId.current === requestId) {
                 setChapterPages(pages);
+                // Warm browser image cache for instant page painting.
+                prefetchPageImages(pages);
             }
         } catch (err) {
             if (latestChapterId.current === requestId) {
@@ -524,7 +536,7 @@ export function useManga() {
             if (latestChapterId.current === requestId) {
                 setMangaPagesLoading(false);
 
-                // Auto-prefetch next 3 chapters for seamless reading
+                // Auto-prefetch next chapters for seamless reading
                 prefetchNextChapters(chapter, 3);
             }
         }
@@ -563,6 +575,21 @@ export function useManga() {
         if (urlsToPrefetch.length > 0) {
             console.log(`[useManga] Prefetching ${urlsToPrefetch.length} chapters via backend`);
             mangaService.prefetchChapters(urlsToPrefetch);
+
+            // Also warm client-side page/image cache for the very next chapter.
+            const nextUrl = urlsToPrefetch[0];
+            if (nextUrl && !chapterPagesCache.current.has(nextUrl)) {
+                const warmPromise = mangaService.getChapterPages(nextUrl)
+                    .then((data) => {
+                        const pages = data?.pages || [];
+                        if (pages.length > 0) {
+                            prefetchPageImages(pages);
+                        }
+                        return pages;
+                    })
+                    .catch(() => []);
+                chapterPagesCache.current.set(nextUrl, warmPromise);
+            }
         }
     };
 

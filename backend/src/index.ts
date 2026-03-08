@@ -123,6 +123,7 @@ app.get('/', (req, res) => {
 
 import { warmSpotlightCache } from './api/scraper/manga.service';
 import { warmupAnimeDatabase } from './api/logo/fanart.service';
+import { startScraperWarmer } from './api/scraper/scraper-warmer';
 
 if (process.env.NODE_ENV !== 'production' || process.env.IS_ELECTRON) {
     const startServer = async () => {
@@ -158,6 +159,9 @@ if (process.env.NODE_ENV !== 'production' || process.env.IS_ELECTRON) {
             console.log(`✅ Server is running on http://localhost:${port}`);
         });
 
+        // Keep most requested stream keys warm for faster playback starts.
+        startScraperWarmer();
+
         // Schedule periodic spotlight refresh every 12 hours
         setInterval(() => {
             console.log('⏰ Running scheduled spotlight refresh...');
@@ -170,3 +174,4 @@ if (process.env.NODE_ENV !== 'production' || process.env.IS_ELECTRON) {
 }
 
 export default app;
+
