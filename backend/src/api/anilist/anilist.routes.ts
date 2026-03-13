@@ -22,6 +22,17 @@ router.get('/top', async (req, res) => {
     }
 });
 
+// Get spotlight anime (top 10)
+router.get('/spotlight', async (_req, res) => {
+    try {
+        const spotlight = await anilistService.getSpotlightAnime(10);
+        res.json({ spotlight });
+    } catch (error) {
+        console.error('Error in spotlight anime route:', error);
+        res.status(500).json({ error: 'Failed to fetch spotlight anime' });
+    }
+});
+
 // Get top/popular manga (by SCORE)
 router.get('/top/manga', async (req, res) => {
     try {

@@ -155,7 +155,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
             // Background refresh function (non-blocking)
             const refreshInBackground = () => {
-                animeService.getHiAnimeSpotlight().then(({ data }) => {
+                animeService.getSpotlightAnime().then(({ data }) => {
                     if (data && data.length > 0) {
                         setSpotlightAnime(data);
 
@@ -172,7 +172,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                         preloadLogos(spotlightIds);
                     }
                 }).catch(e => {
-                    console.error("Failed to fetch HiAnime spotlight", e);
+                    console.error("Failed to fetch AniWatch spotlight", e);
                 });
             };
 
@@ -185,7 +185,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             // No cache available - must await the network request
             setSpotlightLoading(true);
             try {
-                const { data } = await animeService.getHiAnimeSpotlight();
+                const { data } = await animeService.getSpotlightAnime();
                 if (data && data.length > 0) {
                     setSpotlightAnime(data);
 
@@ -202,7 +202,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                     preloadLogos(spotlightIds);
                 }
             } catch (e) {
-                console.error("Failed to fetch HiAnime spotlight", e);
+                console.error("Failed to fetch AniWatch spotlight", e);
             } finally {
                 setSpotlightLoading(false);
             }

@@ -388,19 +388,19 @@ export const animeService = {
         }).catch(() => undefined);
     },
 
-    // Get HiAnime spotlight (enriched with AniList data)
-    async getHiAnimeSpotlight() {
+    // Get spotlight (AniWatch/HiAnime scraper, enriched with AniList data)
+    async getSpotlightAnime() {
         try {
             const res = await fetch(`${API_BASE}/hianime/spotlight`);
-            if (!res.ok) throw new Error('Failed to fetch HiAnime spotlight');
+            if (!res.ok) throw new Error('Failed to fetch AniWatch spotlight');
             const { spotlight } = await res.json();
 
             // Map to Anime interface
-            const data = spotlight.map((item: any) => {
+            const data = (spotlight || []).map((item: any) => {
                 // Base metadata from AniList
                 const anime = mapAnilistToAnime(item.anilist || {});
 
-                // Override images with HiAnime high-res versions
+                // Override images with AniWatch/HiAnime high-res versions
                 if (item.banner) {
                     anime.anilist_banner_image = item.banner;
                 }
@@ -411,10 +411,9 @@ export const animeService = {
                 }
                 return anime;
             });
-
             return { data };
         } catch (error) {
-            console.error('Error in getHiAnimeSpotlight:', error);
+            console.error('Error in getSpotlightAnime:', error);
             // Fallback to trending
             return this.getTrendingAnime();
         }

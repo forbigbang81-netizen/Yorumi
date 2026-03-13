@@ -8,7 +8,7 @@ let inMemorySpotlightCache: any = null;
 let isRefreshing = false;
 
 export class HiAnimeScraper {
-    private readonly BASE_URL = 'https://hianime.to';
+    private readonly BASE_URL = 'https://aniwatchtv.to';
 
     async getSpotlightAnime(): Promise<any[]> {
         try {

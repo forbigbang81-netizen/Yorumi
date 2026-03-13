@@ -257,6 +257,31 @@ const MEDIA_FIELDS = `
 
 
 export const anilistService = {
+    async getSpotlightAnime(perPage: number = 10) {
+        const cacheKey = getCacheKey('spotlight_anime', perPage);
+        const cached = getFromCache(cacheKey);
+        if (cached) return cached;
+
+        const query = `
+            query ($perPage: Int) {
+                Page(page: 1, perPage: $perPage) {
+                    media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await rateLimitedRequest(query, { perPage }, { cacheTtlSeconds: 1800 });
+            const result = response.data.Page.media;
+            setCache(cacheKey, result, CACHE_TTL.popular);
+            return result;
+        } catch (error) {
+            console.error('Error fetching spotlight anime:', error);
+            return [];
+        }
+    },
     async getCoverImages(malIds: number[]) {
         const query = `
             query ($idMal: [Int]) {
