@@ -1,5 +1,7 @@
 import * as mangakatana from '../../scraper/mangakatana';
 import { anilistService } from '../anilist/anilist.service';
+import { cacheGet, cacheSet } from '../../utils/redis-cache';
+import { createHash } from 'crypto';
 
 export interface MangaSearchResult extends mangakatana.MangaSearchResult {
     source: 'mangakatana';
@@ -8,6 +10,10 @@ export interface MangaSearchResult extends mangakatana.MangaSearchResult {
 // In-memory search cache (5 minute TTL)
 const searchCache = new Map<string, { data: any[], timestamp: number }>();
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CHAPTER_LIST_CACHE_KEY_PREFIX = 'manga:chapters:';
+const CHAPTER_PAGES_CACHE_KEY_PREFIX = 'manga:pages:';
+
+const hashKey = (input: string) => createHash('sha1').update(input).digest('hex');
 
 /**
  * Search manga (MangaKatana only) with caching
@@ -110,11 +116,19 @@ export async function getMangaDetails(id: string) {
 export async function getChapterList(id: string) {
     const realId = id.startsWith('mk:') ? id.replace('mk:', '') : id;
     const now = Date.now();
+    const redisKey = `${CHAPTER_LIST_CACHE_KEY_PREFIX}${realId}`;
 
     const cached = chapterListCache.get(realId);
     if (cached && (now - cached.timestamp) < CHAPTER_LIST_CACHE_TTL) {
         console.log(`[Cache] Chapter list hit: ${realId}`);
         return cached.data;
+    }
+
+    const redisCached = await cacheGet<any[]>(redisKey);
+    if (redisCached && redisCached.length > 0) {
+        console.log(`[Cache] Chapter list hit (redis): ${realId}`);
+        chapterListCache.set(realId, { data: redisCached, timestamp: now });
+        return redisCached;
     }
 
     const inFlight = chapterListInFlight.get(realId);
@@ -137,6 +151,9 @@ export async function getChapterList(id: string) {
 
             if (normalized.length > 0) {
                 chapterListCache.set(realId, { data: normalized, timestamp: Date.now() });
+                cacheSet(redisKey, normalized, Math.ceil(CHAPTER_LIST_CACHE_TTL / 1000)).catch((error) => {
+                    console.warn(`[Cache] Redis write failed for chapter list ${realId}`, error);
+                });
             }
 
             return normalized;
@@ -162,12 +179,20 @@ const pagesInFlight = new Map<string, Promise<any[]>>();
  */
 export async function getChapterPages(url: string) {
     const now = Date.now();
+    const redisKey = `${CHAPTER_PAGES_CACHE_KEY_PREFIX}${hashKey(url)}`;
 
     // Check cache first
     const cached = pagesCache.get(url);
     if (cached && (now - cached.timestamp) < PAGES_CACHE_TTL) {
         console.log(`[Cache] Chapter pages hit: ${url.slice(-30)}`);
         return cached.data;
+    }
+
+    const redisCached = await cacheGet<any[]>(redisKey);
+    if (redisCached && redisCached.length > 0) {
+        console.log(`[Cache] Chapter pages hit (redis): ${url.slice(-30)}`);
+        pagesCache.set(url, { data: redisCached, timestamp: now });
+        return redisCached;
     }
 
     const inFlight = pagesInFlight.get(url);
@@ -189,6 +214,9 @@ export async function getChapterPages(url: string) {
             // Cache successful results
             if (pages && pages.length > 0) {
                 pagesCache.set(url, { data: pages, timestamp: Date.now() });
+                cacheSet(redisKey, pages, Math.ceil(PAGES_CACHE_TTL / 1000)).catch((error) => {
+                    console.warn(`[Cache] Redis write failed for chapter pages ${url.slice(-30)}`, error);
+                });
 
                 // Clean old entries if cache is too large
                 if (pagesCache.size > 100) {
