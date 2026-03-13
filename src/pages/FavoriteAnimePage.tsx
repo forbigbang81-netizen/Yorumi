@@ -1,12 +1,46 @@
 import { ArrowLeft, Heart } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
 import { slugify } from '../utils/slugify';
+import { animeService } from '../services/animeService';
 
 export default function FavoriteAnimePage() {
     const navigate = useNavigate();
     const { favorites, loading, removeFavorite } = useFavoriteAnime();
+    const [synopsisById, setSynopsisById] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadMissingSynopsis = async () => {
+            const missingIds = favorites
+                .filter((item) => !item.synopsis && !synopsisById[item.id])
+                .map((item) => item.id);
+
+            if (missingIds.length === 0) return;
+
+            const updates: Record<string, string> = {};
+            await Promise.all(
+                missingIds.map(async (id) => {
+                    try {
+                        const res = await animeService.getAnimeDetails(id);
+                        updates[id] = res?.data?.synopsis || '';
+                    } catch {
+                        updates[id] = '';
+                    }
+                })
+            );
+
+            if (!cancelled && Object.keys(updates).length > 0) {
+                setSynopsisById((prev) => ({ ...prev, ...updates }));
+            }
+        };
+
+        loadMissingSynopsis();
+        return () => { cancelled = true; };
+    }, [favorites, synopsisById]);
 
     return (
         <div className="min-h-screen bg-[#07090d] pt-24 pb-12">
@@ -40,7 +74,7 @@ export default function FavoriteAnimePage() {
                                 status: 'UNKNOWN',
                                 episodes: null,
                                 genres: [],
-                                synopsis: ''
+                                synopsis: item.synopsis || synopsisById[item.id] || ''
                             };
 
                             return (
@@ -64,4 +98,3 @@ export default function FavoriteAnimePage() {
         </div>
     );
 }
-
