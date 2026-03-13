@@ -104,6 +104,7 @@ export default function HomePage() {
                 onPageChange={anime.changeViewAllPage}
                 onBack={anime.closeViewAll}
                 onAnimeClick={handleAnimeClick}
+                onAnimeHover={anime.prefetchEpisodes}
             />
         );
     }
@@ -118,6 +119,7 @@ export default function HomePage() {
                 onPageChange={anime.changeViewAllPage}
                 onBack={anime.closeViewAll}
                 onAnimeClick={handleAnimeClick}
+                onAnimeHover={anime.prefetchEpisodes}
             />
         );
     }
@@ -132,6 +134,7 @@ export default function HomePage() {
                 onPageChange={anime.changeViewAllPage}
                 onBack={anime.closeViewAll}
                 onAnimeClick={handleAnimeClick}
+                onAnimeHover={anime.prefetchEpisodes}
             />
         );
     }
@@ -149,6 +152,7 @@ export default function HomePage() {
                 onWatchClick={handleWatchClick}
                 onViewAll={anime.openViewAll}
                 onRemoveFromHistory={anime.removeFromHistory}
+                onAnimeHover={anime.prefetchEpisodes}
             />
         </div>
     );

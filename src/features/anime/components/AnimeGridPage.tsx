@@ -16,6 +16,7 @@ interface AnimeGridPageProps {
     onPageChange: (page: number) => void;
     onBack: () => void;
     onAnimeClick: (anime: Anime) => void;
+    onAnimeHover?: (anime: Anime) => void;
 }
 
 export default function AnimeGridPage({
@@ -25,7 +26,8 @@ export default function AnimeGridPage({
     pagination,
     onPageChange,
     onBack,
-    onAnimeClick
+    onAnimeClick,
+    onAnimeHover
 }: AnimeGridPageProps) {
     return (
         <div className="pb-12 min-h-screen pt-24 container mx-auto px-4 animate-in fade-in duration-300">
@@ -50,6 +52,7 @@ export default function AnimeGridPage({
                                 key={item.mal_id}
                                 anime={item}
                                 onClick={() => onAnimeClick(item)}
+                                onMouseEnter={() => onAnimeHover?.(item)}
                             />
                         ))}
                     </div>

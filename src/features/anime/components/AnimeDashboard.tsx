@@ -18,6 +18,7 @@ interface AnimeDashboardProps {
     onWatchClick: (anime: Anime, episodeNumber?: number) => void;
     onViewAll: (type: 'trending' | 'seasonal' | 'continue_watching' | 'popular') => void;
     onRemoveFromHistory: (animeId: number | string) => void;
+    onAnimeHover?: (anime: Anime) => void;
 }
 
 export default function AnimeDashboard({
@@ -29,7 +30,8 @@ export default function AnimeDashboard({
     onAnimeClick,
     onWatchClick,
     onViewAll,
-    onRemoveFromHistory
+    onRemoveFromHistory,
+    onAnimeHover
 }: AnimeDashboardProps) {
     const navigate = useNavigate();
 
@@ -53,19 +55,21 @@ export default function AnimeDashboard({
                     />
                 )}
 
-                <TrendingNow
-                    animeList={trendingAnime}
-                    onAnimeClick={onAnimeClick}
-                    onWatchClick={onWatchClick}
-                    onViewAll={() => onViewAll('trending')}
-                />
+            <TrendingNow
+                animeList={trendingAnime}
+                onAnimeClick={onAnimeClick}
+                onWatchClick={onWatchClick}
+                onViewAll={() => onViewAll('trending')}
+                onMouseEnter={onAnimeHover}
+            />
 
-                <PopularSeason
-                    animeList={popularSeason}
-                    onAnimeClick={onAnimeClick}
-                    onWatchClick={onWatchClick}
-                    onViewAll={() => onViewAll('seasonal')}
-                />
+            <PopularSeason
+                animeList={popularSeason}
+                onAnimeClick={onAnimeClick}
+                onWatchClick={onWatchClick}
+                onViewAll={() => onViewAll('seasonal')}
+                onMouseEnter={onAnimeHover}
+            />
 
                 {/* Top Anime Grid (Preview) */}
                 <div className="flex items-center justify-between mb-6 pt-4">
@@ -85,6 +89,7 @@ export default function AnimeDashboard({
                             anime={item}
                             onClick={() => onAnimeClick(item)}
                             onWatchClick={() => onWatchClick(item)}
+                            onMouseEnter={() => onAnimeHover?.(item)}
                         />
                     ))}
                 </div>
