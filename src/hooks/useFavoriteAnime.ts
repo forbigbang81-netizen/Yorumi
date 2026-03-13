@@ -7,6 +7,7 @@ export interface FavoriteAnimeItem {
     id: string;
     title: string;
     image: string;
+    synopsis?: string;
     addedAt: number;
 }
 
@@ -61,4 +62,3 @@ export function useFavoriteAnime() {
         isFavorite
     };
 }
-

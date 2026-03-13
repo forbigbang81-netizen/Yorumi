@@ -86,7 +86,8 @@ export default function AnimeDetailsPage() {
             addFavorite({
                 id: animeId,
                 title: selectedAnime.title,
-                image: selectedAnime.images.jpg.large_image_url
+                image: selectedAnime.images.jpg.large_image_url,
+                synopsis: selectedAnime.synopsis || ''
             });
         }
     };
