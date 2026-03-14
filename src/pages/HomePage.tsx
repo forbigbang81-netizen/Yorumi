@@ -147,7 +147,6 @@ export default function HomePage() {
                 continueWatchingList={anime.continueWatchingList}
                 trendingAnime={anime.trendingAnime}
                 popularSeason={anime.popularSeason}
-                popularMonth={anime.popularMonth}
                 topTenToday={anime.topTenToday}
                 topTenWeek={anime.topTenWeek}
                 topTenMonth={anime.topTenMonth}

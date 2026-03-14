@@ -1,5 +1,6 @@
 // API Service for Anime operations - Using AniList
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import type { Anime } from "../types/anime";
 import { db } from "./firebase";
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -434,7 +435,7 @@ export const animeService = {
                 const payload = await res.json();
                 const top10 = payload.top10 || [];
                 const data = top10.map((item: any, index: number) => {
-                    const anime = mapAnilistToAnime(item.anilist || {});
+                    const anime = mapAnilistToAnime(item.anilist || {}) as Anime;
                     if (item.poster) {
                         anime.images.jpg.image_url = item.poster;
                         anime.images.jpg.large_image_url = item.poster;

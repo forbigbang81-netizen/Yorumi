@@ -14,7 +14,6 @@ interface AnimeDashboardProps {
     continueWatchingList: any[];
     trendingAnime: Anime[];
     popularSeason: Anime[];
-    popularMonth: Anime[];
     topTenToday: Anime[];
     topTenWeek: Anime[];
     topTenMonth: Anime[];
@@ -31,7 +30,6 @@ export default function AnimeDashboard({
     continueWatchingList,
     trendingAnime,
     popularSeason,
-    popularMonth,
     topTenToday,
     topTenWeek,
     topTenMonth,
