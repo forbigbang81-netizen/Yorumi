@@ -114,7 +114,9 @@ export async function searchManga(query: string): Promise<MangaSearchResult[]> {
 
             // Try to extract genres if available (often in .genres or .meta)
             const genres: string[] = [];
-            $el.find('.genres a').each((_, g) => genres.push($(g).text().toLowerCase()));
+            $el.find('.genres a').each((_, g) => {
+                genres.push($(g).text().toLowerCase());
+            });
 
             // NSFW Filter
             const isNsfw = ['hentai', 'adult', 'smut'].some(term =>
@@ -155,7 +157,9 @@ export async function searchManga(query: string): Promise<MangaSearchResult[]> {
             if (detailTitle) {
                 // NSFW Check (for redirected detail page)
                 const genres: string[] = [];
-                $('.genres a').each((_, g) => genres.push($(g).text().toLowerCase()));
+                $('.genres a').each((_, g) => {
+                    genres.push($(g).text().toLowerCase());
+                });
 
                 const isNsfw = ['hentai', 'adult', 'smut'].some(term =>
                     detailTitle.toLowerCase().includes(term) ||

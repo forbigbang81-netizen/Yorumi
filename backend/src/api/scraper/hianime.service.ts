@@ -158,7 +158,7 @@ export class HiAnimeScraper {
 
         // 1. Try Redis Cache
         try {
-            const cached = await redis.get(cacheKey);
+            const cached = await redis.get<any>(cacheKey);
             if (cached && Array.isArray(cached.top10) && cached.top10.length >= 10) {
                 inMemoryTop10Cache[range] = cached;
                 return cached;
