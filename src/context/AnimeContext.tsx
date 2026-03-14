@@ -12,6 +12,10 @@ interface AnimeContextType {
     spotlightAnime: Anime[];
     trendingAnime: Anime[];
     popularSeason: Anime[];
+    popularMonth: Anime[];
+    topTenToday: Anime[];
+    topTenWeek: Anime[];
+    topTenMonth: Anime[];
     selectedAnime: Anime | null;
     showAnimeDetails: boolean;
     showWatchModal: boolean;
@@ -23,6 +27,8 @@ interface AnimeContextType {
     spotlightLoading: boolean;
     trendingLoading: boolean;
     popularSeasonLoading: boolean;
+    popularMonthLoading: boolean;
+    topTenLoading: boolean;
     currentPage: number;
     lastVisiblePage: number;
     error: string | null;
@@ -75,6 +81,10 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const [spotlightAnime, setSpotlightAnime] = useState<Anime[]>([]);
     const [trendingAnime, setTrendingAnime] = useState<Anime[]>([]);
     const [popularSeason, setPopularSeason] = useState<Anime[]>([]);
+    const [popularMonth, setPopularMonth] = useState<Anime[]>([]);
+    const [topTenToday, setTopTenToday] = useState<Anime[]>([]);
+    const [topTenWeek, setTopTenWeek] = useState<Anime[]>([]);
+    const [topTenMonth, setTopTenMonth] = useState<Anime[]>([]);
     const [selectedAnime, setSelectedAnime] = useState<Anime | null>(null);
     const [watchedEpisodes, setWatchedEpisodes] = useState<Set<number>>(new Set());
 
@@ -87,6 +97,8 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const [spotlightLoading, setSpotlightLoading] = useState(true);
     const [trendingLoading, setTrendingLoading] = useState(true);
     const [popularSeasonLoading, setPopularSeasonLoading] = useState(true);
+    const [popularMonthLoading, setPopularMonthLoading] = useState(true);
+    const [topTenLoading, setTopTenLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     // Pagination
@@ -233,11 +245,39 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             finally { setPopularSeasonLoading(false); }
         };
 
+        const fetchPopularMonth = async () => {
+            if (popularMonth.length > 0) return;
+            setPopularMonthLoading(true);
+            try {
+                const pData = await animeService.getPopularThisSeason(1, 10);
+                if (pData?.data) setPopularMonth(pData.data);
+            } catch (e) { console.error(e); }
+            finally { setPopularMonthLoading(false); }
+        };
+
+        const fetchTopTen = async () => {
+            if (topTenToday.length >= 10 && topTenWeek.length >= 10 && topTenMonth.length >= 10) return;
+            setTopTenLoading(true);
+            try {
+                const [day, week, month] = await Promise.all([
+                    animeService.getAniwatchTopTen('day'),
+                    animeService.getAniwatchTopTen('week'),
+                    animeService.getAniwatchTopTen('month')
+                ]);
+                if (day?.data) setTopTenToday(day.data);
+                if (week?.data) setTopTenWeek(week.data);
+                if (month?.data) setTopTenMonth(month.data);
+            } catch (e) { console.error(e); }
+            finally { setTopTenLoading(false); }
+        };
+
         // Execute all fetches in parallel
         await Promise.all([
             fetchSpotlight(),
             fetchTrending(),
-            fetchPopular()
+            fetchPopular(),
+            fetchPopularMonth(),
+            fetchTopTen()
         ]);
     };
 
@@ -694,9 +734,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
     return (
         <AnimeContext.Provider value={{
-            topAnime, spotlightAnime, trendingAnime, popularSeason, selectedAnime,
+            topAnime, spotlightAnime, trendingAnime, popularSeason, popularMonth, topTenToday, topTenWeek, topTenMonth, selectedAnime,
             showAnimeDetails, showWatchModal, episodes, scraperSession, epLoading,
-            detailsLoading, loading, spotlightLoading, trendingLoading, popularSeasonLoading, currentPage, lastVisiblePage,
+            detailsLoading, loading, spotlightLoading, trendingLoading, popularSeasonLoading, popularMonthLoading, topTenLoading, currentPage, lastVisiblePage,
             error, episodeSearchQuery, viewAllAnime, viewAllLoading, viewAllPagination,
             viewMode, setEpisodeSearchQuery, handleAnimeClick, startWatching,
             watchAnime, closeDetails, closeWatch, closeAllModals, changePage,

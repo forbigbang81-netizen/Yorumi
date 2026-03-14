@@ -18,6 +18,7 @@ const CACHE_TTL = {
     trending: 5 * 60 * 1000,      // 5 minutes for trending
     seasonal: 10 * 60 * 1000,     // 10 minutes for seasonal
     popular: 30 * 60 * 1000,      // 30 minutes for all-time popular
+    monthly: 10 * 60 * 1000,      // 10 minutes for monthly popular
     top: 30 * 60 * 1000,          // 30 minutes for top rated
     search: 5 * 60 * 1000,        // 5 minutes for search results
     details: 60 * 60 * 1000,      // 1 hour for anime/manga details
@@ -109,6 +110,13 @@ function getRetryDelayMs(error: any, attempt: number): number {
     const max = 15000;
     const jitter = Math.floor(Math.random() * 350);
     return Math.min(base * Math.pow(2, attempt) + jitter, max);
+}
+
+function toDateInt(date: Date): number {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return year * 10000 + month * 100 + day;
 }
 
 async function rateLimitedRequest(
@@ -377,6 +385,46 @@ export const anilistService = {
             return result;
         } catch (error) {
             console.error('Error fetching popular this season:', error);
+            return { media: [], pageInfo: {} };
+        }
+    },
+
+    async getPopularThisMonth(page: number = 1, perPage: number = 10) {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const start = new Date(year, month, 1);
+        const end = new Date(year, month + 1, 0);
+        const startInt = toDateInt(start) - 1;
+        const endInt = toDateInt(end) + 1;
+
+        const cacheKey = getCacheKey('popular_month', page, perPage, year, month + 1);
+        const cached = getFromCache(cacheKey);
+        if (cached) return cached;
+
+        const query = `
+            query ($page: Int, $perPage: Int, $startDateGreater: FuzzyDateInt, $startDateLesser: FuzzyDateInt) {
+                Page(page: $page, perPage: $perPage) {
+                    pageInfo {
+                        total
+                        currentPage
+                        lastPage
+                        hasNextPage
+                    }
+                    media(type: ANIME, startDate_greater: $startDateGreater, startDate_lesser: $startDateLesser, sort: POPULARITY_DESC, isAdult: false) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await rateLimitedRequest(query, { page, perPage, startDateGreater: startInt, startDateLesser: endInt });
+            const result = response.data.Page;
+            setCache(cacheKey, result, CACHE_TTL.monthly);
+            return result;
+        } catch (error) {
+            console.error('Error fetching popular this month:', error);
             return { media: [], pageInfo: {} };
         }
     },

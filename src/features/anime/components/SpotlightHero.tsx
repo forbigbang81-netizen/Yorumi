@@ -69,15 +69,34 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                             anime.trailer?.thumbnail ??
                             anime.images?.jpg?.large_image_url ??
                             anime.images?.jpg?.image_url;
-
-
+                        const trailerSite = anime.trailer?.site?.toLowerCase();
+                        const trailerId = anime.trailer?.id;
+                        const isActive = index === selectedIndex;
+                        const trailerUrl = trailerId && trailerSite
+                            ? (trailerSite === 'youtube'
+                                ? `https://www.youtube.com/embed/${trailerId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${trailerId}&modestbranding=1&playsinline=1`
+                                : trailerSite === 'dailymotion'
+                                    ? `https://www.dailymotion.com/embed/video/${trailerId}?autoplay=1&mute=1&loop=1&controls=0`
+                                    : null)
+                            : null;
 
                         return (
                             <div key={anime.mal_id} className="relative min-w-full h-full flex-[0_0_100%]">
                                 {/* Background Image */}
                                 <div className="absolute inset-0 z-0 select-none">
+                                    {trailerUrl && isActive && (
+                                        <div className="absolute right-0 top-0 w-full md:w-[70%] h-full pointer-events-none">
+                                            <iframe
+                                                className="absolute inset-0 w-full h-full"
+                                                src={trailerUrl}
+                                                title={`${anime.title} trailer`}
+                                                allow="autoplay; encrypted-media; picture-in-picture"
+                                                allowFullScreen={false}
+                                            />
+                                        </div>
+                                    )}
                                     <div
-                                        className="absolute right-0 top-0 w-full md:w-[70%] h-full bg-no-repeat bg-cover bg-center md:opacity-80"
+                                        className={`absolute right-0 top-0 w-full md:w-[70%] h-full bg-no-repeat bg-cover bg-center ${trailerUrl && isActive ? 'opacity-0' : 'md:opacity-80'}`}
                                         style={{
                                             backgroundImage: `url(${landscapeImage})`,
                                             maskImage: 'linear-gradient(90deg, transparent 0%, black 20%, black 100%)',

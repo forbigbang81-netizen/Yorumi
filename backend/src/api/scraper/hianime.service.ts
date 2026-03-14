@@ -6,6 +6,8 @@ import { anilistService } from '../anilist/anilist.service';
 // In-memory cache as fallback when Redis is cold/slow
 let inMemorySpotlightCache: any = null;
 let isRefreshing = false;
+const inMemoryTop10Cache: Record<string, any> = {};
+const top10Refreshing: Record<string, boolean> = {};
 
 export class HiAnimeScraper {
     private readonly BASE_URL = 'https://aniwatchtv.to';
@@ -97,6 +99,144 @@ export class HiAnimeScraper {
         console.log('🐢 No cache available. Fetching fresh spotlight data (this may take a while)...');
         return this.fetchAndCacheSpotlight(cacheKey);
     }
+
+    async getTopTen(range: 'day' | 'week' | 'month'): Promise<any[]> {
+        try {
+            const { data } = await axios.get(`${this.BASE_URL}/home`, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': this.BASE_URL
+                },
+                timeout: 10000
+            });
+
+            const $ = cheerio.load(data);
+            const selector = range === 'week'
+                ? '#top-viewed-week'
+                : range === 'month'
+                    ? '#top-viewed-month'
+                    : '#top-viewed-day';
+
+            const items: any[] = [];
+            $(`${selector} li`).each((_, element) => {
+                const $el = $(element);
+                const anchor = $el.find('.film-name a').first();
+                const title = anchor.text().trim();
+                const jname = (anchor.attr('data-jname') || '').trim();
+                const link = anchor.attr('href') || '';
+                const scraperId = link.replace(/^\//, '');
+                const poster = $el.find('.film-poster-img').attr('data-src') || $el.find('.film-poster-img').attr('src');
+                const subText = $el.find('.tick-item.tick-sub').text() || '';
+                const dubText = $el.find('.tick-item.tick-dub').text() || '';
+                const sub = parseInt(subText.replace(/\D/g, '')) || 0;
+                const dub = parseInt(dubText.replace(/\D/g, '')) || 0;
+                const dataId = $el.find('.film-poster').attr('data-id') || '';
+
+                if (title) {
+                    items.push({
+                        title,
+                        jname,
+                        poster,
+                        link: link ? `${this.BASE_URL}${link}` : '',
+                        scraperId,
+                        dataId,
+                        sub,
+                        dub
+                    });
+                }
+            });
+
+            return items;
+        } catch (error) {
+            console.error(`Error scraping HiAnime top 10 (${range}):`, error);
+            return [];
+        }
+    }
+
+    async getEnrichedTopTen(range: 'day' | 'week' | 'month'): Promise<any> {
+        const cacheKey = `top10:hianime:${range}:enriched`;
+
+        // 1. Try Redis Cache
+        try {
+            const cached = await redis.get(cacheKey);
+            if (cached && Array.isArray(cached.top10) && cached.top10.length >= 10) {
+                inMemoryTop10Cache[range] = cached;
+                return cached;
+            }
+        } catch (e) {
+            console.error(`Redis Error (Get Top10 ${range}):`, e);
+        }
+
+        // 2. If Redis cache miss, check in-memory cache
+        if (inMemoryTop10Cache[range] && Array.isArray(inMemoryTop10Cache[range].top10) && inMemoryTop10Cache[range].top10.length >= 10) {
+            if (!top10Refreshing[range]) {
+                this.refreshTopTenInBackground(range, cacheKey);
+            }
+            return inMemoryTop10Cache[range];
+        }
+
+        // 3. No cache available - fetch fresh data
+        return this.fetchAndCacheTopTen(range, cacheKey);
+    }
+
+    private async refreshTopTenInBackground(range: 'day' | 'week' | 'month', cacheKey: string): Promise<void> {
+        if (top10Refreshing[range]) return;
+        top10Refreshing[range] = true;
+        try {
+            await this.fetchAndCacheTopTen(range, cacheKey);
+        } catch (error) {
+            console.error(`Background top10 refresh failed (${range}):`, error);
+        } finally {
+            top10Refreshing[range] = false;
+        }
+    }
+
+    private async fetchAndCacheTopTen(range: 'day' | 'week' | 'month', cacheKey: string): Promise<any> {
+        const topTenItems = await this.getTopTen(range);
+
+        const enrichmentPromises = topTenItems.map(async (item) => {
+            try {
+                let searchResult = await anilistService.searchAnime(item.title, 1, 1);
+                let anilistMedia = searchResult?.media?.[0];
+
+                if (!anilistMedia && item.jname) {
+                    searchResult = await anilistService.searchAnime(item.jname, 1, 1);
+                    anilistMedia = searchResult?.media?.[0];
+                }
+
+                if (anilistMedia) {
+                    return {
+                        ...item,
+                        id: anilistMedia.id,
+                        mal_id: anilistMedia.idMal,
+                        anilist: anilistMedia
+                    };
+                }
+
+                return { ...item, anilist: null };
+            } catch (err) {
+                console.error(`Failed to enrich top10 item: ${item.title}`, err);
+                return { ...item, anilist: null };
+            }
+        });
+
+        const results = await Promise.allSettled(enrichmentPromises);
+        const enrichedItems = results.map((r, idx) => r.status === 'fulfilled' ? r.value : { ...topTenItems[idx], anilist: null });
+
+        const result = { top10: enrichedItems };
+
+        if (enrichedItems.length >= 10) {
+            inMemoryTop10Cache[range] = result;
+            try {
+                await redis.set(cacheKey, result, { ex: 1800 }); // 30 min TTL
+            } catch (e) {
+                console.error(`Redis Error (Set Top10 ${range}):`, e);
+            }
+        }
+
+        return result;
+    }
+
 
     private async refreshSpotlightInBackground(cacheKey: string): Promise<void> {
         if (isRefreshing) return;

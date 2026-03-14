@@ -374,6 +374,108 @@ export const animeService = {
         return fetchPromise;
     },
 
+    // Get popular this month from AniList (Deduplicated)
+    async getPopularThisMonth(page: number = 1, limit: number = 10) {
+        const cacheKey = `popular-month-${page}-${limit}`;
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/anilist/popular-this-month?page=${page}&limit=${limit}`);
+                if (!res.ok) {
+                    console.warn(`Failed to fetch popular this month: ${res.statusText}`);
+                    return { data: [], pagination: null };
+                }
+                const data = await res.json();
+                const result = {
+                    data: data.media?.map(mapAnilistToAnime) || [],
+                    pagination: {
+                        last_visible_page: data.pageInfo?.lastPage || 1,
+                        current_page: data.pageInfo?.currentPage || 1,
+                        has_next_page: data.pageInfo?.hasNextPage || false
+                    }
+                };
+
+                if (result.data.length > 0) {
+                    setCache(cacheKey, result);
+                }
+                return result;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
+    },
+
+    // Get AniWatch Top 10 (Today/Week/Month)
+    async getAniwatchTopTen(range: 'day' | 'week' | 'month') {
+        const cacheKey = `aniwatch-top10-${range}`;
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/hianime/top10?range=${range}`);
+                if (!res.ok) {
+                    console.warn(`Failed to fetch AniWatch top10 (${range}): ${res.statusText}`);
+                    return { data: [] };
+                }
+                const payload = await res.json();
+                const top10 = payload.top10 || [];
+                const data = top10.map((item: any, index: number) => {
+                    const anime = mapAnilistToAnime(item.anilist || {});
+                    if (item.poster) {
+                        anime.images.jpg.image_url = item.poster;
+                        anime.images.jpg.large_image_url = item.poster;
+                        anime.anilist_cover_image = item.poster;
+                    }
+                    if (!item.anilist || !item.anilist.id) {
+                        const fallbackId = parseInt(item.dataId || '', 10) || 0;
+                        anime.id = fallbackId || anime.id || 0;
+                        anime.mal_id = fallbackId || anime.mal_id || 0;
+                        anime.title = item.title || anime.title;
+                        anime.score = anime.score || 0;
+                        anime.type = anime.type || 'TV';
+                        anime.episodes = anime.episodes ?? (item.sub || null);
+                    }
+                    if (!anime.mal_id) {
+                        anime.mal_id = (parseInt(item.dataId || '', 10) || 0) || (index + 1);
+                    }
+                    if (item.sub && !anime.latestEpisode) {
+                        anime.latestEpisode = item.sub;
+                    }
+                    if (item.scraperId) {
+                        anime.scraperId = item.scraperId;
+                    }
+                    return anime;
+                });
+
+                const result = { data };
+                if (data.length > 0) {
+                    setCache(cacheKey, result);
+                }
+                return result;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
+    },
+
+
     async prefetchStreams(animeSession: string, episodeSessions: string[]) {
         const sessions = [...new Set(episodeSessions.filter(Boolean))];
         if (!animeSession || sessions.length === 0) return;

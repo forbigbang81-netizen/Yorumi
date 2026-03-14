@@ -114,6 +114,19 @@ router.get('/popular-this-season', async (req, res) => {
     }
 });
 
+// Get popular this month
+router.get('/popular-this-month', async (req, res) => {
+    try {
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const perPage = req.query.limit ? parseInt(req.query.limit as string) : 50;
+
+        const data = await anilistService.getPopularThisMonth(page, perPage);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch popular this month' });
+    }
+});
+
 // A-Z List for Manga
 router.get('/manga/az-list/:letter', async (req, res) => {
     try {

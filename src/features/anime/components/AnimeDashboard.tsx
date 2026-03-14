@@ -7,12 +7,17 @@ import PopularSeason from './PopularSeason';
 import AnimeCard from './AnimeCard';
 import EstimatedSchedule from './EstimatedSchedule';
 import Genres from './Genres';
+import TopTenSidebar from './TopTenSidebar';
 
 interface AnimeDashboardProps {
     spotlightAnime: Anime[];
     continueWatchingList: any[];
     trendingAnime: Anime[];
     popularSeason: Anime[];
+    popularMonth: Anime[];
+    topTenToday: Anime[];
+    topTenWeek: Anime[];
+    topTenMonth: Anime[];
     topAnime: Anime[];
     onAnimeClick: (anime: Anime) => void;
     onWatchClick: (anime: Anime, episodeNumber?: number) => void;
@@ -26,6 +31,10 @@ export default function AnimeDashboard({
     continueWatchingList,
     trendingAnime,
     popularSeason,
+    popularMonth,
+    topTenToday,
+    topTenWeek,
+    topTenMonth,
     topAnime,
     onAnimeClick,
     onWatchClick,
@@ -71,36 +80,46 @@ export default function AnimeDashboard({
                 onMouseEnter={onAnimeHover}
             />
 
-                {/* Top Anime Grid (Preview) */}
-                <div className="flex items-center justify-between mb-6 pt-4">
-                    <h2 className="text-xl font-bold border-l-4 border-yorumi-accent pl-3 text-white">All-Time Popular</h2>
-                    <button
-                        onClick={() => onViewAll('popular')}
-                        className="text-sm font-bold text-yorumi-accent hover:text-white transition-colors"
-                    >
-                        View All &gt;
-                    </button>
-                </div>
+                {/* All-Time Popular + Top 10 + Schedule + Genres */}
+                <div className="container mx-auto px-4 pt-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
+                        <div>
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className="text-xl font-bold border-l-4 border-yorumi-accent pl-3 text-white">All-Time Popular</h2>
+                                <button
+                                    onClick={() => onViewAll('popular')}
+                                    className="text-sm font-bold text-yorumi-accent hover:text-white transition-colors"
+                                >
+                                    View All
+                                </button>
+                            </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
-                    {topAnime.slice(0, 12).map((item) => (
-                        <AnimeCard
-                            key={item.mal_id}
-                            anime={item}
-                            onClick={() => onAnimeClick(item)}
-                            onWatchClick={() => onWatchClick(item)}
-                            onMouseEnter={() => onAnimeHover?.(item)}
-                        />
-                    ))}
-                </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                                {topAnime.slice(0, 15).map((item) => (
+                                    <AnimeCard
+                                        key={item.mal_id}
+                                        anime={item}
+                                        onClick={() => onAnimeClick(item)}
+                                        onWatchClick={() => onWatchClick(item)}
+                                        onMouseEnter={() => onAnimeHover?.(item)}
+                                    />
+                                ))}
+                            </div>
 
-                {/* Schedule and Genres Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-                    <div className="lg:col-span-2">
-                        <EstimatedSchedule onAnimeClick={(id) => navigate(`/anime/${id}`)} />
-                    </div>
-                    <div>
-                        <Genres onGenreClick={(genre) => navigate(`/genre/${encodeURIComponent(genre)}`)} />
+                            <div className="mt-4">
+                                <EstimatedSchedule onAnimeClick={(id) => navigate(`/anime/${id}`)} />
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <TopTenSidebar
+                                today={topTenToday}
+                                week={topTenWeek}
+                                month={topTenMonth}
+                                onAnimeClick={onAnimeClick}
+                            />
+                            <Genres onGenreClick={(genre) => navigate(`/genre/${encodeURIComponent(genre)}`)} />
+                        </div>
                     </div>
                 </div>
             </div>

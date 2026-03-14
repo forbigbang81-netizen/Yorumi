@@ -28,4 +28,22 @@ router.get('/az-list/:letter', async (req, res) => {
     }
 });
 
+// Get AniWatch Top 10 (Today/Week/Month)
+router.get('/top10', async (req, res) => {
+    try {
+        const range = String(req.query.range || 'day').toLowerCase();
+        if (!['day', 'week', 'month'].includes(range)) {
+            res.status(400).json({ error: 'Invalid range. Use day, week, or month.' });
+            return;
+        }
+
+        const data = await scraper.getEnrichedTopTen(range as 'day' | 'week' | 'month');
+        res.json(data);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Failed to fetch top 10 anime' });
+    }
+});
+
+
 export default router;
