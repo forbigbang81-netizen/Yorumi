@@ -15,6 +15,55 @@ import DetailsCharacters from '../features/anime/components/details/DetailsChara
 import DetailsTrailers from '../features/anime/components/details/DetailsTrailers';
 import DetailsRelations from '../features/anime/components/details/DetailsRelations';
 
+const EpisodesSkeleton = () => (
+    <div className="py-6 border-t border-white/10 mt-6">
+        <h3 className="text-xl font-bold text-white mb-4">Episodes</h3>
+        <div className="mt-6 grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 animate-pulse">
+            {Array.from({ length: 10 }).map((_, idx) => (
+                <div key={idx} className="aspect-square rounded bg-white/10" />
+            ))}
+        </div>
+    </div>
+);
+
+const CharactersSkeleton = () => (
+    <div className="py-6 border-t border-white/10 mt-6">
+        <h3 className="text-xl font-bold text-white mb-4">Characters & Voice Actors</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-pulse">
+            {Array.from({ length: 6 }).map((_, idx) => (
+                <div key={idx} className="flex bg-[#1a1a1a] rounded-lg overflow-hidden border border-white/5">
+                    <div className="w-16 h-24 bg-white/10" />
+                    <div className="flex-1 p-2 space-y-2">
+                        <div className="h-3 w-24 bg-white/10 rounded" />
+                        <div className="h-3 w-16 bg-white/10 rounded" />
+                    </div>
+                    <div className="w-16 h-24 bg-white/10" />
+                    <div className="flex-1 p-2 space-y-2">
+                        <div className="h-3 w-24 bg-white/10 rounded" />
+                        <div className="h-3 w-16 bg-white/10 rounded" />
+                    </div>
+                </div>
+            ))}
+        </div>
+    </div>
+);
+
+const TrailersSkeleton = () => (
+    <div className="py-6 border-t border-white/10 mt-6">
+        <h3 className="text-xl font-bold text-white mb-4">Trailers & PVs</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 animate-pulse">
+            <div className="relative aspect-video bg-white/10 rounded-lg overflow-hidden border border-white/10">
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-full bg-white/10" />
+                </div>
+                <div className="absolute bottom-0 inset-x-0 p-3">
+                    <div className="h-3 w-28 bg-white/10 rounded" />
+                </div>
+            </div>
+        </div>
+    </div>
+);
+
 export default function AnimeDetailsPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -157,86 +206,78 @@ export default function AnimeDetailsPage() {
                     onToggleList={handleToggleList}
                     onToggleFavorite={handleToggleFavorite}
                 >
-                    {/* Tabs */}
-                    <div className="flex items-center gap-8 border-b border-white/10 mb-6 mt-4">
-                        <button
-                            onClick={() => setActiveTab('summary')}
-                            className={`pb-3 text-lg font-bold transition-colors relative ${activeTab === 'summary' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            Summary
-                            {activeTab === 'summary' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-yorumi-accent" />}
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('relations')}
-                            className={`pb-3 text-lg font-bold transition-colors relative ${activeTab === 'relations' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            Relations
-                            {activeTab === 'relations' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-yorumi-accent" />}
-                        </button>
-                    </div>
+                        {/* Tabs */}
+                        <div className="flex items-center gap-8 border-b border-white/10 mb-6 mt-4">
+                            <button
+                                onClick={() => setActiveTab('summary')}
+                                className={`pb-3 text-lg font-bold transition-colors relative ${activeTab === 'summary' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
+                            >
+                                Summary
+                                {activeTab === 'summary' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-yorumi-accent" />}
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('relations')}
+                                className={`pb-3 text-lg font-bold transition-colors relative ${activeTab === 'relations' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
+                            >
+                                Relations
+                                {activeTab === 'relations' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-yorumi-accent" />}
+                            </button>
+                        </div>
 
-                    <div className="">
+                        <div className="">
+                            {activeTab === 'summary' && (
+                                <>
+                                    <p className="text-gray-300 text-base leading-relaxed max-w-3xl">
+                                        {selectedAnime.synopsis || 'No synopsis.'}
+                                    </p>
+                                </>
+                            )}
+                        </div>
+
                         {activeTab === 'summary' && (
                             <>
-                                <p className="text-gray-300 text-base leading-relaxed max-w-3xl">
-                                    {selectedAnime.synopsis || 'No synopsis.'}
-                                </p>
+                                {/* Episodes Section */}
+                                {!isUnreleased && (
+                                    (detailsLoading || epLoading) ? (
+                                        <EpisodesSkeleton />
+                                    ) : episodes.length > 0 ? (
+                                        <DetailsEpisodeGrid
+                                            episodes={episodes}
+                                            watchedEpisodes={watchedEpisodes}
+                                            onEpisodeClick={(ep) => {
+                                                const title = slugify(selectedAnime.title || selectedAnime.title_english || 'anime');
+                                                navigate(`/anime/watch/${title}/${id}?ep=${ep.episodeNumber}`);
+                                            }}
+                                        />
+                                    ) : (
+                                        <div className="py-6 border-t border-white/10 mt-6 text-gray-500 text-center">No episodes found.</div>
+                                    )
+                                )}
+
+                                {/* Characters Section */}
+                                {(detailsLoading) ? (
+                                    <CharactersSkeleton />
+                                ) : (
+                                    <DetailsCharacters characters={selectedAnime.characters} />
+                                )}
+
+                                {/* Trailers Section */}
+                                {(detailsLoading) ? (
+                                    <TrailersSkeleton />
+                                ) : (
+                                    <DetailsTrailers trailer={selectedAnime.trailer} />
+                                )}
                             </>
                         )}
-                    </div>
 
-                    {activeTab === 'summary' && (
-                        <>
-                            {/* Episodes Section */}
-                            {!isUnreleased && (
-                                epLoading ? (
-                                    <div className="py-8 flex justify-center"><LoadingSpinner size="md" /></div>
-                                ) : (
-                                    <DetailsEpisodeGrid
-                                        episodes={episodes}
-                                        watchedEpisodes={watchedEpisodes}
-                                        onEpisodeClick={(ep) => {
-                                            const title = slugify(selectedAnime.title || selectedAnime.title_english || 'anime');
-                                            navigate(`/anime/watch/${title}/${id}?ep=${ep.episodeNumber}`);
-                                        }}
-                                    />
-                                )
-                            )}
-
-                            {/* Characters Section */}
-                            {detailsLoading ? (
-                                <div className="py-6 border-t border-white/10 mt-6">
-                                    <h3 className="text-xl font-bold text-white mb-4">Characters & Voice Actors</h3>
-                                    <div className="flex justify-center py-8">
-                                        <LoadingSpinner size="md" text="Loading Characters..." />
-                                    </div>
-                                </div>
-                            ) : (
-                                <DetailsCharacters characters={selectedAnime.characters} />
-                            )}
-
-                            {/* Trailers Section */}
-                            {detailsLoading ? (
-                                <div className="py-6 border-t border-white/10 mt-6">
-                                    <h3 className="text-xl font-bold text-white mb-4">Trailers & PVs</h3>
-                                    <div className="flex justify-center py-8">
-                                        <LoadingSpinner size="md" />
-                                    </div>
-                                </div>
-                            ) : (
-                                <DetailsTrailers trailer={selectedAnime.trailer} />
-                            )}
-                        </>
-                    )}
-
-                    {activeTab === 'relations' && (
-                        <div className="mt-6">
-                            <DetailsRelations
-                                relations={selectedAnime.relations}
-                                onAnimeClick={(id) => navigate(`/anime/details/${id}`)}
-                            />
-                        </div>
-                    )}
+                        {activeTab === 'relations' && (
+                            <div className="mt-6">
+                                <DetailsRelations
+                                    relations={selectedAnime.relations}
+                                    onAnimeClick={(id) => navigate(`/anime/details/${id}`)}
+                                />
+                            </div>
+                        )}
                 </DetailsInfo>
             </div>
         </div>
