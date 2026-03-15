@@ -5,13 +5,14 @@ import useEmblaCarousel from 'embla-carousel-react';
 
 interface PopularSeasonProps {
     animeList: Anime[];
+    isLoading?: boolean;
     onAnimeClick: (anime: Anime) => void;
     onWatchClick?: (anime: Anime) => void;
     onViewAll?: () => void;
     onMouseEnter?: (anime: Anime) => void;
 }
 
-const PopularSeason: React.FC<PopularSeasonProps> = ({ animeList, onAnimeClick, onWatchClick, onViewAll, onMouseEnter }) => {
+const PopularSeason: React.FC<PopularSeasonProps> = ({ animeList, isLoading = false, onAnimeClick, onWatchClick, onViewAll, onMouseEnter }) => {
     const [emblaRef, emblaApi] = useEmblaCarousel({
         align: 'center',
         containScroll: 'trimSnaps',
@@ -20,6 +21,36 @@ const PopularSeason: React.FC<PopularSeasonProps> = ({ animeList, onAnimeClick, 
 
     const scrollPrev = () => emblaApi && emblaApi.scrollPrev();
     const scrollNext = () => emblaApi && emblaApi.scrollNext();
+
+    if (isLoading) {
+        return (
+            <section className="relative z-20 mt-4 mb-12">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="h-7 w-56 bg-white/10 rounded animate-pulse" />
+                    <div className="flex items-center gap-4">
+                        <div className="flex gap-2">
+                            <div className="h-8 w-8 rounded-full bg-white/5 border border-white/5 animate-pulse" />
+                            <div className="h-8 w-8 rounded-full bg-white/5 border border-white/5 animate-pulse" />
+                        </div>
+                        <div className="h-4 w-14 bg-white/10 rounded animate-pulse" />
+                    </div>
+                </div>
+
+                <div className="flex gap-4 overflow-hidden">
+                    {Array.from({ length: 6 }).map((_, index) => (
+                        <div
+                            key={`popular-season-skeleton-${index}`}
+                            className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
+                        >
+                            <div className="relative aspect-[2/3] rounded-lg bg-white/5 animate-pulse mb-3" />
+                            <div className="h-4 w-4/5 bg-white/10 rounded animate-pulse" />
+                            <div className="mt-2 h-3 w-2/3 bg-white/10 rounded animate-pulse" />
+                        </div>
+                    ))}
+                </div>
+            </section>
+        );
+    }
 
     if (!animeList || animeList.length === 0) return null;
 

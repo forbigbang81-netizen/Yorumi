@@ -1,6 +1,5 @@
 import { useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { usePlayer } from '../features/player/hooks/usePlayer';
 
 // Feature Components
@@ -38,6 +37,9 @@ export default function WatchPage() {
         navigate
     } = usePlayer(id);
 
+    const animeMatch = !!(anime && id && (String(anime.id) === String(id) || String(anime.mal_id) === String(id)));
+    const isPageLoading = !anime || !animeMatch;
+
     if (error) {
         return (
             <div className="flex flex-col items-center justify-center p-12 text-center h-screen w-full bg-[#0a0a0a] text-white">
@@ -53,10 +55,36 @@ export default function WatchPage() {
         );
     }
 
-    if (!anime) {
+    if (isPageLoading) {
         return (
-            <div className="flex flex-col items-center justify-center w-full h-screen bg-[#0a0a0a] text-white pt-[72px]">
-                <LoadingSpinner />
+            <div className="flex flex-col h-screen w-full bg-[#0a0a0a] text-white overflow-hidden pt-[60px]">
+                <header className="h-14 shrink-0 flex items-center px-6 border-b border-white/10 bg-black/40 backdrop-blur-md z-40">
+                    <button
+                        onClick={() => navigate('/')}
+                        className="mr-4 flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                        <span className="text-sm font-medium">Back</span>
+                    </button>
+                    <div className="h-4 w-48 bg-white/10 rounded animate-pulse" />
+                </header>
+
+                <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-y-auto md:overflow-hidden">
+                    <EpisodeList
+                        episodes={[]}
+                        currentEpNumber={'1'}
+                        watchedEpisodes={new Set<number>()}
+                        isLoading={true}
+                        onEpisodeClick={() => null}
+                    />
+
+                    <div className="flex-1 min-w-0 relative bg-black flex flex-col order-1 md:order-2">
+                        <div className="flex-1 flex items-center justify-center">
+                            <div className="w-40 h-24 bg-white/5 rounded-xl animate-pulse" />
+                        </div>
+                        <div className="h-16 border-t border-white/10 bg-black/40" />
+                    </div>
+                </div>
             </div>
         );
     }

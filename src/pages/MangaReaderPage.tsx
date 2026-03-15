@@ -2,8 +2,61 @@ import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useManga } from '../hooks/useManga';
 import { slugify } from '../utils/slugify';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
 import MangaReaderModal from '../features/manga/components/MangaReaderModal';
+
+const MangaReaderSkeleton = () => {
+    return (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md pt-[60px]">
+            <div className="w-full h-full flex flex-col bg-[#0a0a0a] relative">
+                <header className="h-14 shrink-0 flex items-center px-6 border-b border-white/10 bg-black/40 backdrop-blur-md">
+                    <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
+                    <div className="ml-4 h-5 w-56 bg-white/10 rounded animate-pulse" />
+                    <div className="ml-auto flex items-center gap-2">
+                        <div className="h-8 w-20 bg-white/10 rounded-full animate-pulse" />
+                        <div className="h-8 w-20 bg-white/10 rounded-full animate-pulse" />
+                        <div className="h-8 w-10 bg-white/10 rounded-full animate-pulse" />
+                    </div>
+                </header>
+
+                <div className="flex-1 flex min-h-0 relative overflow-hidden">
+                    <aside className="w-full md:w-[350px] shrink-0 flex flex-col border-r border-white/10 bg-black/20">
+                        <div className="p-4 border-b border-white/5">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="h-4 w-28 bg-white/10 rounded animate-pulse" />
+                                <div className="h-8 w-16 bg-white/10 rounded-lg animate-pulse" />
+                            </div>
+                            <div className="h-9 w-full bg-white/10 rounded-lg animate-pulse" />
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-3">
+                            <div className="grid grid-cols-5 gap-2">
+                                {Array.from({ length: 20 }).map((_, idx) => (
+                                    <div key={`chapter-skeleton-${idx}`} className="aspect-square rounded bg-white/10 animate-pulse" />
+                                ))}
+                            </div>
+                        </div>
+                    </aside>
+
+                    <div className="flex-1 min-w-0 bg-[#050505] relative flex items-center justify-center">
+                        <div className="w-[70%] h-[70%] bg-white/10 rounded-xl animate-pulse" />
+                    </div>
+
+                    <aside className="hidden lg:flex w-[280px] shrink-0 border-l border-white/10 bg-black/20 p-4">
+                        <div className="w-full space-y-4">
+                            <div className="w-full aspect-[2/3] bg-white/10 rounded-xl animate-pulse" />
+                            <div className="h-4 w-3/4 bg-white/10 rounded animate-pulse" />
+                            <div className="h-3 w-1/2 bg-white/10 rounded animate-pulse" />
+                            <div className="space-y-2">
+                                <div className="h-3 w-full bg-white/10 rounded animate-pulse" />
+                                <div className="h-3 w-5/6 bg-white/10 rounded animate-pulse" />
+                                <div className="h-3 w-4/6 bg-white/10 rounded animate-pulse" />
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default function MangaReaderPage() {
     const { id, chapter } = useParams<{ title: string; id: string; chapter: string }>();
@@ -79,20 +132,12 @@ export default function MangaReaderPage() {
 
     // Show loading while manga or chapters are loading
     if (mangaLoading || mangaChaptersLoading || !selectedManga) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
-                <LoadingSpinner size="lg" text="Loading Manga..." />
-            </div>
-        );
+        return <MangaReaderSkeleton />;
     }
 
     // Show loading while waiting for chapter to load
     if (!currentMangaChapter && mangaChapters.length > 0) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
-                <LoadingSpinner size="lg" text="Loading Chapter..." />
-            </div>
-        );
+        return <MangaReaderSkeleton />;
     }
 
     // Handle case where no chapters exist

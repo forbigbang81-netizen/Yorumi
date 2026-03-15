@@ -133,8 +133,17 @@ export default function EstimatedSchedule({ onAnimeClick }: EstimatedSchedulePro
             {/* Schedule List */}
             <div className="space-y-3">
                 {loading ? (
-                    <div className="flex items-center justify-center py-8">
-                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-yorumi-accent"></div>
+                    <div className="space-y-3">
+                        {Array.from({ length: 7 }).map((_, index) => (
+                            <div
+                                key={`schedule-skeleton-${index}`}
+                                className="flex items-center gap-4 py-3 border-b border-white/5 rounded-lg px-2"
+                            >
+                                <div className="h-3 w-12 rounded bg-white/10 animate-pulse" />
+                                <div className="h-4 flex-1 rounded bg-white/10 animate-pulse" />
+                                <div className="h-3 w-20 rounded bg-white/10 animate-pulse" />
+                            </div>
+                        ))}
                     </div>
                 ) : displayedSchedule.length === 0 ? (
                     <div className="text-center text-gray-500 py-8">

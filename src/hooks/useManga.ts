@@ -263,6 +263,8 @@ export function useManga() {
 
 
                 let bestMatch: { id: string; title: string } | null = null;
+                let fallbackCandidate: { id: string; title: string; chapterCount: number } | null = null;
+                let fallbackChapterCount = -1;
 
                 for (const title of limitedTitles) {
                     if (bestMatch) break; // Stop once we find a match
@@ -318,6 +320,17 @@ export function useManga() {
                             });
 
                             if (filteredCandidates.length === 0) continue;
+
+                            // Track best fallback candidate by highest chapter count
+                            const topCandidate = filteredCandidates[0];
+                            if (topCandidate && topCandidate.chapterCount > fallbackChapterCount) {
+                                fallbackChapterCount = topCandidate.chapterCount;
+                                fallbackCandidate = {
+                                    id: topCandidate.id,
+                                    title: topCandidate.title,
+                                    chapterCount: topCandidate.chapterCount
+                                };
+                            }
 
                             // 1. EXACT MATCH: Check normalized_query == normalized_target
                             // "Fastest, catches 60%"
@@ -435,6 +448,11 @@ export function useManga() {
                     } catch (e) {
                         // Ignore search errors for individual titles
                     }
+                }
+
+                if (!bestMatch && fallbackCandidate) {
+                    bestMatch = { id: fallbackCandidate.id, title: fallbackCandidate.title };
+                    console.warn(`[useManga] Fallback match used: ${fallbackCandidate.title} (Ch: ${fallbackCandidate.chapterCount})`);
                 }
 
                 if (bestMatch) {

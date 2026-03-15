@@ -146,10 +146,13 @@ export default function HomePage() {
                 spotlightAnime={anime.spotlightAnime}
                 continueWatchingList={anime.continueWatchingList}
                 trendingAnime={anime.trendingAnime}
+                trendingLoading={anime.trendingLoading}
                 popularSeason={anime.popularSeason}
+                popularSeasonLoading={anime.popularSeasonLoading}
                 topTenToday={anime.topTenToday}
                 topTenWeek={anime.topTenWeek}
                 topTenMonth={anime.topTenMonth}
+                topTenLoading={anime.topTenLoading}
                 topAnime={anime.topAnime}
                 onAnimeClick={handleAnimeClick}
                 onWatchClick={handleWatchClick}

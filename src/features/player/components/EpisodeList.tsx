@@ -118,8 +118,27 @@ export default function EpisodeList({
 
             <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
                 {isLoading ? (
-                    <div className="flex items-center justify-center py-12">
-                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-yorumi-accent"></div>
+                    <div className={viewMode === 'grid' ? "grid grid-cols-5 gap-2 p-3" : "flex flex-col"}>
+                        {Array.from({ length: viewMode === 'grid' ? 20 : 10 }).map((_, index) => (
+                            <div
+                                key={`episode-skeleton-${index}`}
+                                className={
+                                    viewMode === 'grid'
+                                        ? "aspect-square rounded-md bg-white/5 animate-pulse"
+                                        : "w-full px-5 py-3 flex flex-col gap-2"
+                                }
+                            >
+                                {viewMode !== 'grid' && (
+                                    <>
+                                        <div className="flex items-center justify-between">
+                                            <div className="h-3 w-12 bg-white/10 rounded animate-pulse" />
+                                            <div className="h-6 w-6 bg-white/10 rounded-full animate-pulse" />
+                                        </div>
+                                        <div className="h-3 w-3/4 bg-white/10 rounded animate-pulse" />
+                                    </>
+                                )}
+                            </div>
+                        ))}
                     </div>
                 ) : filteredEpisodes.length > 0 ? (
                     <div className={viewMode === 'grid' ? "grid grid-cols-5 gap-2 p-3" : "flex flex-col"}>

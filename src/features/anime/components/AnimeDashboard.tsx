@@ -13,10 +13,13 @@ interface AnimeDashboardProps {
     spotlightAnime: Anime[];
     continueWatchingList: any[];
     trendingAnime: Anime[];
+    trendingLoading: boolean;
     popularSeason: Anime[];
+    popularSeasonLoading: boolean;
     topTenToday: Anime[];
     topTenWeek: Anime[];
     topTenMonth: Anime[];
+    topTenLoading: boolean;
     topAnime: Anime[];
     onAnimeClick: (anime: Anime) => void;
     onWatchClick: (anime: Anime, episodeNumber?: number) => void;
@@ -29,10 +32,13 @@ export default function AnimeDashboard({
     spotlightAnime,
     continueWatchingList,
     trendingAnime,
+    trendingLoading,
     popularSeason,
+    popularSeasonLoading,
     topTenToday,
     topTenWeek,
     topTenMonth,
+    topTenLoading,
     topAnime,
     onAnimeClick,
     onWatchClick,
@@ -64,6 +70,7 @@ export default function AnimeDashboard({
 
             <TrendingNow
                 animeList={trendingAnime}
+                isLoading={trendingLoading}
                 onAnimeClick={onAnimeClick}
                 onWatchClick={onWatchClick}
                 onViewAll={() => onViewAll('trending')}
@@ -72,6 +79,7 @@ export default function AnimeDashboard({
 
             <PopularSeason
                 animeList={popularSeason}
+                isLoading={popularSeasonLoading}
                 onAnimeClick={onAnimeClick}
                 onWatchClick={onWatchClick}
                 onViewAll={() => onViewAll('seasonal')}
@@ -114,6 +122,7 @@ export default function AnimeDashboard({
                                 today={topTenToday}
                                 week={topTenWeek}
                                 month={topTenMonth}
+                                isLoading={topTenLoading}
                                 onAnimeClick={onAnimeClick}
                             />
                             <Genres onGenreClick={(genre) => navigate(`/genre/${encodeURIComponent(genre)}`)} />

@@ -5,12 +5,13 @@ interface TopTenSidebarProps {
     today: Anime[];
     week: Anime[];
     month: Anime[];
+    isLoading?: boolean;
     onAnimeClick: (anime: Anime) => void;
 }
 
 type TopRange = 'today' | 'week' | 'month';
 
-export default function TopTenSidebar({ today, week, month, onAnimeClick }: TopTenSidebarProps) {
+export default function TopTenSidebar({ today, week, month, isLoading = false, onAnimeClick }: TopTenSidebarProps) {
     const [range, setRange] = useState<TopRange>('today');
     const topTen = useMemo(() => {
         const list = range === 'today' ? today : range === 'week' ? week : month;
@@ -24,26 +25,49 @@ export default function TopTenSidebar({ today, week, month, onAnimeClick }: TopT
                 <div className="flex items-center gap-0 bg-[#222831] rounded-md p-0 shadow-[0_8px_20px_rgba(0,0,0,0.45)] overflow-hidden">
                     <button
                         onClick={() => setRange('today')}
-                        className={`px-3 py-1 transition-colors text-xs font-bold ${range === 'today' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'}`}
+                        disabled={isLoading}
+                        className={`px-3 py-1 transition-colors text-xs font-bold ${range === 'today' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'} ${isLoading ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
                         Today
                     </button>
                     <button
                         onClick={() => setRange('week')}
-                        className={`px-3 py-1 transition-colors text-xs font-bold ${range === 'week' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'}`}
+                        disabled={isLoading}
+                        className={`px-3 py-1 transition-colors text-xs font-bold ${range === 'week' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'} ${isLoading ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
                         Week
                     </button>
                     <button
                         onClick={() => setRange('month')}
-                        className={`px-3 py-1 transition-colors text-xs font-bold ${range === 'month' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'}`}
+                        disabled={isLoading}
+                        className={`px-3 py-1 transition-colors text-xs font-bold ${range === 'month' ? 'bg-[#3bb8ff] text-black' : 'text-gray-400 hover:text-white'} ${isLoading ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
                         Month
                     </button>
                 </div>
             </div>
 
-            {topTen.length === 0 ? (
+            {isLoading ? (
+                <div className="space-y-3">
+                    {Array.from({ length: 10 }).map((_, index) => (
+                        <div
+                            key={`top-ten-skeleton-${index}`}
+                            className="relative flex items-stretch gap-3 rounded-xl bg-[#0f1116] overflow-hidden animate-pulse"
+                        >
+                            <div className="relative w-16 flex items-center justify-center">
+                                <div className="h-6 w-8 rounded bg-white/10" />
+                            </div>
+
+                            <div className="min-w-0 flex-1 py-3 pr-1 space-y-2">
+                                <div className="h-4 w-3/4 rounded bg-white/10" />
+                                <div className="h-3 w-1/2 rounded bg-white/10" />
+                            </div>
+
+                            <div className="w-32 bg-white/5" />
+                        </div>
+                    ))}
+                </div>
+            ) : topTen.length === 0 ? (
                 <div className="text-sm text-gray-400">No titles available.</div>
             ) : (
                 <div className="space-y-3">
