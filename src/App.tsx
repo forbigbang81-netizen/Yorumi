@@ -62,20 +62,20 @@ function App() {
         return;
       }
 
-      const requestId = ++searchRequestIdRef.current;
+        const requestId = ++searchRequestIdRef.current;
       setIsSearching(true);
       try {
         if (activeTab === 'anime') {
-          const { data } = await animeService.searchAnime(term, 1, 6);
+          const { data } = await animeService.searchAnimeScraper(term, 1, 6);
           const mapped = data.slice(0, 4).map((item: any) => ({
-            id: item.id,
+            id: item.scraperId || item.id,
             title: item.title_english || item.title || 'Unknown',
-            subtitle: item.title_japanese || item.title_english,
+            subtitle: item.title_japanese || item.title_english || '',
             image: item.images.jpg.image_url,
-            date: item.aired?.string ? new Date(item.aired.string).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : item.year,
+            date: item.aired?.string ? item.aired.string : item.year,
             type: item.type, // e.g., TV
-            duration: item.duration,
-            url: `/anime/details/${item.id}`
+            duration: item.duration || null,
+            url: item.scraperId ? `/anime/details/s:${item.scraperId}` : `/anime/details/${item.id}`
           }));
           if (requestId !== searchRequestIdRef.current) return;
           setSearchResults(mapped);
