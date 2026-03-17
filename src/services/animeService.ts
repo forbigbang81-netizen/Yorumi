@@ -68,6 +68,37 @@ const mapAnilistToAnime = (item: any) => {
     };
 };
 
+// Helper to map Scraper response to our Anime interface format
+const mapScraperToAnime = (item: any) => {
+    const score = typeof item.score === 'number' ? item.score : parseFloat(item.score || '0');
+    const year = typeof item.year === 'number' ? item.year : parseInt(item.year || '', 10);
+    const episodes = typeof item.episodes === 'number' ? item.episodes : parseInt(item.episodes || '', 10);
+    return {
+        mal_id: 0,
+        id: 0,
+        scraperId: item.session || item.id,
+        title: item.title || 'Unknown',
+        title_english: item.title,
+        images: {
+            jpg: {
+                image_url: item.poster || '',
+                large_image_url: item.poster || ''
+            }
+        },
+        synopsis: '',
+        type: item.type || 'TV',
+        episodes: Number.isFinite(episodes) ? episodes : null,
+        score: Number.isFinite(score) ? score : 0,
+        status: item.status || 'Unknown',
+        genres: [],
+        studios: [],
+        year: Number.isFinite(year) ? year : undefined,
+        aired: {
+            string: Number.isFinite(year) ? String(year) : ''
+        }
+    };
+};
+
 // Simple in-memory cache
 const cache = new Map<string, { data: any, timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -154,6 +185,27 @@ export const animeService = {
                 last_visible_page: data.pageInfo?.lastPage || 1,
                 current_page: data.pageInfo?.currentPage || 1,
                 has_next_page: data.pageInfo?.hasNextPage || false
+            }
+        };
+    },
+
+    // Search anime on scraper (AnimePahe)
+    async searchAnimeScraper(query: string, page: number = 1, limit: number = 18) {
+        const res = await fetch(`${API_BASE}/scraper/search?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : (data?.data || []);
+        const safeLimit = Math.max(1, limit);
+        const total = items.length;
+        const lastPage = Math.max(1, Math.ceil(total / safeLimit));
+        const currentPage = Math.min(Math.max(page, 1), lastPage);
+        const start = (currentPage - 1) * safeLimit;
+        const pageItems = items.slice(start, start + safeLimit).map(mapScraperToAnime);
+        return {
+            data: pageItems,
+            pagination: {
+                last_visible_page: lastPage,
+                current_page: currentPage,
+                has_next_page: currentPage < lastPage
             }
         };
     },
