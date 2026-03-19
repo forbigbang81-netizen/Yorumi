@@ -8,6 +8,8 @@ import { slugify } from '../utils/slugify';
 import MangaCard from '../features/manga/components/MangaCard';
 import type { MangaChapter } from '../types/manga';
 import DetailsCharacters from '../features/anime/components/details/DetailsCharacters';
+import { useTitleLanguage } from '../context/TitleLanguageContext';
+import { getDisplayTitle } from '../utils/titleLanguage';
 
 // Chapter Grid for Details Page
 const ChapterList = ({
@@ -94,6 +96,7 @@ export default function MangaDetailsPage() {
 
     const { isInReadList, addToReadList, removeFromReadList } = useReadList();
     const { isFavorite, addFavorite, removeFavorite } = useFavoriteManga();
+    const { language } = useTitleLanguage();
 
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
 
@@ -210,6 +213,7 @@ export default function MangaDetailsPage() {
     // Determine banner
     // If we have no banner, use the large cover logic or a blur
     const bannerImage = selectedManga.images.jpg.large_image_url;
+    const displayTitle = getDisplayTitle(selectedManga as unknown as Record<string, unknown>, language);
 
     const mangaId = selectedManga.mal_id.toString();
     const inFavorites = isFavorite(mangaId);
@@ -222,7 +226,7 @@ export default function MangaDetailsPage() {
                 <div className="absolute inset-0">
                     <img
                         src={bannerImage}
-                        alt={selectedManga.title}
+                        alt={displayTitle}
                         className="w-full h-full object-cover blur-xl opacity-40 scale-110"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/60 to-transparent" />
@@ -245,7 +249,7 @@ export default function MangaDetailsPage() {
                         <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50 aspect-[2/3]">
                             <img
                                 src={selectedManga.images.jpg.large_image_url}
-                                alt={selectedManga.title}
+                                alt={displayTitle}
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                             />
                         </div>
@@ -254,7 +258,7 @@ export default function MangaDetailsPage() {
                     {/* Meta Data */}
                     <div className="flex-1 pt-4 md:pt-8 text-center md:text-left space-y-4">
                         <h1 className="text-3xl md:text-4xl lg:text-5xl font-black text-white leading-tight">
-                            {selectedManga.title}
+                            {displayTitle}
                         </h1>
 
                         <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-sm">

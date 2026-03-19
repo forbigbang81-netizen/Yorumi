@@ -2,6 +2,8 @@ import React from 'react';
 import type { Anime } from '../../../types/anime';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import useEmblaCarousel from 'embla-carousel-react';
+import { useTitleLanguage } from '../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface TrendingNowProps {
     animeList: Anime[];
@@ -13,6 +15,7 @@ interface TrendingNowProps {
 }
 
 const TrendingNow: React.FC<TrendingNowProps> = ({ animeList, isLoading = false, onAnimeClick, onWatchClick, onViewAll, onMouseEnter }) => {
+    const { language } = useTitleLanguage();
     const [emblaRef, emblaApi] = useEmblaCarousel({
         align: 'center',
         containScroll: 'trimSnaps',
@@ -108,7 +111,7 @@ const TrendingNow: React.FC<TrendingNowProps> = ({ animeList, isLoading = false,
                                     <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-3 shadow-none ring-0 outline-none">
                                         <img
                                             src={anime.images.jpg.large_image_url || anime.images.jpg.image_url}
-                                            alt={anime.title}
+                                            alt={getDisplayTitle(anime as unknown as Record<string, unknown>, language)}
                                             className="w-full h-full object-cover"
                                             loading="lazy"
                                         />
@@ -146,7 +149,7 @@ const TrendingNow: React.FC<TrendingNowProps> = ({ animeList, isLoading = false,
 
                                             {/* Title */}
                                             <h3 className="text-sm font-bold text-white mb-1 line-clamp-2 leading-tight">
-                                                {anime.title}
+                                                {getDisplayTitle(anime as unknown as Record<string, unknown>, language)}
                                             </h3>
 
                                             {/* Rating + Info Row */}
@@ -213,7 +216,7 @@ const TrendingNow: React.FC<TrendingNowProps> = ({ animeList, isLoading = false,
 
                                     {/* Title Below Card */}
                                     <h3 className="text-sm font-semibold text-gray-100 line-clamp-2 leading-tight group-hover:text-yorumi-accent transition-colors">
-                                        {anime.title}
+                                        {getDisplayTitle(anime as unknown as Record<string, unknown>, language)}
                                     </h3>
                                 </div>
                             ))}

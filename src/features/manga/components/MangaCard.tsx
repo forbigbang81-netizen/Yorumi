@@ -1,5 +1,7 @@
 import React from 'react';
 import type { Manga } from '../../../types/manga';
+import { useTitleLanguage } from '../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface MangaCardProps {
     manga: Manga;
@@ -12,12 +14,14 @@ interface MangaCardProps {
 }
 
 const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onReadClick, onMouseEnter, inList, onToggleList, disableTilt = false }) => {
+    const { language } = useTitleLanguage();
     const cardRef = React.useRef<HTMLDivElement>(null);
     const [rotation, setRotation] = React.useState({ x: 0, y: 0 });
     const [glare, setGlare] = React.useState({ x: 50, y: 50, opacity: 0 });
     const [isHovered, setIsHovered] = React.useState(false);
     const normalizedStatus = String(manga.status || '').toUpperCase();
     const isOngoing = normalizedStatus === 'RELEASING' || normalizedStatus === 'PUBLISHING' || normalizedStatus === 'ONGOING';
+    const displayTitle = getDisplayTitle(manga as unknown as Record<string, unknown>, language);
 
     // Determine count display (Chapters -> Volumes)
     const countDisplay = manga.chapters
@@ -99,7 +103,7 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onReadClick, onMo
 
                 <img
                     src={manga.images.jpg.large_image_url || manga.images.jpg.image_url}
-                    alt={manga.title}
+                    alt={displayTitle}
                     className="w-full h-full object-cover"
                     loading="lazy"
                 />
@@ -144,7 +148,7 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onReadClick, onMo
 
                     {/* Title */}
                     <h3 className="text-sm font-bold text-white mb-1 line-clamp-2 leading-tight translate-z-10">
-                        {manga.title}
+                        {displayTitle}
                     </h3>
 
                     {/* Rating + Info Row */}
@@ -214,7 +218,7 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onReadClick, onMo
 
             {/* Title Below Card */}
             <h3 className="text-sm font-semibold text-gray-100 line-clamp-2 leading-tight group-hover:text-yorumi-manga transition-colors">
-                {manga.title}
+                {displayTitle}
             </h3>
         </div>
     );

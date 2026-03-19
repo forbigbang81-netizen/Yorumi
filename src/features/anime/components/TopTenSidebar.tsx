@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Anime } from '../../../types/anime';
+import { useTitleLanguage } from '../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface TopTenSidebarProps {
     today: Anime[];
@@ -12,6 +14,7 @@ interface TopTenSidebarProps {
 type TopRange = 'today' | 'week' | 'month';
 
 export default function TopTenSidebar({ today, week, month, isLoading = false, onAnimeClick }: TopTenSidebarProps) {
+    const { language } = useTitleLanguage();
     const [range, setRange] = useState<TopRange>('today');
     const topTen = useMemo(() => {
         const list = range === 'today' ? today : range === 'week' ? week : month;
@@ -73,7 +76,7 @@ export default function TopTenSidebar({ today, week, month, isLoading = false, o
                 <div className="space-y-3">
                     {topTen.map((anime, index) => (
                         <button
-                            key={`${anime.mal_id || anime.id || anime.scraperId || anime.title}-${index}`}
+                            key={`${anime.mal_id || anime.id || anime.scraperId || getDisplayTitle(anime as unknown as Record<string, unknown>, language)}-${index}`}
                             onClick={() => onAnimeClick(anime)}
                             className="w-full text-left group"
                         >
@@ -95,7 +98,7 @@ export default function TopTenSidebar({ today, week, month, isLoading = false, o
 
                                 <div className="min-w-0 flex-1 py-3 pr-1">
                                     <div className="text-sm font-semibold text-white line-clamp-2 leading-snug">
-                                        {anime.title}
+                                        {getDisplayTitle(anime as unknown as Record<string, unknown>, language)}
                                     </div>
                                     <div className="mt-2 flex items-center gap-2">
                                         <span className="inline-flex items-center gap-1.5 bg-[#22c55e] text-white text-[10px] font-bold px-2 py-1 rounded-md">
@@ -116,7 +119,7 @@ export default function TopTenSidebar({ today, week, month, isLoading = false, o
                                         maskImage: 'linear-gradient(110deg, transparent 0%, black 26%, black 100%)',
                                         WebkitMaskImage: 'linear-gradient(110deg, transparent 0%, black 26%, black 100%)'
                                     }}
-                                    aria-label={anime.title}
+                                    aria-label={getDisplayTitle(anime as unknown as Record<string, unknown>, language)}
                                 />
                             </div>
                         </button>

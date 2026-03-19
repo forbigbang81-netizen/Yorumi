@@ -1,4 +1,6 @@
 import type { Manga } from '../../types/manga';
+import { useTitleLanguage } from '../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../utils/titleLanguage';
 
 interface MangaDetailsModalProps {
     isOpen: boolean;
@@ -8,6 +10,8 @@ interface MangaDetailsModalProps {
 }
 
 export default function MangaDetailsModal({ isOpen, manga, onClose, onReadNow }: MangaDetailsModalProps) {
+    const { language } = useTitleLanguage();
+    const displayTitle = getDisplayTitle(manga as unknown as Record<string, unknown>, language);
     if (!isOpen) return null;
 
     return (
@@ -16,7 +20,7 @@ export default function MangaDetailsModal({ isOpen, manga, onClose, onReadNow }:
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-white/10">
                     <div>
-                        <h1 className="text-3xl font-bold">{manga.title}</h1>
+                        <h1 className="text-3xl font-bold">{displayTitle}</h1>
                         <div className="flex items-center gap-3 mt-2">
                             {manga.rank && <span className="text-sm font-bold text-[#facc15]">RANK #{manga.rank}</span>}
                         </div>
@@ -35,7 +39,7 @@ export default function MangaDetailsModal({ isOpen, manga, onClose, onReadNow }:
                             <div className="relative aspect-[2/3] rounded-lg overflow-hidden shadow-2xl group">
                                 <img
                                     src={manga.images.jpg.large_image_url || manga.images.jpg.image_url}
-                                    alt={manga.title}
+                                    alt={displayTitle}
                                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                 />
                                 <div className="absolute inset-0 ring-1 ring-white/10 rounded-lg pointer-events-none" />

@@ -7,9 +7,12 @@ import EpisodeList from '../features/player/components/EpisodeList';
 import VideoPlayer from '../features/player/components/VideoPlayer';
 import PlayerControls from '../features/player/components/PlayerControls';
 import AnimeDetailsSidebar from '../features/anime/components/AnimeDetailsSidebar';
+import { useTitleLanguage } from '../context/TitleLanguageContext';
+import { getDisplayTitle } from '../utils/titleLanguage';
 
 export default function WatchPage() {
     const { id } = useParams<{ title: string; id: string }>();
+    const { language } = useTitleLanguage();
 
     const {
         anime,
@@ -91,6 +94,7 @@ export default function WatchPage() {
 
     // Use any cast to avoid type errors with mismatched interface if needed
     const animeData: any = anime;
+    const displayTitle = getDisplayTitle(animeData as Record<string, unknown>, language);
 
     return (
         <div className="flex flex-col h-screen w-full bg-[#0a0a0a] text-white overflow-hidden pt-[60px]">
@@ -104,7 +108,7 @@ export default function WatchPage() {
                     <span className="text-sm font-medium">Back</span>
                 </button>
                 <h1 className="text-lg font-bold text-white tracking-wide truncate">
-                    {animeData.title}
+                    {displayTitle}
                 </h1>
             </header>
 
@@ -131,7 +135,7 @@ export default function WatchPage() {
 
                     {/* Metadata & Controls Bar (Below Player) */}
                     <PlayerControls
-                        animeTitle={animeData.title}
+                        animeTitle={displayTitle}
                         episodeNumber={epNum}
                         episodeTitle={cleanCurrentTitle}
                         isExpanded={isExpanded}

@@ -1,5 +1,7 @@
 import React from 'react';
 import type { Anime } from '../../../types/anime';
+import { useTitleLanguage } from '../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface AnimeCardProps {
     anime: Anime;
@@ -12,6 +14,7 @@ interface AnimeCardProps {
 }
 
 const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onMouseEnter, inList, onToggleList, disableTilt = false }) => {
+    const { language } = useTitleLanguage();
     const cardRef = React.useRef<HTMLDivElement>(null);
     const [rotation, setRotation] = React.useState({ x: 0, y: 0 });
     const [glare, setGlare] = React.useState({ x: 50, y: 50, opacity: 0 });
@@ -20,6 +23,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
     // Get episode count - prefer latestEpisode for ongoing anime
     const isUnreleased = anime.status === 'NOT_YET_RELEASED';
     const episodeCount = isUnreleased ? null : (anime.latestEpisode || anime.episodes);
+    const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         if (disableTilt) {
@@ -94,7 +98,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
 
                 <img
                     src={anime.images.jpg.large_image_url || anime.images.jpg.image_url}
-                    alt={anime.title}
+                    alt={displayTitle}
                     className="w-full h-full object-cover"
                     loading="lazy"
                 />
@@ -132,7 +136,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
 
                     {/* Title */}
                     <h3 className="text-sm font-bold text-white mb-1 line-clamp-2 leading-tight translate-z-10">
-                        {anime.title}
+                        {displayTitle}
                     </h3>
 
                     {/* Rating + Info Row */}
@@ -211,7 +215,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
 
             {/* Title Below Card */}
             <h3 className="text-sm font-semibold text-gray-100 line-clamp-2 leading-tight group-hover:text-yorumi-accent transition-colors">
-                {anime.title}
+                {displayTitle}
             </h3>
         </div>
     );

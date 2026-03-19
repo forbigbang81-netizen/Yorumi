@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { mangaService } from '../../../services/mangaService';
 import type { Manga } from '../../../types/manga';
+import { useTitleLanguage } from '../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface Top100MangaProps {
     onMangaClick: (mangaId: string) => void;
@@ -8,6 +10,7 @@ interface Top100MangaProps {
 }
 
 const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick, onViewAll }) => {
+    const { language } = useTitleLanguage();
     const [mangaList, setMangaList] = useState<Manga[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -80,7 +83,7 @@ const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick, onViewAll }) =>
                         <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 shadow-lg ring-0 outline-none group-hover:shadow-purple-500/20 transition-all duration-300">
                             <img
                                 src={manga.images.jpg.large_image_url}
-                                alt={manga.title}
+                                alt={getDisplayTitle(manga as unknown as Record<string, unknown>, language)}
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 group-hover:blur-[2px]"
                                 loading="lazy"
                             />
@@ -88,7 +91,7 @@ const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick, onViewAll }) =>
                             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 sm:flex hidden flex-col justify-end p-4">
                                 <div className="translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
                                     <h3 className="text-sm font-bold text-white leading-tight mb-1 line-clamp-2">
-                                        {manga.title}
+                                        {getDisplayTitle(manga as unknown as Record<string, unknown>, language)}
                                     </h3>
 
                                     <div className="flex items-center flex-wrap gap-2 text-[10px] text-gray-300 mb-2">
@@ -180,7 +183,7 @@ const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick, onViewAll }) =>
 
                         {/* Title Below Card (Visible only on mobile or when not hovered if we want) */}
                         <h3 className="text-xs font-semibold text-gray-100 line-clamp-2 leading-tight group-hover:text-yorumi-accent transition-colors sm:group-hover:opacity-0 duration-200">
-                            {manga.title}
+                            {getDisplayTitle(manga as unknown as Record<string, unknown>, language)}
                         </h3>
                     </div>
                 ))}

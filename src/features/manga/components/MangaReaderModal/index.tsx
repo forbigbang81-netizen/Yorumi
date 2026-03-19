@@ -5,6 +5,8 @@ import ReaderHeader from './ReaderHeader';
 import ChapterList from './ChapterList';
 import PageViewer from './PageViewer';
 import MangaInfoSidebar from './MangaInfoSidebar';
+import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../../utils/titleLanguage';
 
 interface MangaReaderModalProps {
     isOpen: boolean;
@@ -43,6 +45,7 @@ export default function MangaReaderModal({
     onZoomOut,
     readChapters = new Set()
 }: MangaReaderModalProps) {
+    const { language } = useTitleLanguage();
     // UI State
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
     const [showDetails, setShowDetails] = useState(false);
@@ -139,7 +142,7 @@ export default function MangaReaderModal({
             <div className="w-full h-full flex flex-col bg-[#0a0a0a] relative">
                 {/* Header */}
                 <ReaderHeader
-                    mangaTitle={manga.title}
+                    mangaTitle={getDisplayTitle(manga as unknown as Record<string, unknown>, language)}
                     currentChapter={currentChapter}
                     prevChapter={prevChapter}
                     nextChapter={nextChapter}

@@ -1,6 +1,8 @@
 import { Play, Plus, Check, Heart } from 'lucide-react';
 import type { Anime } from '../../../../types/anime';
 import AnimeLogoImage from '../../../../components/anime/AnimeLogoImage';
+import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../../utils/titleLanguage';
 
 interface DetailsInfoProps {
     anime: Anime;
@@ -14,6 +16,8 @@ interface DetailsInfoProps {
 }
 
 export default function DetailsInfo({ anime, episodesCount, inList, inFavorites = false, onWatch, onToggleList, onToggleFavorite, children }: DetailsInfoProps) {
+    const { language } = useTitleLanguage();
+    const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
     // ... helper ...
     const getLatestEpisode = () => {
         if (anime.status === 'NOT_YET_RELEASED') return null;
@@ -30,7 +34,7 @@ export default function DetailsInfo({ anime, episodesCount, inList, inFavorites 
                 <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50 aspect-[2/3]">
                     <img
                         src={anime.images.jpg.large_image_url}
-                        alt={anime.title}
+                        alt={displayTitle}
                         className="w-full h-full object-cover"
                     />
                 </div>
@@ -40,7 +44,7 @@ export default function DetailsInfo({ anime, episodesCount, inList, inFavorites 
             <div className="flex-1 pt-2 md:pt-8 text-center md:text-left space-y-4">
                 <AnimeLogoImage
                     anilistId={anime.id || anime.mal_id}
-                    title={anime.title}
+                    title={displayTitle}
                     className="mx-auto md:mx-0"
                     size="large"
                 />

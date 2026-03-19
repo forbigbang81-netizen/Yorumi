@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
 import { Calendar, PenTool } from 'lucide-react';
 import type { Manga } from '../../../../types/manga';
+import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../../utils/titleLanguage';
 
 interface MangaInfoSidebarProps {
     manga: Manga;
@@ -15,6 +17,8 @@ export default function MangaInfoSidebar({
     isHeaderVisible,
     onClose,
 }: MangaInfoSidebarProps) {
+    const { language } = useTitleLanguage();
+    const displayTitle = getDisplayTitle(manga as unknown as Record<string, unknown>, language);
     return (
         <aside className={`
             absolute md:static inset-y-0 right-0 z-40
@@ -33,7 +37,7 @@ export default function MangaInfoSidebar({
                 >
                     <img
                         src={manga.images.jpg.large_image_url}
-                        alt={manga.title}
+                        alt={displayTitle}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
@@ -68,7 +72,7 @@ export default function MangaInfoSidebar({
                             className="hover:text-yorumi-manga transition-colors block"
                         >
                             <h2 className="text-xl font-bold leading-tight text-white mb-2">
-                                {manga.title}
+                                {displayTitle}
                             </h2>
                         </Link>
                         <p className="text-sm text-gray-500 font-medium">

@@ -4,6 +4,8 @@ import Autoplay from 'embla-carousel-autoplay';
 import type { Anime } from '../../../types/anime';
 import AnimeLogoImage from '../../../components/anime/AnimeLogoImage';
 import SpotlightSkeleton from './SpotlightSkeleton';
+import { useTitleLanguage } from '../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface SpotlightHeroProps {
     animeList: Anime[];
@@ -14,6 +16,7 @@ interface SpotlightHeroProps {
 
 
 const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, onWatchClick }) => {
+    const { language } = useTitleLanguage();
     // Embla Carousel hook with Autoplay
     const [emblaRef, emblaApi] = useEmblaCarousel({
         loop: true,
@@ -89,7 +92,7 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                                             <iframe
                                                 className="absolute inset-0 w-full h-full"
                                                 src={trailerUrl}
-                                                title={`${anime.title} trailer`}
+                                                title={`${getDisplayTitle(anime as unknown as Record<string, unknown>, language)} trailer`}
                                                 allow="autoplay; encrypted-media; picture-in-picture"
                                                 allowFullScreen={false}
                                             />
@@ -119,13 +122,13 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                                             </div>
 
                                             {/* Logo */}
-                                            <div className={`${anime.title.length > 50 ? 'max-h-8 md:max-h-24' :
-                                                anime.title.length > 30 ? 'max-h-10 md:max-h-28' :
+                                            <div className={`${getDisplayTitle(anime as unknown as Record<string, unknown>, language).length > 50 ? 'max-h-8 md:max-h-24' :
+                                                getDisplayTitle(anime as unknown as Record<string, unknown>, language).length > 30 ? 'max-h-10 md:max-h-28' :
                                                     'max-h-14 md:max-h-32'
                                                 } mb-8 md:mb-12 flex items-start overflow-visible max-w-[80%] md:max-w-none`}>
                                                 <AnimeLogoImage
                                                     anilistId={anime.id || anime.mal_id}
-                                                    title={anime.title}
+                                                    title={getDisplayTitle(anime as unknown as Record<string, unknown>, language)}
                                                     className="drop-shadow-2xl max-h-full origin-left object-contain"
                                                     size="medium"
                                                     style={{ maxHeight: 'inherit' }}

@@ -1,5 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import type { Anime } from '../../../../types/anime';
+import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../../utils/titleLanguage';
 
 interface DetailsHeroProps {
     anime: Anime;
@@ -7,14 +9,16 @@ interface DetailsHeroProps {
 }
 
 export default function DetailsHero({ anime, onBack }: DetailsHeroProps) {
+    const { language } = useTitleLanguage();
     const bannerImage = anime.anilist_banner_image || anime.images.jpg.large_image_url;
+    const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
 
     return (
         <div className="relative h-[40vh] md:h-[50vh] w-full">
             <div className="absolute inset-0">
                 <img
                     src={bannerImage}
-                    alt={anime.title}
+                    alt={displayTitle}
                     className={`w-full h-full object-cover ${!anime.anilist_banner_image ? 'blur-xl opacity-50 scale-110' : ''}`}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/60 to-transparent" />

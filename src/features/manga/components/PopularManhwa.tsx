@@ -3,6 +3,8 @@ import useEmblaCarousel from 'embla-carousel-react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { mangaService } from '../../../services/mangaService';
 import type { Manga } from '../../../types/manga';
+import { useTitleLanguage } from '../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface PopularManhwaProps {
     onMangaClick: (mangaId: string) => void;
@@ -10,6 +12,7 @@ interface PopularManhwaProps {
 }
 
 const PopularManhwa: React.FC<PopularManhwaProps> = ({ onMangaClick, onViewAll }) => {
+    const { language } = useTitleLanguage();
     const [manhwaList, setManhwaList] = useState<Manga[]>([]);
     const [loading, setLoading] = useState(true);
     const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -108,7 +111,7 @@ const PopularManhwa: React.FC<PopularManhwaProps> = ({ onMangaClick, onViewAll }
                                     <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-3 shadow-none ring-0 outline-none">
                                         <img
                                             src={manga.images.jpg.large_image_url}
-                                            alt={manga.title}
+                                            alt={getDisplayTitle(manga as unknown as Record<string, unknown>, language)}
                                             className="w-full h-full object-cover"
                                             loading="lazy"
                                         />
@@ -146,7 +149,7 @@ const PopularManhwa: React.FC<PopularManhwaProps> = ({ onMangaClick, onViewAll }
 
                                             {/* Title */}
                                             <h3 className="text-sm font-bold text-white mb-1 line-clamp-2 leading-tight">
-                                                {manga.title}
+                                                {getDisplayTitle(manga as unknown as Record<string, unknown>, language)}
                                             </h3>
 
                                             {/* Rating + Info Row */}
@@ -213,7 +216,7 @@ const PopularManhwa: React.FC<PopularManhwaProps> = ({ onMangaClick, onViewAll }
 
                                     {/* Title Below Card */}
                                     <h3 className="text-sm font-semibold text-gray-100 line-clamp-2 leading-tight group-hover:text-yorumi-accent transition-colors">
-                                        {manga.title}
+                                        {getDisplayTitle(manga as unknown as Record<string, unknown>, language)}
                                     </h3>
                                 </div>
                             ))}

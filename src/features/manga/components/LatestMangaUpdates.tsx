@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { mangaService } from '../../../services/mangaService';
+import { useTitleLanguage } from '../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface HotUpdate {
     id: string;
@@ -14,6 +16,7 @@ interface LatestMangaUpdatesProps {
 }
 
 export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesProps) {
+    const { language } = useTitleLanguage();
     const [updates, setUpdates] = useState<HotUpdate[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -125,7 +128,7 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
                         <div className="relative w-16 h-24 flex-shrink-0 rounded-md overflow-hidden shadow-sm">
                             <img
                                 src={manga.thumbnail}
-                                alt={manga.title}
+                                alt={getDisplayTitle(manga as unknown as Record<string, unknown>, language)}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 loading="lazy"
                             />
@@ -134,7 +137,7 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
                         {/* Info */}
                         <div className="flex flex-col justify-center min-w-0">
                             <h3 className="text-sm font-bold text-white leading-tight mb-2 truncate group-hover:text-yorumi-manga transition-colors">
-                                {manga.title}
+                                {getDisplayTitle(manga as unknown as Record<string, unknown>, language)}
                             </h3>
 
                             {/* Reverted Tag Style (assuming this is likely what was desired, simple gray text) */}

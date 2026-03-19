@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { Anime, Episode } from '../../types/anime';
 import AnimeCard from '../../features/anime/components/AnimeCard';
+import { useTitleLanguage } from '../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../utils/titleLanguage';
 
 // Episode Grid Component with Pagination (30 per page)
 // Episode List Component with Pagination (20 per page)
@@ -65,6 +67,8 @@ interface AnimeDetailsModalProps {
 }
 
 export default function AnimeDetailsModal({ isOpen, anime, episodes, epLoading, onClose, onWatchNow, onEpisodeClick, onAnimeClick }: AnimeDetailsModalProps) {
+    const { language } = useTitleLanguage();
+    const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
     if (!isOpen) return null;
 
@@ -97,7 +101,7 @@ export default function AnimeDetailsModal({ isOpen, anime, episodes, epLoading, 
                     <div className="absolute inset-0">
                         <img
                             src={bannerImage}
-                            alt={anime.title}
+                            alt={displayTitle}
                             className={`w-full h-full object-cover ${!anime.anilist_banner_image ? 'blur-xl opacity-50 scale-110' : ''}`}
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/60 to-transparent" />
@@ -113,7 +117,7 @@ export default function AnimeDetailsModal({ isOpen, anime, episodes, epLoading, 
                             <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-white/10">
                                 <img
                                     src={anime.images.jpg.large_image_url}
-                                    alt={anime.title}
+                                    alt={displayTitle}
                                     className="w-full h-auto object-cover aspect-[2/3]"
                                 />
                             </div>
@@ -123,7 +127,7 @@ export default function AnimeDetailsModal({ isOpen, anime, episodes, epLoading, 
                         <div className="flex-1 pt-4 md:pt-8 text-center md:text-left space-y-4">
                             {/* Title */}
                             <h1 className="text-3xl md:text-4xl lg:text-5xl font-black text-white leading-tight">
-                                {anime.title}
+                                {displayTitle}
                             </h1>
 
                             {/* Info Row: ★ 7.9 | HD | 1 eps | TV - matching card styling */}

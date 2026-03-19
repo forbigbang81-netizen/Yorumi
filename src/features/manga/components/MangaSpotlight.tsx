@@ -4,6 +4,8 @@ import Autoplay from 'embla-carousel-autoplay';
 import { mangaService } from '../../../services/mangaService';
 import type { Manga } from '../../../types/manga';
 import AnimeLogoImage from '../../../components/anime/AnimeLogoImage';
+import { useTitleLanguage } from '../../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface MangaSpotlightProps {
     onMangaClick: (mangaId: string, autoRead?: boolean) => void;
@@ -81,6 +83,7 @@ const SpotlightCover: React.FC<{ thumbnail: string; title: string }> = ({ thumbn
 };
 
 const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
+    const { language } = useTitleLanguage();
     const [mangas, setMangas] = useState<Manga[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -148,7 +151,9 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
             {/* Embla Viewport */}
             <div className="absolute inset-0 overflow-hidden" ref={emblaRef}>
                 <div className="flex h-full touch-pan-y">
-                    {mangas.map((manga, index) => (
+                    {mangas.map((manga, index) => {
+                        const displayTitle = getDisplayTitle(manga as unknown as Record<string, unknown>, language);
+                        return (
                         <div key={manga.id || manga.mal_id || index} className="relative min-w-full h-full flex-[0_0_100%]">
                             {/* Background Image */}
                             <div className="absolute inset-0 z-0 select-none overflow-hidden">
@@ -174,20 +179,20 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                             <div className="md:hidden h-24 w-16 rounded-md overflow-hidden shadow-lg shadow-black/50 border border-white/10 flex-shrink-0 relative">
                                                 <img
                                                     src={manga.images.jpg.large_image_url}
-                                                    alt={manga.title}
+                                                    alt={displayTitle}
                                                     className="w-full h-full object-cover"
                                                 />
                                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                                             </div>
                                             <span>#{index + 1} Trending</span>
                                         </div>
-                                        <div className={`${manga.title.length > 50 ? 'max-h-12 md:max-h-16' :
-                                            manga.title.length > 30 ? 'max-h-16 md:max-h-20' :
+                                        <div className={`${displayTitle.length > 50 ? 'max-h-12 md:max-h-16' :
+                                            displayTitle.length > 30 ? 'max-h-16 md:max-h-20' :
                                                 'max-h-20 md:max-h-24'
                                             } mb-8 md:mb-12 flex items-start overflow-visible`}>
                                             <AnimeLogoImage
                                                 anilistId={parseInt((manga.id || manga.mal_id || '0').toString())}
-                                                title={manga.title}
+                                                title={displayTitle}
                                                 className="drop-shadow-2xl max-h-full origin-left object-contain"
                                                 size="medium"
                                             />
@@ -246,12 +251,13 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
 
                                     {/* Cover Image (Right - Portrait) */}
                                     <div className="ml-auto lg:mr-12 xl:mr-20">
-                                        <SpotlightCover thumbnail={manga.images.jpg.large_image_url} title={manga.title} />
+                                        <SpotlightCover thumbnail={manga.images.jpg.large_image_url} title={displayTitle} />
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 

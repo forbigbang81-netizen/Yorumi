@@ -3,6 +3,8 @@ import { LayoutGrid, List } from 'lucide-react';
 import type { Anime, Episode } from '../../types/anime';
 import type { StreamLink } from '../../types/stream';
 import Navbar from '../layout/Navbar';
+import { useTitleLanguage } from '../../context/TitleLanguageContext';
+import { getDisplayTitle } from '../../utils/titleLanguage';
 
 interface WatchModalProps {
     isOpen: boolean;
@@ -68,8 +70,11 @@ export default function WatchModal({
     onClearSearch,
     onLogoClick,
 }: WatchModalProps) {
+    const { language } = useTitleLanguage();
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [isExpanded, setIsExpanded] = useState(false);
+    const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
+    const secondaryTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language === 'eng' ? 'jpy' : 'eng');
 
     if (!isOpen) return null;
 
@@ -107,7 +112,7 @@ export default function WatchModal({
                         </svg>
                         <span>Back</span>
                     </button>
-                    <h2 className="ml-4 text-lg font-bold truncate">{anime.title}</h2>
+                    <h2 className="ml-4 text-lg font-bold truncate">{displayTitle}</h2>
                 </div>
 
                 <div className={`flex-1 flex overflow-hidden`}>
@@ -238,7 +243,7 @@ export default function WatchModal({
                         <div className="p-4 bg-[#111] border-t border-white/5">
                             {/* Title & Episode Info */}
                             <div className="mb-3">
-                                <h1 className="text-lg font-bold text-white">{anime.title}</h1>
+                                <h1 className="text-lg font-bold text-white">{displayTitle}</h1>
                                 {currentEpisode && (
                                     <p className="text-sm text-gray-400 mt-0.5">
                                         <span className="text-[#facc15]">Episode {currentEpisode.episodeNumber}</span>
@@ -362,13 +367,13 @@ export default function WatchModal({
                     {!isExpanded && (
                         <div className="w-80 bg-[#111] border-l border-white/5 overflow-y-auto hidden xl:block p-6 space-y-4">
                             <div className="aspect-[2/3] rounded-lg overflow-hidden shadow-lg">
-                                <img src={anime.images.jpg.large_image_url} alt={anime.title} className="w-full h-full object-cover" />
+                                <img src={anime.images.jpg.large_image_url} alt={displayTitle} className="w-full h-full object-cover" />
                             </div>
 
                             <div>
-                                <h1 className="text-xl font-bold leading-tight mb-1">{anime.title}</h1>
-                                {anime.title_japanese && (
-                                    <p className="text-sm text-gray-400 mb-3">{anime.title_japanese}</p>
+                                <h1 className="text-xl font-bold leading-tight mb-1">{displayTitle}</h1>
+                                {secondaryTitle && secondaryTitle !== displayTitle && (
+                                    <p className="text-sm text-gray-400 mb-3">{secondaryTitle}</p>
                                 )}
 
                                 <div className="flex flex-wrap gap-2 text-xs mb-4">

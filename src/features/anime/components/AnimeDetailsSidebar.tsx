@@ -1,4 +1,6 @@
 import { useNavigate } from "react-router-dom";
+import { useTitleLanguage } from "../../../context/TitleLanguageContext";
+import { getDisplayTitle } from "../../../utils/titleLanguage";
 
 interface AnimeDetailsSidebarProps {
     anime: any; // Using any to match previous implementation's loose typing
@@ -7,6 +9,8 @@ interface AnimeDetailsSidebarProps {
 
 export default function AnimeDetailsSidebar({ anime, currentId }: AnimeDetailsSidebarProps) {
     const navigate = useNavigate();
+    const { language } = useTitleLanguage();
+    const displayTitle = getDisplayTitle(anime as Record<string, unknown>, language);
 
     const handleNavigate = () => {
         // Use currentId from params or fall back to anime id
@@ -24,7 +28,7 @@ export default function AnimeDetailsSidebar({ anime, currentId }: AnimeDetailsSi
                 >
                     <img
                         src={anime.main_picture?.large || anime.main_picture?.medium || anime.images?.jpg?.large_image_url}
-                        alt={anime.title}
+                        alt={displayTitle}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -41,10 +45,10 @@ export default function AnimeDetailsSidebar({ anime, currentId }: AnimeDetailsSi
                         onClick={handleNavigate}
                     >
                         <h2 className="text-xl font-bold leading-tight text-white group-hover:text-yorumi-accent transition-colors">
-                            {anime.title}
+                            {displayTitle}
                         </h2>
                         <p className="text-sm text-gray-500 mt-1 uppercase tracking-wider font-medium">
-                            {anime.title_english || anime.alternative_titles?.en}
+                            {getDisplayTitle(anime as Record<string, unknown>, language === 'eng' ? 'jpy' : 'eng')}
                         </p>
                     </div>
 
