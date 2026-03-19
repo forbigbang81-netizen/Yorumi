@@ -40,12 +40,21 @@ export function useContinueWatching() {
         const image = anime.anilist_banner_image || anime.images.jpg.large_image_url;
         const poster = anime.images.jpg.image_url || anime.images.jpg.large_image_url;
 
+        const parseEpisodeNumber = (value: unknown): number => {
+            if (typeof value === 'number' && Number.isFinite(value)) return value;
+            const raw = String(value ?? '').trim();
+            const direct = Number(raw);
+            if (Number.isFinite(direct)) return direct;
+            const match = raw.match(/(\d+(?:\.\d+)?)/);
+            return match ? Number(match[1]) : 0;
+        };
+
         const validId = anime.mal_id || anime.id;
         if (!validId) return;
         const progress: WatchProgress = {
             animeId: validId.toString(),
             episodeId: episode.session || (episode as any).id || '',
-            episodeNumber: typeof episode.episodeNumber === 'string' ? parseFloat(episode.episodeNumber) : episode.episodeNumber,
+            episodeNumber: parseEpisodeNumber(episode.episodeNumber),
             timestamp: Date.now(), // For video position if we track it
             lastWatched: Date.now(), // For sorting
             animeTitle: anime.title,
