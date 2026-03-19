@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, setDoc, onSnapshot, increment, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 
@@ -53,29 +53,29 @@ export function useActivityHistory() {
             : null;
 
         try {
-            // Count unique chapter/episode only once when a dedupe key is provided.
-            if (activitySeenRef) {
-                const seenSnap = await getDoc(activitySeenRef);
-                if (seenSnap.exists()) return;
-            }
+            await runTransaction(db, async (tx) => {
+                // Count unique chapter/episode only once when a dedupe key is provided.
+                if (activitySeenRef) {
+                    const seenSnap = await tx.get(activitySeenRef);
+                    if (seenSnap.exists()) return;
+                }
 
-            const docSnap = await getDoc(activityRef);
-            if (!docSnap.exists()) {
-                await setDoc(activityRef, {
-                    [dateString]: 1
-                });
-            } else {
-                await updateDoc(activityRef, {
-                    [dateString]: increment(1)
-                });
-            }
+                const historySnap = await tx.get(activityRef);
+                const currentCount = historySnap.exists()
+                    ? Number((historySnap.data() as ActivityData)[dateString] || 0)
+                    : 0;
 
-            if (activitySeenRef) {
-                await setDoc(activitySeenRef, {
-                    createdAt: Date.now(),
-                    date: dateString
-                });
-            }
+                tx.set(activityRef, {
+                    [dateString]: currentCount + 1
+                }, { merge: true });
+
+                if (activitySeenRef) {
+                    tx.set(activitySeenRef, {
+                        createdAt: Date.now(),
+                        date: dateString
+                    });
+                }
+            });
         } catch (error) {
             console.error("Failed to record activity:", error);
         }
