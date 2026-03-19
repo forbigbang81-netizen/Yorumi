@@ -20,6 +20,7 @@ const mapAnilistToAnime = (item: any) => {
         title: item.title?.english || item.title?.romaji || item.title?.native || 'Unknown',
         title_japanese: item.title?.native,
         title_english: item.title?.english,
+        title_romaji: item.title?.romaji,
         synonyms: item.synonyms || [],
         images: {
             jpg: {
@@ -79,6 +80,7 @@ const mapScraperToAnime = (item: any) => {
         scraperId: item.session || item.id,
         title: item.title || 'Unknown',
         title_english: item.title,
+        title_romaji: item.title,
         images: {
             jpg: {
                 image_url: item.poster || '',

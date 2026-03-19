@@ -6,6 +6,7 @@ import { mangaService } from '../../../services/mangaService';
 import { useAuth } from '../../../context/AuthContext';
 import SearchBar from './SearchBar';
 import NavToggle from './NavToggle';
+import TitleLanguageToggle from './TitleLanguageToggle';
 import UserMenu from './UserMenu';
 import RandomButton from './RandomButton';
 
@@ -130,7 +131,7 @@ export default function Navbar({
 
     return (
         <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ${isScrolled || !isTransparentPage
-            ? 'bg-yorumi-bg border-b border-white/5 py-3'
+            ? 'bg-[#0a0a0a]/72 backdrop-blur-xl border-b border-transparent py-3'
             : 'bg-gradient-to-b from-black via-black/60 to-transparent border-transparent py-4'
             }`}>
             <div className="px-4 md:px-8 flex items-center justify-between">
@@ -173,6 +174,7 @@ export default function Navbar({
                             onTabChange={onTabChange}
                             onClearSearch={onClearSearch}
                         />
+                        <TitleLanguageToggle theme={activeTab} />
                         <RandomButton
                             isLoading={isLoadingRandom}
                             onClick={handleRandom}
@@ -229,14 +231,21 @@ export default function Navbar({
                         theme={activeTab}
                     />
 
-                    <div className="flex items-center justify-between">
-                        <NavToggle
-                            activeTab={activeTab}
-                            onTabChange={onTabChange}
-                            onClearSearch={onClearSearch}
-                            variant="mobile"
-                            onClose={() => setShowMobileSearch(false)}
-                        />
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <NavToggle
+                                activeTab={activeTab}
+                                onTabChange={onTabChange}
+                                onClearSearch={onClearSearch}
+                                variant="mobile"
+                                onClose={() => setShowMobileSearch(false)}
+                            />
+                            <TitleLanguageToggle
+                                variant="mobile"
+                                onClose={() => setShowMobileSearch(false)}
+                                theme={activeTab}
+                            />
+                        </div>
                         <RandomButton
                             isLoading={isLoadingRandom}
                             onClick={() => { handleRandom(); setShowMobileSearch(false); }}

@@ -5,6 +5,7 @@ export interface Anime {
     title: string;
     title_japanese?: string;
     title_english?: string;
+    title_romaji?: string;
     synonyms?: string[];
     images: {
         jpg: {

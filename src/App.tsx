@@ -22,6 +22,8 @@ import { useAnime } from './hooks/useAnime';
 import { animeService } from './services/animeService';
 import { mangaService } from './services/mangaService';
 import ScrollToTop from './components/ui/ScrollToTop';
+import { useTitleLanguage } from './context/TitleLanguageContext';
+import { getDisplayTitle, getSecondaryTitle } from './utils/titleLanguage';
 
 function App() {
   const navigate = useNavigate();
@@ -30,6 +32,7 @@ function App() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const { closeViewAll } = useAnime();
+  const { language } = useTitleLanguage();
   const searchRequestIdRef = useRef(0);
   const searchCacheRef = useRef(new Map<string, { data: any[]; timestamp: number }>());
   const SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
@@ -53,7 +56,7 @@ function App() {
         return;
       }
 
-      const cacheKey = `${activeTab}:${term.toLowerCase()}`;
+      const cacheKey = `${activeTab}:${language}:${term.toLowerCase()}`;
       const cached = searchCacheRef.current.get(cacheKey);
       const now = Date.now();
       if (cached && (now - cached.timestamp) < SEARCH_CACHE_TTL_MS) {
@@ -69,8 +72,8 @@ function App() {
           const { data } = await animeService.searchAnimeScraper(term, 1, 6);
           const mapped = data.slice(0, 4).map((item: any) => ({
             id: item.scraperId || item.id,
-            title: item.title_english || item.title || 'Unknown',
-            subtitle: item.title_japanese || item.title_english || '',
+            title: getDisplayTitle(item, language),
+            subtitle: getSecondaryTitle(item, language),
             image: item.images.jpg.image_url,
             date: item.aired?.string ? item.aired.string : item.year,
             type: item.type, // e.g., TV
@@ -84,8 +87,8 @@ function App() {
           const { data } = await mangaService.searchManga(term, 1, 6);
           const mapped = data.slice(0, 4).map((item: any) => ({
             id: item.id || item.mal_id,
-            title: item.title_english || item.title || 'Unknown',
-            subtitle: item.title_japanese || item.title_english,
+            title: getDisplayTitle(item, language),
+            subtitle: getSecondaryTitle(item, language),
             image: item.images.jpg.image_url,
             date: item.published?.string ? new Date(item.published.string).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
             type: item.type, // e.g., MANGA
@@ -109,7 +112,7 @@ function App() {
     };
 
     performSearch();
-  }, [searchQuery, activeTab]);
+  }, [searchQuery, activeTab, language]);
 
   // Sync Search Query if we are on search page
   useEffect(() => {
