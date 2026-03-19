@@ -386,6 +386,7 @@ export const syncStorage = {
             const snap = await getDoc(userRef);
             if (snap.exists()) {
                 const data = snap.data();
+                let didUpdateLocal = false;
 
                 // Merge logic could be more complex, but for now we'll prefer Cloud if it exists, 
                 // or simpler: just overwrite Local if Cloud has data, 
@@ -401,6 +402,7 @@ export const syncStorage = {
                         }
                     });
                     setScopedItem(STORAGE_KEYS.WATCH_LIST, JSON.stringify(merged));
+                    didUpdateLocal = true;
                 }
 
                 if (data.readList) {
@@ -412,6 +414,7 @@ export const syncStorage = {
                         }
                     });
                     setScopedItem(STORAGE_KEYS.READ_LIST, JSON.stringify(merged));
+                    didUpdateLocal = true;
                 }
 
                 if (data.continueWatching) {
@@ -422,10 +425,26 @@ export const syncStorage = {
                         .filter((v, i, a) => a.findIndex(t => t.animeId === v.animeId) === i) // Unique by ID
                         .slice(0, 20);
                     setScopedItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(merged));
+                    didUpdateLocal = true;
                 }
 
-                // Do not import episode history from cloud.
-                // This avoids stale/contaminated watched flags being re-applied across account switches.
+                // Merge Episode History
+                if (data.episodeHistory) {
+                    const local = storage.getEpisodeHistory();
+                    const merged: Record<string, number[]> = { ...local };
+                    Object.entries(data.episodeHistory as Record<string, unknown[]>).forEach(([animeId, episodes]) => {
+                        if (!Array.isArray(episodes)) return;
+                        if (!merged[animeId]) merged[animeId] = [];
+                        episodes.forEach((ep) => {
+                            const n = Number(ep);
+                            if (Number.isFinite(n) && n > 0 && !merged[animeId].includes(n)) {
+                                merged[animeId].push(n);
+                            }
+                        });
+                    });
+                    setScopedItem(STORAGE_KEYS.EPISODE_HISTORY, JSON.stringify(merged));
+                    didUpdateLocal = true;
+                }
 
                 // Merge Chapter History
                 if (data.chapterHistory) {
@@ -438,6 +457,7 @@ export const syncStorage = {
                         });
                     });
                     setScopedItem(STORAGE_KEYS.CHAPTER_HISTORY, JSON.stringify(merged));
+                    didUpdateLocal = true;
                 }
 
                 // Merge Anime Watch Time (keep the larger value per anime to avoid sync double-counting)
@@ -451,6 +471,7 @@ export const syncStorage = {
                     });
 
                     setScopedItem(STORAGE_KEYS.ANIME_WATCH_TIME, JSON.stringify(merged));
+                    didUpdateLocal = true;
                 }
 
                 // Merge Anime Genre Cache
@@ -463,6 +484,7 @@ export const syncStorage = {
                         merged[animeId] = Array.from(new Set([...localGenres, ...cloudGenres]));
                     });
                     setScopedItem(STORAGE_KEYS.ANIME_GENRE_CACHE, JSON.stringify(merged));
+                    didUpdateLocal = true;
                 }
 
                 // Merge Manga Genre Cache
@@ -475,6 +497,11 @@ export const syncStorage = {
                         merged[mangaId] = Array.from(new Set([...localGenres, ...cloudGenres]));
                     });
                     setScopedItem(STORAGE_KEYS.MANGA_GENRE_CACHE, JSON.stringify(merged));
+                    didUpdateLocal = true;
+                }
+
+                if (didUpdateLocal) {
+                    emitStorageUpdated();
                 }
             }
         } catch (error) {

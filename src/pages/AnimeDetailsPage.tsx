@@ -95,7 +95,7 @@ export default function AnimeDetailsPage() {
         }
     }, [id, location.state]);
 
-    const { selectedAnime, episodes, epLoading, detailsLoading, error, watchedEpisodes } = animeHook;
+    const { selectedAnime, episodes, epLoading, detailsLoading, error, watchedEpisodes, markEpisodeComplete } = animeHook;
     const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
     const { isFavorite, addFavorite, removeFavorite } = useFavoriteAnime();
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
@@ -245,6 +245,13 @@ export default function AnimeDetailsPage() {
                                             episodes={episodes}
                                             watchedEpisodes={watchedEpisodes}
                                             onEpisodeClick={(ep) => {
+                                                const raw = String(ep.episodeNumber ?? '').trim();
+                                                const direct = Number(raw);
+                                                const matched = raw.match(/(\d+(?:\.\d+)?)/);
+                                                const episodeNumber = Number.isFinite(direct) ? direct : (matched ? Number(matched[1]) : NaN);
+                                                if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
+                                                    markEpisodeComplete(episodeNumber);
+                                                }
                                                 const title = slugify(selectedAnime.title || selectedAnime.title_english || 'anime');
                                                 navigate(`/anime/watch/${title}/${id}?ep=${ep.episodeNumber}`);
                                             }}

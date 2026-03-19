@@ -46,6 +46,14 @@ export function usePlayer(animeId: string | undefined) {
     // 3. UI State
     const [isExpanded, setIsExpanded] = useState(false);
     const epNumParam = searchParams.get('ep') || '1';
+    const parseEpisodeNumber = (value: unknown): number => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        const raw = String(value ?? '').trim();
+        const direct = Number(raw);
+        if (Number.isFinite(direct)) return direct;
+        const match = raw.match(/(\d+(?:\.\d+)?)/);
+        return match ? Number(match[1]) : NaN;
+    };
 
     // --- Effects ---
 
@@ -99,6 +107,10 @@ export function usePlayer(animeId: string | undefined) {
             }
 
             if (targetEp) {
+                const targetEpisodeNumber = parseEpisodeNumber(targetEp.episodeNumber);
+                if (Number.isFinite(targetEpisodeNumber) && targetEpisodeNumber > 0) {
+                    markEpisodeComplete(targetEpisodeNumber);
+                }
                 // Update URL if we defaulted to a different episode or resolved 'latest'
                 if (String(targetEp.episodeNumber) !== epNumParam) {
                     setSearchParams({ ep: String(targetEp.episodeNumber) }, { replace: true });
@@ -106,13 +118,16 @@ export function usePlayer(animeId: string | undefined) {
                 loadStream(targetEp);
             }
         }
-    }, [episodes, epNumParam]);
+    }, [episodes, epNumParam, currentStream, streamLoading, selectedAnime?.id, selectedAnime?.mal_id, animeId]);
 
     // Save Progress
     useEffect(() => {
         if (selectedAnime && currentEpisode) {
             saveProgress(selectedAnime, currentEpisode);
-            markEpisodeComplete(parseFloat(currentEpisode.episodeNumber));
+            const episodeNumber = parseEpisodeNumber(currentEpisode.episodeNumber);
+            if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
+                markEpisodeComplete(episodeNumber);
+            }
         }
     }, [selectedAnime, currentEpisode]);
 
@@ -201,6 +216,10 @@ export function usePlayer(animeId: string | undefined) {
     // --- Actions ---
 
     const handleEpisodeClick = (ep: Episode) => {
+        const episodeNumber = parseEpisodeNumber(ep.episodeNumber);
+        if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
+            markEpisodeComplete(episodeNumber);
+        }
         setSearchParams({ ep: String(ep.episodeNumber) });
         loadStream(ep);
     };

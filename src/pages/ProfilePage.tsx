@@ -1096,10 +1096,11 @@ const MangaContinueReadingHighlights = ({ showSeeAll = false }: { showSeeAll?: b
 };
 
 const AnimeStatsOverview = () => {
+    const { user } = useAuth();
     const { watchList } = useWatchList();
     const { continueWatchingList } = useContinueWatching();
     const { favorites } = useFavoriteAnime();
-    const [, setStatsTick] = useState(0);
+    const [statsTick, setStatsTick] = useState(0);
 
     useEffect(() => {
         const onStorageUpdated = () => setStatsTick((v) => v + 1);
@@ -1107,11 +1108,43 @@ const AnimeStatsOverview = () => {
         return () => window.removeEventListener('yorumi-storage-updated', onStorageUpdated as EventListener);
     }, []);
 
-    const hasAccountAnimeHistory = watchList.length > 0 || continueWatchingList.length > 0 || favorites.length > 0;
-    const valueClassName = hasAccountAnimeHistory ? 'text-[#3cb6ff]' : 'text-gray-400';
+    const episodeHistory = React.useMemo(() => {
+        const merged: Record<string, unknown[]> = {};
 
-    const episodeHistory = storage.getEpisodeHistory();
+        const mergeParsedHistory = (parsed: Record<string, unknown[]>) => {
+            Object.entries(parsed || {}).forEach(([id, episodes]) => {
+                if (!Array.isArray(episodes)) return;
+                if (!merged[id]) merged[id] = [];
+                merged[id].push(...episodes);
+            });
+        };
+
+        const mergeHistoryFromStorage = (raw: string | null) => {
+            if (!raw) return;
+            try {
+                mergeParsedHistory(JSON.parse(raw) as Record<string, unknown[]>);
+            } catch {
+                // Ignore malformed history payloads.
+            }
+        };
+
+        // Current scoped getter
+        mergeParsedHistory(storage.getEpisodeHistory() as unknown as Record<string, unknown[]>);
+        // Explicit scoped and legacy unscoped keys for resilience during auth-race transitions.
+        if (user?.uid) mergeHistoryFromStorage(localStorage.getItem(`yorumi_episode_history_${user.uid}`));
+        mergeHistoryFromStorage(localStorage.getItem('yorumi_episode_history'));
+
+        return merged;
+    }, [user?.uid, statsTick]);
     const animeWatchTime = storage.getAnimeWatchTime();
+    const parseEpisodeNumber = (value: unknown): number => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        const raw = String(value ?? '').trim();
+        const direct = Number(raw);
+        if (Number.isFinite(direct)) return direct;
+        const match = raw.match(/(\d+(?:\.\d+)?)/);
+        return match ? Number(match[1]) : NaN;
+    };
     const normalizeTitleKey = (title?: string) =>
         (title || '')
             .toLowerCase()
@@ -1137,7 +1170,7 @@ const AnimeStatsOverview = () => {
     continueWatchingList.forEach((item) => {
         const key = normalizeTitleKey(item.animeTitle) || `id:${String(item.animeId)}`;
         ensureGroup(key).add(String(item.animeId));
-        const epNum = Number(item.episodeNumber);
+        const epNum = parseEpisodeNumber(item.episodeNumber);
         if (Number.isFinite(epNum) && epNum > 0) {
             ensureGroupProgress(key).add(epNum);
         }
@@ -1148,29 +1181,50 @@ const AnimeStatsOverview = () => {
         ensureGroup(key).add(String(item.id));
     });
 
-    const totalAnime = hasAccountAnimeHistory ? animeGroups.size : 0;
+    // Ensure watched-history IDs are represented even if the anime isn't in watchlist/favorites/continue list.
+    Object.keys(episodeHistory).forEach((historyId) => {
+        const alreadyGrouped = Array.from(animeGroups.values()).some((ids) => ids.has(historyId));
+        if (!alreadyGrouped) {
+            ensureGroup(`history:${historyId}`).add(historyId);
+        }
+    });
 
-    const totalEpisodesWatched = hasAccountAnimeHistory
-        ? Array.from(animeGroups.entries()).reduce((sum, [groupKey, ids]) => {
-            const uniqueEpisodes = new Set<number>();
-            ids.forEach((id) => {
-                (episodeHistory[id] || []).forEach((ep) => uniqueEpisodes.add(ep));
-            });
-            (groupProgressEpisodes.get(groupKey) || new Set<number>()).forEach((ep) => uniqueEpisodes.add(ep));
-            return sum + uniqueEpisodes.size;
-        }, 0)
-        : 0;
+    // Ensure watch-time-only IDs are also represented.
+    Object.keys(animeWatchTime || {}).forEach((historyId) => {
+        const alreadyGrouped = Array.from(animeGroups.values()).some((ids) => ids.has(historyId));
+        if (!alreadyGrouped) {
+            ensureGroup(`time:${historyId}`).add(historyId);
+        }
+    });
 
-    const totalWatchSeconds = hasAccountAnimeHistory
-        ? Array.from(animeGroups.values()).reduce((sum, ids) => {
-            // Use max per deduped anime group to avoid double counting mirrored ID records.
-            let groupSeconds = 0;
-            ids.forEach((id) => {
-                groupSeconds = Math.max(groupSeconds, animeWatchTime[id] || 0);
+    const totalAnime = animeGroups.size;
+
+    const totalEpisodesWatched = Array.from(animeGroups.entries()).reduce((sum, [groupKey, ids]) => {
+        const uniqueEpisodes = new Set<number>();
+        ids.forEach((id) => {
+            (episodeHistory[id] || []).forEach((ep) => {
+                const n = parseEpisodeNumber(ep);
+                if (Number.isFinite(n) && n > 0) uniqueEpisodes.add(n);
             });
-            return sum + groupSeconds;
-        }, 0)
-        : 0;
+        });
+        (groupProgressEpisodes.get(groupKey) || new Set<number>()).forEach((ep) => uniqueEpisodes.add(ep));
+        return sum + uniqueEpisodes.size;
+    }, 0);
+
+    const hasAccountAnimeHistory =
+        totalAnime > 0 ||
+        totalEpisodesWatched > 0 ||
+        Object.keys(animeWatchTime || {}).length > 0;
+    const valueClassName = hasAccountAnimeHistory ? 'text-[#3cb6ff]' : 'text-gray-400';
+
+    const totalWatchSeconds = Array.from(animeGroups.values()).reduce((sum, ids) => {
+        // Use max per deduped anime group to avoid double counting mirrored ID records.
+        let groupSeconds = 0;
+        ids.forEach((id) => {
+            groupSeconds = Math.max(groupSeconds, animeWatchTime[id] || 0);
+        });
+        return sum + groupSeconds;
+    }, 0);
     const totalHours = Math.round((totalWatchSeconds / 3600) * 10) / 10;
     const fmt = new Intl.NumberFormat('en-US');
     const hoursFmt = new Intl.NumberFormat('en-US', {
