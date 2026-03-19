@@ -141,7 +141,61 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
     }, [emblaApi]);
 
     if (loading) {
-        return <div className="w-full h-[75vh] bg-[#0a0a0a] animate-pulse" />;
+        return (
+            <div className="relative w-full h-[55vh] md:h-[75vh] min-h-[500px] md:min-h-[600px] overflow-hidden mb-8 bg-[#0a0a0a] animate-pulse">
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0a]/60 to-[#0a0a0a]" />
+                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent" />
+
+                <div className="absolute inset-0 flex items-center px-8 md:px-14 z-10">
+                    <div className="flex flex-col md:flex-row gap-12 items-center w-full max-w-7xl mx-auto mt-12">
+                        <div className="flex-1 w-full max-w-2xl">
+                            <div className="h-5 w-32 rounded bg-white/10 mb-4" />
+                            <div className="h-10 md:h-14 w-4/5 rounded bg-white/10 mb-4" />
+                            <div className="h-10 md:h-14 w-3/5 rounded bg-white/10 mb-8" />
+
+                            <div className="flex gap-3 mb-6">
+                                <div className="h-8 w-24 rounded-lg bg-white/10" />
+                                <div className="h-8 w-28 rounded-lg bg-white/10" />
+                                <div className="h-8 w-20 rounded-lg bg-white/10" />
+                            </div>
+
+                            <div className="space-y-2 mb-8">
+                                <div className="h-4 w-full rounded bg-white/10" />
+                                <div className="h-4 w-11/12 rounded bg-white/10" />
+                                <div className="h-4 w-4/5 rounded bg-white/10" />
+                            </div>
+
+                            <div className="flex gap-4">
+                                <div className="h-12 w-40 rounded-full bg-white/10" />
+                                <div className="h-12 w-32 rounded-full bg-white/10" />
+                            </div>
+                        </div>
+
+                        <div className="hidden md:block w-56 lg:w-64 h-[360px] rounded-xl bg-white/10 border border-white/10" />
+                    </div>
+                </div>
+
+                <div className="absolute bottom-6 right-6 flex gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-white/10" />
+                    <div className="w-8 h-8 rounded-lg bg-white/10" />
+                </div>
+
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 md:hidden">
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                        <div key={`manga-spotlight-dot-mobile-${idx}`} className="w-2 h-2 rounded-full bg-white/20" />
+                    ))}
+                </div>
+
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 hidden md:flex gap-2">
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                        <div
+                            key={`manga-spotlight-dot-desktop-${idx}`}
+                            className={`h-2 rounded-full ${idx === 0 ? 'w-6 bg-white/30' : 'w-2 bg-white/20'}`}
+                        />
+                    ))}
+                </div>
+            </div>
+        );
     }
 
     if (mangas.length === 0) return null;
