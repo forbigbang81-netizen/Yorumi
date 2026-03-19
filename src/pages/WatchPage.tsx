@@ -21,6 +21,7 @@ export default function WatchPage() {
         streams,
         error,
         watchedEpisodes,
+        episodesResolved,
         epNum,
         cleanCurrentTitle,
         epLoading,
@@ -120,7 +121,7 @@ export default function WatchPage() {
                     episodes={episodes}
                     currentEpNumber={epNum}
                     watchedEpisodes={watchedEpisodes}
-                    isLoading={epLoading}
+                    isLoading={epLoading || !episodesResolved}
                     onEpisodeClick={handleEpisodeClick}
                 />
 

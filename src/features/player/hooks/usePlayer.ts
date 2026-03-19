@@ -45,6 +45,8 @@ export function usePlayer(animeId: string | undefined) {
 
     // 3. UI State
     const [isExpanded, setIsExpanded] = useState(false);
+    const [hasSeenEpisodeFetchStart, setHasSeenEpisodeFetchStart] = useState(false);
+    const [episodesResolved, setEpisodesResolved] = useState(false);
     const epNumParam = searchParams.get('ep') || '1';
     const parseEpisodeNumber = (value: unknown): number => {
         if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -60,7 +62,25 @@ export function usePlayer(animeId: string | undefined) {
     // Clear streams on mount/id change
     useEffect(() => {
         clearStreams();
+        setHasSeenEpisodeFetchStart(false);
+        setEpisodesResolved(false);
     }, [animeId]);
+
+    useEffect(() => {
+        const currentId = String(animeId || '');
+        const animeMatch = selectedAnime &&
+            (String(selectedAnime.id) === currentId || String(selectedAnime.mal_id) === currentId);
+        if (!animeMatch) return;
+
+        if (epLoading) {
+            setHasSeenEpisodeFetchStart(true);
+            return;
+        }
+
+        if (episodes.length > 0 || hasSeenEpisodeFetchStart) {
+            setEpisodesResolved(true);
+        }
+    }, [animeId, selectedAnime?.id, selectedAnime?.mal_id, epLoading, episodes.length, hasSeenEpisodeFetchStart]);
 
     // Fetch Anime if missing
     useEffect(() => {
@@ -257,6 +277,7 @@ export function usePlayer(animeId: string | undefined) {
         streams,
         error,
         watchedEpisodes,
+        episodesResolved,
         epNum: epNumParam,
         cleanCurrentTitle,
 
