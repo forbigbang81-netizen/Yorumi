@@ -34,7 +34,7 @@ export function useSearch(activeTab: 'anime' | 'manga', onSearchStart?: () => vo
                     const target = query || 'All';
                     newData = await mangaService.getAZList(target, page);
                 } else {
-                    newData = await mangaService.searchManga(query, page);
+                    newData = await mangaService.searchMangaScraper(query, page);
                 }
             }
 

@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-react';
-import LoadingSpinner from '../../../components/ui/LoadingSpinner';
+import AnimeCardSkeleton from './AnimeCardSkeleton';
 import Pagination from '../../../components/ui/Pagination';
 import AnimeCard from './AnimeCard';
 import type { Anime } from '../../../types/anime';
@@ -41,8 +41,10 @@ export default function AnimeGridPage({
                 <h2 className="text-2xl font-black text-white tracking-wide uppercase">{title}</h2>
             </div>
             {isLoading ? (
-                <div className="flex items-center justify-center py-20">
-                    <LoadingSpinner size="lg" text="Loading..." />
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                    {Array.from({ length: 12 }).map((_, i) => (
+                        <AnimeCardSkeleton key={i} />
+                    ))}
                 </div>
             ) : (
                 <>

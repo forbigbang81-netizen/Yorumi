@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import HomePage from './pages/HomePage';
+import AnimeFormatPage from './pages/AnimeFormatPage';
 import AnimeDetailsPage from './pages/AnimeDetailsPage';
 import MangaDetailsPage from './pages/MangaDetailsPage';
 import WatchPage from './pages/WatchPage';
@@ -84,11 +85,11 @@ function App() {
           setSearchResults(mapped);
           searchCacheRef.current.set(cacheKey, { data: mapped, timestamp: Date.now() });
         } else {
-          const { data } = await mangaService.searchManga(term, 1, 6);
+          const { data } = await mangaService.searchMangaScraper(term, 1, 6);
           const mapped = data.slice(0, 4).map((item: any) => ({
             id: item.id || item.mal_id,
             title: getDisplayTitle(item, language),
-            subtitle: getSecondaryTitle(item, language),
+            subtitle: item.latestChapter || getSecondaryTitle(item, language),
             image: item.images.jpg.image_url,
             date: item.published?.string ? new Date(item.published.string).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
             type: item.type, // e.g., MANGA
@@ -113,8 +114,6 @@ function App() {
 
     performSearch();
   }, [searchQuery, activeTab, language]);
-
-  // Sync Search Query if we are on search page
   useEffect(() => {
     if (!location.pathname.startsWith('/search')) {
       // Don't clear query here as it might clear while user is typing if they navigate?
@@ -193,6 +192,12 @@ function App() {
 
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/anime/popular" element={<AnimeFormatPage />} />
+        <Route path="/anime/movies" element={<AnimeFormatPage />} />
+        <Route path="/anime/tv" element={<AnimeFormatPage />} />
+        <Route path="/anime/ova" element={<AnimeFormatPage />} />
+        <Route path="/anime/ona" element={<AnimeFormatPage />} />
+        <Route path="/anime/specials" element={<AnimeFormatPage />} />
         <Route path="/anime/details/:id" element={<AnimeDetailsPage />} />
         <Route path="/anime/watch/:title/:id" element={<WatchPage />} />
         <Route path="/search" element={<SearchPage />} />

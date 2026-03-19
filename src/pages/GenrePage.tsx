@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import Pagination from '../components/ui/Pagination';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
+import AnimeCardSkeleton from '../features/anime/components/AnimeCardSkeleton';
 import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
 
@@ -95,8 +95,10 @@ export default function GenrePage() {
 
                 {/* Content */}
                 {loading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <LoadingSpinner size="lg" text={`Loading ${genreName} anime...`} />
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
+                        {Array.from({ length: 12 }).map((_, i) => (
+                            <AnimeCardSkeleton key={i} />
+                        ))}
                     </div>
                 ) : animeList.length === 0 ? (
                     <div className="text-center text-gray-500 py-20">

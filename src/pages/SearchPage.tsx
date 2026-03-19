@@ -3,7 +3,8 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useSearch } from '../hooks/useSearch';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import MangaCard from '../features/manga/components/MangaCard';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
+import AnimeCardSkeleton from '../features/anime/components/AnimeCardSkeleton';
+import MangaCardSkeleton from '../features/manga/components/MangaCardSkeleton';
 import Pagination from '../components/ui/Pagination';
 import type { Anime } from '../types/anime';
 import type { Manga } from '../types/manga';
@@ -87,7 +88,11 @@ export default function SearchPage() {
 
             {/* Grid */}
             {searchLoading && searchResults.length === 0 ? (
-                <div className="flex justify-center py-20"><LoadingSpinner size="lg" /></div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
+                    {Array.from({ length: 12 }).map((_, i) => (
+                        type === 'anime' ? <AnimeCardSkeleton key={i} /> : <MangaCardSkeleton key={i} />
+                    ))}
+                </div>
             ) : searchResults.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
                     {type === 'anime' ? (

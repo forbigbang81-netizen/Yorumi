@@ -138,8 +138,8 @@ const inFlightRequests = new Map<string, Promise<any>>();
 
 export const animeService = {
     // Fetch top anime from AniList (Deduplicated)
-    async getTopAnime(page: number = 1) {
-        const cacheKey = `top-anime-${page}`;
+    async getTopAnime(page: number = 1, format?: string) {
+        const cacheKey = `top-anime-${page}-${format ?? 'all'}`;
         const cached = getCached(cacheKey);
         if (cached) return cached;
 
@@ -150,7 +150,8 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
-                const res = await fetch(`${API_BASE}/anilist/top?page=${page}&limit=18`);
+                const formatParam = format ? `&format=${encodeURIComponent(format)}` : '';
+                const res = await fetch(`${API_BASE}/anilist/top?page=${page}&limit=18${formatParam}`);
                 if (!res.ok) {
                     throw new Error(`Failed to fetch top anime: ${res.statusText}`);
                 }
@@ -682,3 +683,4 @@ export const animeService = {
 const randomAnimeQueue: { id: number }[] = [];
 // Singleton promise to prevent parallel refill requests (race condition fix)
 let refillPromise: Promise<void> | null = null;
+

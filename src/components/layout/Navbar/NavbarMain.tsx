@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Search, X } from 'lucide-react';
+import { Search, X, Menu, ChevronLeft, Plus } from 'lucide-react';
 import { animeService } from '../../../services/animeService';
 import { mangaService } from '../../../services/mangaService';
 import { useAuth } from '../../../context/AuthContext';
@@ -41,6 +41,8 @@ export default function Navbar({
     const [isScrolled, setIsScrolled] = useState(false);
     const [isLoadingRandom, setIsLoadingRandom] = useState(false);
     const [showMobileSearch, setShowMobileSearch] = useState(false);
+    const [showMobileMenu, setShowMobileMenu] = useState(false);
+    const [showMobileGenres, setShowMobileGenres] = useState(true);
 
     // Local input state for instant typing UX
     const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
@@ -64,6 +66,15 @@ export default function Navbar({
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
+    useEffect(() => {
+        if (!showMobileMenu) return;
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = originalOverflow;
+        };
+    }, [showMobileMenu]);
+
     // Keyboard shortcut to focus search
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -77,11 +88,14 @@ export default function Navbar({
             if (e.key === 'Escape' && showMobileSearch) {
                 setShowMobileSearch(false);
             }
+            if (e.key === 'Escape' && showMobileMenu) {
+                setShowMobileMenu(false);
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [showMobileSearch]);
+    }, [showMobileSearch, showMobileMenu]);
 
     // Random handler
     const handleRandom = async () => {
@@ -121,6 +135,43 @@ export default function Navbar({
         setShowMobileSearch(false);
     };
 
+    const closeMobileOverlays = () => {
+        setShowMobileMenu(false);
+        setShowMobileSearch(false);
+    };
+
+    const handleMobileNavigate = (to: string) => {
+        navigate(to);
+        closeMobileOverlays();
+    };
+
+    const genreColors = [
+        'text-[#cde6a4]', 'text-[#f5d57a]', 'text-[#ff9b86]', 'text-[#cab2ea]',
+        'text-[#a0d0d7]', 'text-[#f6c3b6]', 'text-[#74d9c8]', 'text-[#c7e0a3]',
+        'text-[#f3d67f]', 'text-[#ff8578]',
+    ];
+    const mobileGenres = ['Action', 'Adventure', 'Cars', 'Comedy', 'Dementia', 'Demons', 'Drama', 'Ecchi', 'Fantasy', 'Game'];
+    const mobileMenuItems = activeTab === 'manga'
+        ? [
+            { label: 'Home', to: '/manga' },
+            { label: 'Popular Manga', to: '/manga' },
+            { label: 'Top 100', to: '/manga' },
+            { label: 'Continue Reading', to: '/manga/continue-reading' },
+            { label: 'Read List', to: '/manga/read-list' },
+            { label: 'Favorites', to: '/manga/favorites' },
+            { label: 'Profile', to: '/profile?tab=manga-overview' },
+        ]
+        : [
+            { label: 'Home', to: '/' },
+            { label: 'Most Popular', to: '/anime/popular' },
+            { label: 'Movies', to: '/anime/movies' },
+            { label: 'TV Series', to: '/anime/tv' },
+            { label: 'OVAs', to: '/anime/ova' },
+            { label: 'ONAs', to: '/anime/ona' },
+            { label: 'Specials', to: '/anime/specials' },
+            { label: 'Profile', to: '/profile?tab=anime-overview' },
+        ];
+
     const handleClearAndFocus = () => {
         setLocalSearchQuery('');
         onClearSearch();
@@ -130,6 +181,7 @@ export default function Navbar({
     const isTransparentPage = !location.pathname.includes('/manga/read') && !location.pathname.includes('/anime/watch');
 
     return (
+        <>
         <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ${isScrolled || !isTransparentPage
             ? 'bg-[#0a0a0a]/72 backdrop-blur-xl border-b border-transparent py-3'
             : 'bg-gradient-to-b from-black via-black/60 to-transparent border-transparent py-4'
@@ -137,6 +189,16 @@ export default function Navbar({
             <div className="px-4 md:px-8 flex items-center justify-between">
                 {/* LEFT: Logo + Search + Toggle + Random */}
                 <div className="flex items-center gap-4 md:gap-6">
+                    <button
+                        onClick={() => {
+                            setShowMobileMenu(true);
+                            setShowMobileSearch(false);
+                        }}
+                        className="w-9 h-9 text-white/95 rounded-md flex items-center justify-center transition-colors"
+                        aria-label="Open menu"
+                    >
+                        <Menu className="w-5 h-5" />
+                    </button>
                     {/* Logo */}
                     <div
                         onClick={onLogoClick || onClearSearch}
@@ -187,7 +249,10 @@ export default function Navbar({
                 <div className="flex items-center justify-end gap-2 md:gap-4 shrink-0">
                     {/* Mobile Search Icon */}
                     <button
-                        onClick={() => setShowMobileSearch(!showMobileSearch)}
+                        onClick={() => {
+                            setShowMobileSearch(!showMobileSearch);
+                            setShowMobileMenu(false);
+                        }}
                         className="md:hidden text-white p-2 md:hover:bg-white/10 active:bg-white/10 rounded-full transition-colors outline-none focus:outline-none"
                     >
                         {showMobileSearch ? (
@@ -256,5 +321,62 @@ export default function Navbar({
                 </div>
             </div>
         </nav>
+
+        <div className={`fixed inset-0 z-[120] transition-all duration-300 ${showMobileMenu ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+            <div
+                onClick={() => setShowMobileMenu(false)}
+                className={`absolute inset-0 transition-opacity duration-300 ${showMobileMenu ? 'opacity-100 bg-black/55 backdrop-blur-sm' : 'opacity-0'}`}
+            />
+            <aside className={`absolute top-0 left-0 h-full w-[82vw] max-w-[360px] md:w-[360px] bg-black/40 border-r border-white/5 backdrop-blur-2xl transition-transform duration-300 flex flex-col ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'}`}>
+                <div className="h-[60px] shrink-0 border-b border-white/5 flex items-center px-3">
+                    <button
+                        onClick={() => setShowMobileMenu(false)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 text-white/90 hover:bg-white/15 transition-colors font-semibold outline-none"
+                    >
+                        <ChevronLeft className="w-4 h-4" />
+                        Close menu
+                    </button>
+                </div>
+
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                    {mobileMenuItems.map((item) => (
+                        <button
+                            key={item.label}
+                            onClick={() => handleMobileNavigate(item.to)}
+                            className={`w-full text-left px-4 py-6 text-[15px] md:text-[16px] leading-none font-bold tracking-tight text-white/90 hover:bg-white/5 transition-colors border-b border-white/5 outline-none ${activeTab === 'anime' ? 'hover:text-yorumi-accent' : 'hover:text-yorumi-manga'}`}
+                        >
+                            {item.label}
+                        </button>
+                    ))}
+
+                    <div className="border-b border-white/5">
+                        <button
+                            onClick={() => setShowMobileGenres((v) => !v)}
+                            className={`w-full text-left px-4 py-6 text-[15px] md:text-[16px] leading-none font-bold tracking-tight text-white/90 hover:bg-white/5 transition-colors flex items-center justify-between outline-none ${activeTab === 'anime' ? 'hover:text-yorumi-accent' : 'hover:text-yorumi-manga'}`}
+                        >
+                            Genre
+                            <span className={`text-base transition-transform ${showMobileGenres ? 'rotate-45' : ''}`}>
+                                <Plus className="w-4 h-4" />
+                            </span>
+                        </button>
+
+                        <div className={`overflow-hidden transition-all duration-300 ${showMobileGenres ? 'max-h-[320px] pb-4' : 'max-h-0'}`}>
+                            <div className="grid grid-cols-2 gap-y-3 px-4 pt-2">
+                                {mobileGenres.map((genre, idx) => (
+                                    <button
+                                        key={genre}
+                                        onClick={() => handleMobileNavigate(activeTab === 'manga' ? `/manga/genre/${encodeURIComponent(genre)}` : `/genre/${encodeURIComponent(genre)}`)}
+                                        className={`text-left text-[14px] md:text-[15px] font-semibold ${genreColors[idx % genreColors.length]} hover:opacity-80 transition-opacity outline-none`}
+                                    >
+                                        {genre}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+        </>
     );
 }

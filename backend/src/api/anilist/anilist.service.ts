@@ -665,12 +665,33 @@ export const anilistService = {
         return startPage;
     },
 
-    async getTopAnime(page: number = 1, perPage: number = 24) {
-        const cacheKey = getCacheKey('top_anime', page, perPage);
+    async getTopAnime(page: number = 1, perPage: number = 24, format?: string) {
+        const cacheKey = getCacheKey('top_anime', page, perPage, format ?? 'all');
         const cached = getFromCache(cacheKey);
         if (cached) return cached;
 
-        const query = `
+        // Expand TV filter to include TV_SHORT
+        const formatFilter = format
+            ? (format === 'TV' ? ['TV', 'TV_SHORT'] : [format])
+            : null;
+
+        const query = formatFilter
+            ? `
+            query ($page: Int, $perPage: Int, $format: [MediaFormat]) {
+                Page(page: $page, perPage: $perPage) {
+                    pageInfo {
+                        total
+                        currentPage
+                        lastPage
+                        hasNextPage
+                    }
+                    media(type: ANIME, format_in: $format, sort: POPULARITY_DESC, isAdult: false) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `
+            : `
             query ($page: Int, $perPage: Int) {
                 Page(page: $page, perPage: $perPage) {
                     pageInfo {
@@ -686,8 +707,12 @@ export const anilistService = {
             }
         `;
 
+        const variables = formatFilter
+            ? { page, perPage, format: formatFilter }
+            : { page, perPage };
+
         try {
-            const response = await rateLimitedRequest(query, { page, perPage });
+            const response = await rateLimitedRequest(query, variables);
             const result = response.data.Page;
             setCache(cacheKey, result, CACHE_TTL.popular);
             return result;

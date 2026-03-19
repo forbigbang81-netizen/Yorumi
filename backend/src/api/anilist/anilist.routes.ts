@@ -9,8 +9,9 @@ router.get('/top', async (req, res) => {
     try {
         const page = req.query.page ? parseInt(req.query.page as string) : 1;
         const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
+        const format = req.query.format as string | undefined;
 
-        const data = await anilistService.getTopAnime(page, perPage);
+        const data = await anilistService.getTopAnime(page, perPage, format);
         res.json(data);
     } catch (error: any) {
         console.error('Error in top anime route:', error.message);
@@ -19,6 +20,32 @@ router.get('/top', async (req, res) => {
         } else {
             res.status(500).json({ error: 'Internal server error' });
         }
+    }
+});
+
+// Alias for /top for "Most Popular" page
+router.get('/popular', async (req, res) => {
+    try {
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
+        const data = await anilistService.getTopAnime(page, perPage);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch popular anime' });
+    }
+});
+
+// Get anime by format (MOVIE, TV, OVA, ONA, SPECIAL)
+router.get('/format/:format', async (req, res) => {
+    try {
+        const { format } = req.params;
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
+
+        const data = await anilistService.getTopAnime(page, perPage, format.toUpperCase());
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch anime by format' });
     }
 });
 

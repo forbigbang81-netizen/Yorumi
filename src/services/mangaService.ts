@@ -182,10 +182,52 @@ export const mangaService = {
         }
     },
 
-    // Search manga on MangaKatana scraper
-    async searchMangaScraper(query: string) {
+    // Search manga on MangaKatana scraper with local pagination
+    async searchMangaScraper(query: string, page: number = 1, limit: number = 18) {
         const res = await fetch(`${API_BASE}/manga/search?q=${encodeURIComponent(query)}`);
-        return res.json();
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : (data?.data || []);
+        
+        const safeLimit = Math.max(1, limit);
+        const total = items.length;
+        const lastPage = Math.max(1, Math.ceil(total / safeLimit));
+        const currentPage = Math.min(Math.max(page, 1), lastPage);
+        const start = (currentPage - 1) * safeLimit;
+        
+        const pageItems = items.slice(start, start + safeLimit).map((item: any) => ({
+            mal_id: item.id,
+            id: item.id,
+            title: item.title || 'Unknown',
+            title_english: item.title,
+            title_romaji: item.title,
+            images: {
+                jpg: {
+                    image_url: item.thumbnail || item.coverImage || '',
+                    large_image_url: item.thumbnail || item.coverImage || ''
+                }
+            },
+            synopsis: '',
+            type: 'Manga',
+            chapters: 0,
+            volumes: 0,
+            score: 0,
+            status: 'Unknown',
+            genres: [],
+            authors: [],
+            published: { string: '' },
+            countryOfOrigin: 'JP',
+            latestChapter: item.latestChapter,
+            source: item.source || 'mangakatana'
+        }));
+
+        return {
+            data: pageItems,
+            pagination: {
+                last_visible_page: lastPage,
+                current_page: currentPage,
+                has_next_page: currentPage < lastPage
+            }
+        };
     },
 
     async getHotUpdates() {

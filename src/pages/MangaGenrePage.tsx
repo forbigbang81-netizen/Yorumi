@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import MangaCard from '../features/manga/components/MangaCard';
 import Pagination from '../components/ui/Pagination';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
+import MangaCardSkeleton from '../features/manga/components/MangaCardSkeleton';
 import type { Manga } from '../types/manga';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -87,8 +87,10 @@ export default function MangaGenrePage() {
 
                 {/* Content */}
                 {loading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <LoadingSpinner size="lg" text={`Loading ${genreName} manga...`} />
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 mb-8">
+                        {Array.from({ length: 12 }).map((_, i) => (
+                            <MangaCardSkeleton key={i} />
+                        ))}
                     </div>
                 ) : mangaList.length === 0 ? (
                     <div className="text-center text-gray-500 py-20">

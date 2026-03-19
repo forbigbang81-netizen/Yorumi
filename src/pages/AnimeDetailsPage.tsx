@@ -4,7 +4,6 @@ import { useAnime } from '../hooks/useAnime';
 import { useWatchList } from '../hooks/useWatchList';
 import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
 import { slugify } from '../utils/slugify';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
 import type { Anime } from '../types/anime';
 
 // Feature Components
@@ -58,6 +57,34 @@ const TrailersSkeleton = () => (
                 </div>
                 <div className="absolute bottom-0 inset-x-0 p-3">
                     <div className="h-3 w-28 bg-white/10 rounded" />
+                </div>
+            </div>
+        </div>
+    </div>
+);
+
+const DetailsPageSkeleton = () => (
+    <div className="min-h-screen bg-[#0a0a0a] pb-20 fade-in animate-in duration-300">
+        {/* Banner Skeleton */}
+        <div className="h-[40vh] md:h-[60vh] relative bg-white/5 animate-pulse" />
+        
+        {/* Content Skeleton */}
+        <div className="container mx-auto px-4 md:px-6 -mt-24 md:-mt-32 relative z-10">
+            <div className="flex flex-col md:flex-row gap-8">
+                {/* Poster Skeleton */}
+                <div className="w-48 h-72 md:w-64 md:h-96 shrink-0 bg-white/10 rounded-xl shadow-2xl border border-white/10 animate-pulse self-center md:self-start" />
+                
+                <div className="flex-1 mt-4 md:mt-32 space-y-4">
+                    <div className="h-8 w-3/4 bg-white/10 rounded animate-pulse" />
+                    <div className="flex gap-4">
+                        <div className="h-4 w-20 bg-white/10 rounded animate-pulse" />
+                        <div className="h-4 w-20 bg-white/10 rounded animate-pulse" />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                        <div className="h-4 w-full bg-white/5 rounded animate-pulse" />
+                        <div className="h-4 w-full bg-white/5 rounded animate-pulse" />
+                        <div className="h-4 w-2/3 bg-white/5 rounded animate-pulse" />
+                    </div>
                 </div>
             </div>
         </div>
@@ -157,11 +184,7 @@ export default function AnimeDetailsPage() {
     }
 
     if (!selectedAnime) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <LoadingSpinner size="lg" text="Loading Details..." />
-            </div>
-        );
+        return <DetailsPageSkeleton />;
     }
 
     const isUnreleased = selectedAnime.status === 'NOT_YET_RELEASED';
@@ -206,85 +229,85 @@ export default function AnimeDetailsPage() {
                     onToggleList={handleToggleList}
                     onToggleFavorite={handleToggleFavorite}
                 >
-                        {/* Tabs */}
-                        <div className="flex items-center gap-8 border-b border-white/10 mb-6 mt-4">
-                            <button
-                                onClick={() => setActiveTab('summary')}
-                                className={`pb-3 text-lg font-bold transition-colors relative ${activeTab === 'summary' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
-                            >
-                                Summary
-                                {activeTab === 'summary' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-yorumi-accent" />}
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('relations')}
-                                className={`pb-3 text-lg font-bold transition-colors relative ${activeTab === 'relations' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
-                            >
-                                Relations
-                                {activeTab === 'relations' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-yorumi-accent" />}
-                            </button>
-                        </div>
+                    {/* Tabs */}
+                    <div className="flex items-center gap-8 border-b border-white/10 mb-6 mt-4">
+                        <button
+                            onClick={() => setActiveTab('summary')}
+                            className={`pb-3 text-lg font-bold transition-colors relative ${activeTab === 'summary' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
+                        >
+                            Summary
+                            {activeTab === 'summary' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-yorumi-accent" />}
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('relations')}
+                            className={`pb-3 text-lg font-bold transition-colors relative ${activeTab === 'relations' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
+                        >
+                            Relations
+                            {activeTab === 'relations' && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-yorumi-accent" />}
+                        </button>
+                    </div>
 
-                        <div className="">
-                            {activeTab === 'summary' && (
-                                <>
-                                    <p className="text-gray-300 text-base leading-relaxed max-w-3xl">
-                                        {selectedAnime.synopsis || 'No synopsis.'}
-                                    </p>
-                                </>
-                            )}
-                        </div>
-
+                    <div className="">
                         {activeTab === 'summary' && (
                             <>
-                                {/* Episodes Section */}
-                                {!isUnreleased && (
-                                    (detailsLoading || epLoading) ? (
-                                        <EpisodesSkeleton />
-                                    ) : episodes.length > 0 ? (
-                                        <DetailsEpisodeGrid
-                                            episodes={episodes}
-                                            watchedEpisodes={watchedEpisodes}
-                                            onEpisodeClick={(ep) => {
-                                                const raw = String(ep.episodeNumber ?? '').trim();
-                                                const direct = Number(raw);
-                                                const matched = raw.match(/(\d+(?:\.\d+)?)/);
-                                                const episodeNumber = Number.isFinite(direct) ? direct : (matched ? Number(matched[1]) : NaN);
-                                                if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
-                                                    markEpisodeComplete(episodeNumber);
-                                                }
-                                                const title = slugify(selectedAnime.title || selectedAnime.title_english || 'anime');
-                                                navigate(`/anime/watch/${title}/${id}?ep=${ep.episodeNumber}`);
-                                            }}
-                                        />
-                                    ) : (
-                                        <div className="py-6 border-t border-white/10 mt-6 text-gray-500 text-center">No episodes found.</div>
-                                    )
-                                )}
-
-                                {/* Characters Section */}
-                                {(detailsLoading) ? (
-                                    <CharactersSkeleton />
-                                ) : (
-                                    <DetailsCharacters characters={selectedAnime.characters} />
-                                )}
-
-                                {/* Trailers Section */}
-                                {(detailsLoading) ? (
-                                    <TrailersSkeleton />
-                                ) : (
-                                    <DetailsTrailers trailer={selectedAnime.trailer} />
-                                )}
+                                <p className="text-gray-300 text-base leading-relaxed max-w-3xl">
+                                    {selectedAnime.synopsis || 'No synopsis.'}
+                                </p>
                             </>
                         )}
+                    </div>
 
-                        {activeTab === 'relations' && (
-                            <div className="mt-6">
-                                <DetailsRelations
-                                    relations={selectedAnime.relations}
-                                    onAnimeClick={(id) => navigate(`/anime/details/${id}`)}
-                                />
-                            </div>
-                        )}
+                    {activeTab === 'summary' && (
+                        <>
+                            {/* Episodes Section */}
+                            {!isUnreleased && (
+                                (detailsLoading || epLoading) ? (
+                                    <EpisodesSkeleton />
+                                ) : episodes.length > 0 ? (
+                                    <DetailsEpisodeGrid
+                                        episodes={episodes}
+                                        watchedEpisodes={watchedEpisodes}
+                                        onEpisodeClick={(ep) => {
+                                            const raw = String(ep.episodeNumber ?? '').trim();
+                                            const direct = Number(raw);
+                                            const matched = raw.match(/(\d+(?:\.\d+)?)/);
+                                            const episodeNumber = Number.isFinite(direct) ? direct : (matched ? Number(matched[1]) : NaN);
+                                            if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
+                                                markEpisodeComplete(episodeNumber);
+                                            }
+                                            const title = slugify(selectedAnime.title || selectedAnime.title_english || 'anime');
+                                            navigate(`/anime/watch/${title}/${id}?ep=${ep.episodeNumber}`);
+                                        }}
+                                    />
+                                ) : (
+                                    <div className="py-6 border-t border-white/10 mt-6 text-gray-500 text-center">No episodes found.</div>
+                                )
+                            )}
+
+                            {/* Characters Section */}
+                            {(detailsLoading) ? (
+                                <CharactersSkeleton />
+                            ) : (
+                                <DetailsCharacters characters={selectedAnime.characters} />
+                            )}
+
+                            {/* Trailers Section */}
+                            {(detailsLoading) ? (
+                                <TrailersSkeleton />
+                            ) : (
+                                <DetailsTrailers trailer={selectedAnime.trailer} />
+                            )}
+                        </>
+                    )}
+
+                    {activeTab === 'relations' && (
+                        <div className="mt-6">
+                            <DetailsRelations
+                                relations={selectedAnime.relations}
+                                onAnimeClick={(id) => navigate(`/anime/details/${id}`)}
+                            />
+                        </div>
+                    )}
                 </DetailsInfo>
             </div>
         </div>

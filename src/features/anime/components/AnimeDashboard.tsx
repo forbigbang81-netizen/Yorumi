@@ -21,6 +21,10 @@ interface AnimeDashboardProps {
     topTenMonth: Anime[];
     topTenLoading: boolean;
     topAnime: Anime[];
+    allTimeTitle?: string;
+    compactCatalogMode?: boolean;
+    showEstimatedSchedule?: boolean;
+    showGenres?: boolean;
     onAnimeClick: (anime: Anime) => void;
     onWatchClick: (anime: Anime, episodeNumber?: number) => void;
     onViewAll: (type: 'trending' | 'seasonal' | 'continue_watching' | 'popular') => void;
@@ -40,6 +44,10 @@ export default function AnimeDashboard({
     topTenMonth,
     topTenLoading,
     topAnime,
+    allTimeTitle = 'All-Time Popular',
+    compactCatalogMode = false,
+    showEstimatedSchedule = true,
+    showGenres = true,
     onAnimeClick,
     onWatchClick,
     onViewAll,
@@ -50,15 +58,17 @@ export default function AnimeDashboard({
 
     return (
         <>
-            <SpotlightHero
-                animeList={spotlightAnime}
-                onAnimeClick={onAnimeClick}
-                onWatchClick={onWatchClick}
-            />
+            {!compactCatalogMode && (
+                <SpotlightHero
+                    animeList={spotlightAnime}
+                    onAnimeClick={onAnimeClick}
+                    onWatchClick={onWatchClick}
+                />
+            )}
 
-            <div className={`container mx-auto px-4 z-10 relative mt-8`}>
+            <div className={`container mx-auto px-4 z-10 relative ${compactCatalogMode ? '' : 'mt-8'}`}>
                 {/* Continue Watching Carousel */}
-                {continueWatchingList.length > 0 && (
+                {!compactCatalogMode && continueWatchingList.length > 0 && (
                     <ContinueWatching
                         items={continueWatchingList}
                         variant="dashboard"
@@ -68,36 +78,34 @@ export default function AnimeDashboard({
                     />
                 )}
 
-            <TrendingNow
-                animeList={trendingAnime}
-                isLoading={trendingLoading}
-                onAnimeClick={onAnimeClick}
-                onWatchClick={onWatchClick}
-                onViewAll={() => onViewAll('trending')}
-                onMouseEnter={onAnimeHover}
-            />
+            {!compactCatalogMode && (
+                <TrendingNow
+                    animeList={trendingAnime}
+                    isLoading={trendingLoading}
+                    onAnimeClick={onAnimeClick}
+                    onWatchClick={onWatchClick}
+                    onViewAll={() => onViewAll('trending')}
+                    onMouseEnter={onAnimeHover}
+                />
+            )}
 
-            <PopularSeason
-                animeList={popularSeason}
-                isLoading={popularSeasonLoading}
-                onAnimeClick={onAnimeClick}
-                onWatchClick={onWatchClick}
-                onViewAll={() => onViewAll('seasonal')}
-                onMouseEnter={onAnimeHover}
-            />
+            {!compactCatalogMode && (
+                <PopularSeason
+                    animeList={popularSeason}
+                    isLoading={popularSeasonLoading}
+                    onAnimeClick={onAnimeClick}
+                    onWatchClick={onWatchClick}
+                    onViewAll={() => onViewAll('seasonal')}
+                    onMouseEnter={onAnimeHover}
+                />
+            )}
 
                 {/* All-Time Popular + Top 10 + Schedule + Genres */}
                 <div className="container mx-auto px-4 pt-4">
                     <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
                         <div>
                             <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-xl font-bold border-l-4 border-yorumi-accent pl-3 text-white">All-Time Popular</h2>
-                                <button
-                                    onClick={() => onViewAll('popular')}
-                                    className="text-sm font-bold text-yorumi-accent hover:text-white transition-colors"
-                                >
-                                    View All
-                                </button>
+                                <h2 className="text-xl font-bold border-l-4 border-yorumi-accent pl-3 text-white">{allTimeTitle}</h2>
                             </div>
 
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-6">
@@ -111,13 +119,14 @@ export default function AnimeDashboard({
                                     />
                                 ))}
                             </div>
-
-                            <div className="mt-4">
-                                <EstimatedSchedule onAnimeClick={(id) => navigate(`/anime/${id}`)} />
-                            </div>
+                            {showEstimatedSchedule && (
+                                <div className="mt-4">
+                                    <EstimatedSchedule onAnimeClick={(id) => navigate(`/anime/${id}`)} />
+                                </div>
+                            )}
                         </div>
 
-                        <div className="space-y-6">
+                        <div className={showGenres ? 'space-y-6' : ''}>
                             <TopTenSidebar
                                 today={topTenToday}
                                 week={topTenWeek}
@@ -125,7 +134,7 @@ export default function AnimeDashboard({
                                 isLoading={topTenLoading}
                                 onAnimeClick={onAnimeClick}
                             />
-                            <Genres onGenreClick={(genre) => navigate(`/genre/${encodeURIComponent(genre)}`)} />
+                            {showGenres && <Genres onGenreClick={(genre) => navigate(`/genre/${encodeURIComponent(genre)}`)} />}
                         </div>
                     </div>
                 </div>

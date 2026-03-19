@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
+import AnimeCardSkeleton from './AnimeCardSkeleton';
 
 interface PopularSeasonProps {
     animeList: Anime[];
@@ -45,9 +46,7 @@ const PopularSeason: React.FC<PopularSeasonProps> = ({ animeList, isLoading = fa
                             key={`popular-season-skeleton-${index}`}
                             className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
                         >
-                            <div className="relative aspect-[2/3] rounded-lg bg-white/5 animate-pulse mb-3" />
-                            <div className="h-4 w-4/5 bg-white/10 rounded animate-pulse" />
-                            <div className="mt-2 h-3 w-2/3 bg-white/10 rounded animate-pulse" />
+                            <AnimeCardSkeleton />
                         </div>
                     ))}
                 </div>

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Anime } from '../../../types/anime';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
+import TopTenSkeleton from './TopTenSkeleton';
 
 interface TopTenSidebarProps {
     today: Anime[];
@@ -51,25 +52,7 @@ export default function TopTenSidebar({ today, week, month, isLoading = false, o
             </div>
 
             {isLoading ? (
-                <div className="space-y-3">
-                    {Array.from({ length: 10 }).map((_, index) => (
-                        <div
-                            key={`top-ten-skeleton-${index}`}
-                            className="relative flex items-stretch gap-3 rounded-xl bg-[#0f1116] overflow-hidden animate-pulse"
-                        >
-                            <div className="relative w-16 flex items-center justify-center">
-                                <div className="h-6 w-8 rounded bg-white/10" />
-                            </div>
-
-                            <div className="min-w-0 flex-1 py-3 pr-1 space-y-2">
-                                <div className="h-4 w-3/4 rounded bg-white/10" />
-                                <div className="h-3 w-1/2 rounded bg-white/10" />
-                            </div>
-
-                            <div className="w-32 bg-white/5" />
-                        </div>
-                    ))}
-                </div>
+                <TopTenSkeleton />
             ) : topTen.length === 0 ? (
                 <div className="text-sm text-gray-400">No titles available.</div>
             ) : (

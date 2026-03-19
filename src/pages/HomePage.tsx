@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { useAnime } from '../hooks/useAnime';
 import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
@@ -13,6 +12,9 @@ import ContinueWatching from '../features/anime/components/ContinueWatching';
 export default function HomePage() {
     const navigate = useNavigate();
     const anime = useAnime();
+    const isCatalogFilterView = false;
+    const filteredTopAnime = Array.isArray(anime.topAnime) ? anime.topAnime : [];
+    const allTimeTitle = 'All-Time Popular';
 
     useEffect(() => {
         anime.fetchHomeData();
@@ -55,12 +57,32 @@ export default function HomePage() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [anime.currentPage]);
 
-    // Only show full-page loading if we're on the first page AND have absolutely no data
-    // This allows cached spotlight and other sections to show immediately
+    // Replace full-page loading with AnimeDashboard showing skeletons
     if (anime.loading && anime.currentPage === 1 && anime.topAnime.length === 0 && anime.spotlightAnime.length === 0 && anime.trendingAnime.length === 0) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <LoadingSpinner size="lg" text="Loading Anime..." />
+            <div className={`min-h-screen pb-20 ${isCatalogFilterView ? 'pt-24' : ''}`}>
+                <AnimeDashboard
+                    spotlightAnime={[]}
+                    continueWatchingList={[]}
+                    trendingAnime={[]}
+                    trendingLoading={true}
+                    popularSeason={[]}
+                    popularSeasonLoading={true}
+                    topTenToday={[]}
+                    topTenWeek={[]}
+                    topTenMonth={[]}
+                    topTenLoading={true}
+                    topAnime={[]}
+                    allTimeTitle={allTimeTitle}
+                    compactCatalogMode={isCatalogFilterView}
+                    showEstimatedSchedule={!isCatalogFilterView}
+                    showGenres={!isCatalogFilterView}
+                    onAnimeClick={handleAnimeClick}
+                    onWatchClick={handleWatchClick}
+                    onViewAll={anime.openViewAll}
+                    onRemoveFromHistory={anime.removeFromHistory}
+                    onAnimeHover={anime.prefetchEpisodes}
+                />
             </div>
         );
     }
@@ -141,7 +163,7 @@ export default function HomePage() {
 
     // Default Dashboard
     return (
-        <div className="min-h-screen pb-20">
+        <div className={`min-h-screen pb-20 ${isCatalogFilterView ? 'pt-24' : ''}`}>
             <AnimeDashboard
                 spotlightAnime={anime.spotlightAnime}
                 continueWatchingList={anime.continueWatchingList}
@@ -153,7 +175,11 @@ export default function HomePage() {
                 topTenWeek={anime.topTenWeek}
                 topTenMonth={anime.topTenMonth}
                 topTenLoading={anime.topTenLoading}
-                topAnime={anime.topAnime}
+                topAnime={filteredTopAnime}
+                allTimeTitle={allTimeTitle}
+                compactCatalogMode={isCatalogFilterView}
+                showEstimatedSchedule={!isCatalogFilterView}
+                showGenres={!isCatalogFilterView}
                 onAnimeClick={handleAnimeClick}
                 onWatchClick={handleWatchClick}
                 onViewAll={anime.openViewAll}
