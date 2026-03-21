@@ -874,6 +874,38 @@ export const anilistService = {
         }
     },
 
+    async getOneShotManga(page: number = 1, perPage: number = 24) {
+        const cacheKey = getCacheKey('one_shot_manga', page, perPage);
+        const cached = getFromCache(cacheKey);
+        if (cached) return cached;
+
+        const query = `
+            query ($page: Int, $perPage: Int) {
+                Page(page: $page, perPage: $perPage) {
+                    pageInfo {
+                        total
+                        currentPage
+                        lastPage
+                        hasNextPage
+                    }
+                    media(type: MANGA, format: ONE_SHOT, sort: POPULARITY_DESC, isAdult: false) {
+                        ${MEDIA_FIELDS}
+                    }
+                }
+            }
+        `;
+
+        try {
+            const response = await rateLimitedRequest(query, { page, perPage });
+            const result = response.data.Page;
+            setCache(cacheKey, result, CACHE_TTL.popular);
+            return result;
+        } catch (error) {
+            console.error('Error fetching one-shot manga:', error);
+            return { media: [], pageInfo: {} };
+        }
+    },
+
     async getRandomAnime() {
         // Fetch a random page of 50 items from the top 5000 popular anime
         // 5000 / 50 per page = 100 pages

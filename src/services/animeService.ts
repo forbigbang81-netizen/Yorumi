@@ -7,12 +7,14 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // Helper to map AniList response to our Anime interface format
 const mapAnilistToAnime = (item: any) => {
-    // Debug metadata availability
+    // Debug metadata availability - Silenced to reduce console noise
+    /*
     if (!item.streamingEpisodes || item.streamingEpisodes.length === 0) {
         console.warn('[AnimeService] No streaming episodes found for:', item.title?.english || item.id, item);
     } else {
         console.log('[AnimeService] Found streaming episodes for:', item.title?.english, item.streamingEpisodes.length);
     }
+    */
 
     return {
         mal_id: item.idMal || item.id,

@@ -7,6 +7,7 @@ import anilistRoutes from './api/anilist/anilist.routes';
 import hianimeRoutes from './api/scraper/hianime.routes';
 import { HiAnimeScraper } from './api/scraper/hianime.service';
 import logoRoutes from './api/logo/logo.routes';
+import imageRoutes from './api/image/image.routes';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -21,6 +22,7 @@ app.use('/api/scraper', scraperRoutes);
 app.use('/api/manga', mangaScraperRoutes);
 app.use('/api/hianime', hianimeRoutes);
 app.use('/api/logo', logoRoutes);
+app.use('/api/image', imageRoutes);
 
 import userRoutes from './api/user/user.routes';
 app.use('/api/user', userRoutes);

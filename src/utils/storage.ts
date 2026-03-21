@@ -1,3 +1,6 @@
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
+
 export interface WatchProgress {
     animeId: string;
     episodeId: string;
@@ -227,7 +230,7 @@ export const storage = {
         try {
             const data = getScopedItem(STORAGE_KEYS.EPISODE_HISTORY);
             return data ? JSON.parse(data) : {};
-        } catch (error) {
+        } catch {
             return {};
         }
     },
@@ -324,7 +327,7 @@ export const storage = {
         try {
             const data = getScopedItem(STORAGE_KEYS.CHAPTER_HISTORY);
             return data ? JSON.parse(data) : {};
-        } catch (error) {
+        } catch {
             return {};
         }
     },
@@ -334,10 +337,6 @@ export const storage = {
         return history[mangaId] || [];
     }
 };
-
-// Cloud Sync Helper
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../services/firebase';
 
 const getUserRef = () => {
     const user = auth.currentUser;

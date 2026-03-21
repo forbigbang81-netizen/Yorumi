@@ -102,6 +102,21 @@ router.get('/top/manhwa', async (req, res) => {
     }
 });
 
+// Get one-shot manga
+router.get('/top/one-shot', async (req, res) => {
+    try {
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const perPage = req.query.limit ? parseInt(req.query.limit as string) : 24;
+
+        const data = await anilistService.getOneShotManga(page, perPage);
+        res.json(data);
+    } catch (error) {
+        console.error('Error in top one-shot route:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
 // Get trending anime
 router.get('/trending', async (req, res) => {
     try {

@@ -287,8 +287,11 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         const fetchPageData = async () => {
             setLoading(true);
             try {
-                // If we already have data for page 1 and it's the initial load, maybe skip?
-                // But simplified: just fetch.
+                // Skip if we already have data (prevents redundant fetches on provider re-mounts)
+                if (topAnime.length > 0 && currentPage === 1) {
+                    setLoading(false);
+                    return;
+                }
                 const data = await animeService.getTopAnime(currentPage);
                 if (data?.data) {
                     setTopAnime(data.data);

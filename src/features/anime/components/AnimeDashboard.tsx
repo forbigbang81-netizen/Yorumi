@@ -1,17 +1,19 @@
 import { useNavigate } from 'react-router-dom';
 import type { Anime } from '../../../types/anime';
+import type { WatchProgress } from '../../../utils/storage';
 import SpotlightHero from './SpotlightHero';
 import ContinueWatching from './ContinueWatching';
 import TrendingNow from './TrendingNow';
 import PopularSeason from './PopularSeason';
 import AnimeCard from './AnimeCard';
+import AnimeCardSkeleton from './AnimeCardSkeleton';
 import EstimatedSchedule from './EstimatedSchedule';
 import Genres from './Genres';
 import TopTenSidebar from './TopTenSidebar';
 
 interface AnimeDashboardProps {
     spotlightAnime: Anime[];
-    continueWatchingList: any[];
+    continueWatchingList: WatchProgress[];
     trendingAnime: Anime[];
     trendingLoading: boolean;
     popularSeason: Anime[];
@@ -21,6 +23,7 @@ interface AnimeDashboardProps {
     topTenMonth: Anime[];
     topTenLoading: boolean;
     topAnime: Anime[];
+    topAnimeLoading?: boolean;
     allTimeTitle?: string;
     compactCatalogMode?: boolean;
     showEstimatedSchedule?: boolean;
@@ -44,6 +47,7 @@ export default function AnimeDashboard({
     topTenMonth,
     topTenLoading,
     topAnime,
+    topAnimeLoading = false,
     allTimeTitle = 'All-Time Popular',
     compactCatalogMode = false,
     showEstimatedSchedule = true,
@@ -109,15 +113,21 @@ export default function AnimeDashboard({
                             </div>
 
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-                                {topAnime.slice(0, 15).map((item) => (
-                                    <AnimeCard
-                                        key={item.mal_id}
-                                        anime={item}
-                                        onClick={() => onAnimeClick(item)}
-                                        onWatchClick={() => onWatchClick(item)}
-                                        onMouseEnter={() => onAnimeHover?.(item)}
-                                    />
-                                ))}
+                                {topAnimeLoading ? (
+                                    Array.from({ length: 15 }).map((_, i) => (
+                                        <AnimeCardSkeleton key={i} />
+                                    ))
+                                ) : (
+                                    topAnime.slice(0, 15).map((item) => (
+                                        <AnimeCard
+                                            key={item.mal_id}
+                                            anime={item}
+                                            onClick={() => onAnimeClick(item)}
+                                            onWatchClick={() => onWatchClick(item)}
+                                            onMouseEnter={() => onAnimeHover?.(item)}
+                                        />
+                                    ))
+                                )}
                             </div>
                             {showEstimatedSchedule && (
                                 <div className="mt-4">
