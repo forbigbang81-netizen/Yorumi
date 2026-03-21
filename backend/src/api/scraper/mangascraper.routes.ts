@@ -135,4 +135,43 @@ router.get('/spotlight', async (req: Request, res: Response) => {
     }
 });
 
+/**
+ * Get latest manga (MangaKatana /latest)
+ */
+router.get('/latest', async (req: Request, res: Response) => {
+    try {
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const results = await mangaService.getLatestManga(page);
+        res.json({ data: results.data, pagination: { total_pages: results.totalPages } });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch latest manga' });
+    }
+});
+
+/**
+ * Get new manga (MangaKatana /new-manga)
+ */
+router.get('/new-manga', async (req: Request, res: Response) => {
+    try {
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const results = await mangaService.getNewManga(page);
+        res.json({ data: results.data, pagination: { total_pages: results.totalPages } });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch new manga' });
+    }
+});
+
+/**
+ * Get manga directory (MangaKatana /manga)
+ */
+router.get('/directory', async (req: Request, res: Response) => {
+    try {
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const results = await mangaService.getMangaDirectory(page);
+        res.json({ data: results.data, pagination: { total_pages: results.totalPages } });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch manga directory' });
+    }
+});
+
 export default router;

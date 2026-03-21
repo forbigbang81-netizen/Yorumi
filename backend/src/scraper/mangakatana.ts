@@ -17,6 +17,13 @@ const axiosInstance = axios.create({
     timeout: 15000,
 });
 
+const toAbsoluteUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    if (url.startsWith('//')) return `https:${url}`;
+    return `${BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
 export interface HotUpdate {
     id: string;
     title: string;
@@ -110,7 +117,8 @@ export async function searchManga(query: string): Promise<MangaSearchResult[]> {
             const linkEl = $el.find('div.text > h3 > a');
             const title = linkEl.text().trim();
             const url = linkEl.attr('href') || '';
-            const thumbnail = $el.find('div.cover img').attr('src') || '';
+            const imgEl = $el.find('.media .wrap_img img, div.cover img, img');
+            const thumbnail = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
 
             // Try to extract genres if available (often in .genres or .meta)
             const genres: string[] = [];
@@ -172,7 +180,8 @@ export async function searchManga(query: string): Promise<MangaSearchResult[]> {
 
                     if (finalUrl && finalUrl.includes('/manga/')) {
                         const id = finalUrl.split('/manga/')[1].replace(/\/$/, '');
-                        const thumbnail = $('div.media div.cover img').attr('src') || '';
+                        const imgEl = $('div.media div.cover img, .media .wrap_img img, img');
+                        const thumbnail = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
 
                         results.push({
                             id,
@@ -199,6 +208,102 @@ export async function searchManga(query: string): Promise<MangaSearchResult[]> {
 }
 
 /**
+ * Generic helper to fetch manga list from a specific path (e.g. /latest, /new-manga)
+ */
+async function getMangaListByPath(path: string, pageNum: number = 1): Promise<{ results: MangaSearchResult[], totalPages: number }> {
+    let browser = null;
+    try {
+        const url = pageNum > 1 ? `${BASE_URL}${path}/page/${pageNum}` : `${BASE_URL}${path}`;
+        console.log(`[getMangaListByPath] Navigating to: ${url}`);
+
+        browser = await getBrowserInstance();
+        const page = await browser.newPage();
+        await page.setUserAgent(USER_AGENT);
+
+        await page.setRequestInterception(true);
+        page.on('request', (req: HTTPRequest) => {
+            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
+
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        try {
+            await page.waitForSelector('#book_list', { timeout: 10000 });
+        } catch (e) {
+            console.warn('[getMangaListByPath] Timeout waiting for #book_list');
+        }
+
+        const content = await page.content();
+        const $ = cheerio.load(content);
+        const results: MangaSearchResult[] = [];
+
+        $('#book_list > div.item').each((_, element) => {
+            const $el = $(element);
+            const linkEl = $el.find('div.text > h3 > a, .title a');
+            const title = linkEl.text().trim();
+            const url = linkEl.attr('href') || '';
+            const imgEl = $el.find('.media .wrap_img img, div.cover img, img');
+            const thumbnail = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
+            
+            // Extract latest chapter
+            const chapters = $el.find('div.text .chapter a, .chapter a');
+            let latestChapter = '';
+            if (chapters.length > 0) {
+                latestChapter = chapters.first().text().trim();
+            }
+
+            const id = url.replace(`${BASE_URL}/manga/`, '').replace(/\/$/, '');
+
+            if (title && url) {
+                results.push({
+                    id,
+                    title,
+                    url,
+                    thumbnail,
+                    latestChapter,
+                    source: 'mangakatana'
+                });
+            }
+        });
+
+        // Extract total pages
+        let totalPages = 1;
+        const lastPageEl = $('a.page-numbers:not(.next)').last();
+        if (lastPageEl.length > 0) {
+            const numText = lastPageEl.text().replace(/,/g, '').trim();
+            const parsedNum = parseInt(numText, 10);
+            if (!isNaN(parsedNum)) {
+                totalPages = parsedNum;
+            }
+        }
+
+        return { results, totalPages };
+    } catch (error) {
+        console.error(`[getMangaListByPath] Error fetching ${path}:`, error);
+        throw error;
+    } finally {
+        if (browser) {
+            await browser.close();
+        }
+    }
+}
+
+export async function getLatestManga(page: number = 1): Promise<{ results: MangaSearchResult[], totalPages: number }> {
+    return getMangaListByPath('/latest', page);
+}
+
+export async function getNewManga(page: number = 1): Promise<{ results: MangaSearchResult[], totalPages: number }> {
+    return getMangaListByPath('/new-manga', page);
+}
+
+export async function getMangaDirectory(page: number = 1): Promise<{ results: MangaSearchResult[], totalPages: number }> {
+    return getMangaListByPath('/manga', page);
+}
+
+/**
  * Get manga details from MangaKatana
  */
 export async function getMangaDetails(mangaId: string): Promise<MangaDetails> {
@@ -213,7 +318,8 @@ export async function getMangaDetails(mangaId: string): Promise<MangaDetails> {
         const status = $('.value.status').text().trim();
         const genres = $('.genres > a').map((_, el) => $(el).text().trim()).get();
         const synopsis = $('.summary > p').text().trim();
-        const coverImage = $('div.media div.cover img').attr('src') || '';
+        const imgEl = $('div.media div.cover img, .media .wrap_img img, img');
+        const coverImage = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
 
         return {
             id: mangaId,
