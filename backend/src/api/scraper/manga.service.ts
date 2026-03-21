@@ -1,4 +1,4 @@
-import * as mangakatana from '../../scraper/mangakatana';
+import * as mangakatana from '../../scraper/mangakatana'; 
 import { anilistService } from '../anilist/anilist.service';
 import { cacheGet, cacheSet } from '../../utils/redis-cache';
 import { createHash } from 'crypto';
@@ -295,6 +295,73 @@ export async function getHotUpdates() {
     }
 }
 
+const MK_ITEMS_PER_PAGE = 20;
+const APP_ITEMS_PER_PAGE = 24;
+
+async function getPagedScraperManga(page: number, scraperFunc: (p: number) => Promise<{ results: any[], totalPages: number }>) {
+    const startIndex = (page - 1) * APP_ITEMS_PER_PAGE;
+    const endIndex = page * APP_ITEMS_PER_PAGE - 1;
+    const startMkPage = Math.floor(startIndex / MK_ITEMS_PER_PAGE) + 1;
+    const endMkPage = Math.floor(endIndex / MK_ITEMS_PER_PAGE) + 1;
+
+    let allResults: any[] = [];
+    let totalPages = 1;
+
+    if (startMkPage === endMkPage) {
+        const response = await scraperFunc(startMkPage);
+        allResults = response.results;
+        totalPages = response.totalPages || 1;
+    } else {
+        const [res1, res2] = await Promise.all([
+            scraperFunc(startMkPage),
+            scraperFunc(endMkPage)
+        ]);
+        allResults = [...res1.results, ...res2.results];
+        totalPages = res1.totalPages || 1;
+    }
+
+    const startIdxInCombined = startIndex - ((startMkPage - 1) * MK_ITEMS_PER_PAGE);
+    const slicedResults = allResults.slice(startIdxInCombined, startIdxInCombined + APP_ITEMS_PER_PAGE);
+    const newTotalPages = Math.ceil((totalPages * MK_ITEMS_PER_PAGE) / APP_ITEMS_PER_PAGE);
+
+    const API_BASE_URL = process.env.API_URL || 'http://localhost:3001/api';
+    const mapped = slicedResults.map((item: any) => {
+        const proxiedThumbnail = item.thumbnail && item.thumbnail.includes('mangakatana.com')
+            ? `${API_BASE_URL}/image/proxy?url=${encodeURIComponent(item.thumbnail)}`
+            : item.thumbnail;
+            
+        return {
+            ...item,
+            id: `mk:${item.id}`,
+            thumbnail: proxiedThumbnail,
+            coverImage: proxiedThumbnail
+        };
+    });
+    
+    return { data: mapped, totalPages: newTotalPages };
+}
+
+/**
+ * Get latest manga updates (MangaKatana /latest)
+ */
+export async function getLatestManga(page: number = 1) {
+    return getPagedScraperManga(page, mangakatana.getLatestManga);
+}
+
+/**
+ * Get new manga (MangaKatana /new-manga)
+ */
+export async function getNewManga(page: number = 1) {
+    return getPagedScraperManga(page, mangakatana.getNewManga);
+}
+
+/**
+ * Get manga directory (MangaKatana /manga)
+ */
+export async function getMangaDirectory(page: number = 1) {
+    return getPagedScraperManga(page, mangakatana.getMangaDirectory);
+}
+
 /**
  * Get Spotlight with enriched chapter info
  */
@@ -410,4 +477,53 @@ export async function warmSpotlightCache() {
     } catch (error) {
         console.error('[Cache] Failed to warm spotlight cache:', error);
     }
+}
+
+/**
+ * Helper to enrich a list of scraper manga with AniList cover photos
+ */
+async function enrichWithAniListPhotos(mangaList: any[]) {
+    console.log(`[MangaService] Enriching ${mangaList.length} items with AniList photos...`);
+    
+    // Process in parallel with a concurrency limit if needed, 
+    // but here we just map and Promise.all to keep it simple as anilistService handles rate limiting.
+    const enriched = await Promise.all(mangaList.map(async (item) => {
+        try {
+            // Check cache for this specific title mapping
+            const cacheKey = `manga_photo_enrich:${item.title.toLowerCase().trim()}`;
+            const cached = await cacheGet<string>(cacheKey);
+            if (cached) {
+                return { ...item, thumbnail: cached, coverImage: cached };
+            }
+
+            const searchResults = await anilistService.searchManga(item.title, 1, 1);
+            if (searchResults.media && searchResults.media.length > 0) {
+                const aniMedia = searchResults.media[0];
+                const photo = aniMedia.coverImage?.extraLarge || aniMedia.coverImage?.large;
+                if (photo) {
+                    // Cache the found photo for 7 days
+                    await cacheSet(cacheKey, photo, 7 * 24 * 60 * 60);
+                    return { 
+                        ...item, 
+                        thumbnail: photo, 
+                        coverImage: photo,
+                        anilistId: aniMedia.id,
+                        genres: aniMedia.genres
+                    };
+                }
+            }
+        } catch (e) {
+            // Silently fail for individual items
+        }
+
+        // Fallback: If no AniList enrichment, proxy the original thumbnail to bypass hotlinking protection
+        if (item.thumbnail && item.thumbnail.includes('mangakatana.com')) {
+            const proxiedUrl = `http://localhost:3001/api/image/proxy?url=${encodeURIComponent(item.thumbnail)}`;
+            return { ...item, thumbnail: proxiedUrl, coverImage: proxiedUrl };
+        }
+
+        return item;
+    }));
+
+    return enriched;
 }
