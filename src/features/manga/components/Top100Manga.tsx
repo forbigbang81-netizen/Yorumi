@@ -97,7 +97,7 @@ const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick, onViewAll }) =>
                                     <div className="flex items-center flex-wrap gap-2 text-[10px] text-gray-300 mb-2">
                                         <div className="flex items-center gap-1 text-yellow-400 font-bold">
                                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
-                                            {manga.score?.toFixed(1) || 'N/A'}
+                                            {(manga.score || 0).toFixed(1)}
                                         </div>
                                         <span className="bg-white/20 px-1.5 py-px rounded text-[9px] font-bold">HD</span>
                                         <span>{(manga.chapters || manga.volumes) ? `${manga.chapters || manga.volumes} ch` : '? ch'}</span>
@@ -153,11 +153,11 @@ const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick, onViewAll }) =>
                             </div>
 
                             {/* Score Badge - Top Right (Visible when not hovered or on mobile) */}
-                            {manga.score > 0 && (
+                            {(manga.score || 0) > 0 && (
                                 <div className="absolute top-2 right-2 group-hover:opacity-0 transition-opacity duration-200">
                                     <span className="bg-[#facc15] text-black px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-0.5">
                                         <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
-                                        {manga.score.toFixed(1)}
+                                        {(manga.score || 0).toFixed(1)}
                                     </span>
                                 </div>
                             )}

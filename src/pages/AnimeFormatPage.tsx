@@ -30,9 +30,15 @@ export default function AnimeFormatPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [lastPage, setLastPage] = useState(1);
 
-    const fetchData = useCallback(async (page: number) => {
+    const fetchData = useCallback(async (page: number, isNewFormat = false) => {
         if (!config) return;
-        setIsLoading(true);
+        
+        // Only show full-grid skeletons if transition is a major context switch (new format or initial mount)
+        if (isNewFormat) {
+            setIsLoading(true);
+            setAnimeList([]); // Clear list on format change to trigger skeletons
+        }
+
         try {
             const result = await animeService.getTopAnime(page, config.anilistFormat);
             setAnimeList(result?.data ?? []);
@@ -42,13 +48,13 @@ export default function AnimeFormatPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [config]);
+    }, [format]);
 
     useEffect(() => {
         setCurrentPage(1);
-        fetchData(1);
+        fetchData(1, true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, [format]);
+    }, [format, fetchData]);
 
     const handlePageChange = (page: number) => {
         setCurrentPage(page);

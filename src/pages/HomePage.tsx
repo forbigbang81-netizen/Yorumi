@@ -73,6 +73,7 @@ export default function HomePage() {
                     topTenMonth={[]}
                     topTenLoading={true}
                     topAnime={[]}
+                    topAnimeLoading={true}
                     allTimeTitle={allTimeTitle}
                     compactCatalogMode={isCatalogFilterView}
                     showEstimatedSchedule={!isCatalogFilterView}
@@ -176,6 +177,7 @@ export default function HomePage() {
                 topTenMonth={anime.topTenMonth}
                 topTenLoading={anime.topTenLoading}
                 topAnime={filteredTopAnime}
+                topAnimeLoading={anime.loading}
                 allTimeTitle={allTimeTitle}
                 compactCatalogMode={isCatalogFilterView}
                 showEstimatedSchedule={!isCatalogFilterView}
