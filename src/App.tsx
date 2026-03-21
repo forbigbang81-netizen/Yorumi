@@ -18,6 +18,7 @@ import FavoriteAnimePage from './pages/FavoriteAnimePage';
 import MangaContinueReadingPage from './pages/MangaContinueReadingPage';
 import MangaReadListPage from './pages/MangaReadListPage';
 import FavoriteMangaPage from './pages/FavoriteMangaPage';
+import MangaFormatPage from './pages/MangaFormatPage';
 import Footer from './components/layout/Footer';
 import { useAnime } from './hooks/useAnime';
 import { animeService } from './services/animeService';
@@ -206,6 +207,12 @@ function App() {
         <Route path="/manga/read/:title/:id/:chapter" element={<MangaReaderPage />} />
         <Route path="/genre/:name" element={<GenrePage />} />
         <Route path="/manga/genre/:name" element={<MangaGenrePage />} />
+        <Route path="/manga/popular" element={<MangaFormatPage />} />
+        <Route path="/manga/latest" element={<MangaFormatPage />} />
+        <Route path="/manga/directory" element={<MangaFormatPage />} />
+        <Route path="/manga/new" element={<MangaFormatPage />} />
+        <Route path="/manga/manhwa" element={<MangaFormatPage />} />
+        <Route path="/manga/one-shot" element={<MangaFormatPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/anime/continue-watching" element={<ContinueWatchingPage />} />
         <Route path="/anime/watch-list" element={<WatchListPage />} />

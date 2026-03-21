@@ -154,11 +154,12 @@ export default function Navbar({
     const mobileMenuItems = activeTab === 'manga'
         ? [
             { label: 'Home', to: '/manga' },
-            { label: 'Popular Manga', to: '/manga' },
-            { label: 'Top 100', to: '/manga' },
-            { label: 'Continue Reading', to: '/manga/continue-reading' },
-            { label: 'Read List', to: '/manga/read-list' },
-            { label: 'Favorites', to: '/manga/favorites' },
+            { label: 'Most Popular', to: '/manga/popular' },
+            { label: 'Latest Updates', to: '/manga/latest' },
+            { label: 'Manga Directory', to: '/manga/directory' },
+            { label: 'New Manga', to: '/manga/new' },
+            { label: 'Manhwa', to: '/manga/manhwa' },
+            { label: 'One Shot', to: '/manga/one-shot' },
             { label: 'Profile', to: '/profile?tab=manga-overview' },
         ]
         : [
