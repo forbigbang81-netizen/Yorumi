@@ -56,11 +56,12 @@ export function useManga() {
                     // Map Hot Updates to Manga interface
                     const hotUpdates = data.data.slice(0, 8).map((update: any) => ({
                         mal_id: update.id, // String ID from scraper
+                        id: update.id,
                         title: update.title,
                         images: {
                             jpg: {
-                                image_url: update.thumbnail,
-                                large_image_url: update.thumbnail
+                                image_url: update.thumbnail || '',
+                                large_image_url: update.thumbnail || ''
                             }
                         },
                         score: 0, // Not available in simple update
@@ -789,3 +790,4 @@ export function useManga() {
         changeViewAllPage,
     };
 }
+

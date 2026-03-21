@@ -1,5 +1,5 @@
 export interface Manga {
-    id?: number; // AniList ID
+    id?: number | string; // AniList ID or Scraper ID
     mal_id: number | string;
     title: string;
     title_english?: string; // For fallback search
@@ -11,12 +11,12 @@ export interface Manga {
             large_image_url: string;
         };
     };
-    score: number;
+    score?: number;
     rank?: number;
-    status: string;
-    type: string;
-    chapters: number | null;
-    volumes: number | null;
+    status?: string;
+    type?: string;
+    chapters?: number | null;
+    volumes?: number | null;
     synopsis?: string;
     genres?: { mal_id: number; name: string; }[];
     authors?: { mal_id: number; name: string; }[];

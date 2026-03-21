@@ -1,8 +1,34 @@
 // API Service for Manga operations - Using AniList
+import type { Manga } from '../types/manga';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-// Helper to map AniList response to our Manga interface format
-const mapAnilistToManga = (item: any) => ({
+interface AniListManga {
+    id: number;
+    title?: {
+        english?: string;
+        romaji?: string;
+        native?: string;
+    };
+    coverImage?: {
+        large?: string;
+        extraLarge?: string;
+    };
+    description?: string;
+    format?: string;
+    chapters?: number;
+    volumes?: number;
+    averageScore?: number;
+    status?: string;
+    genres?: string[];
+    startDate?: { year?: number; month?: number; day?: number };
+    endDate?: { year?: number; month?: number; day?: number };
+    countryOfOrigin?: string;
+    synonyms?: string[];
+    characters?: any;
+    relations?: any;
+}
+
+const mapAnilistToManga = (item: AniListManga) => ({
     mal_id: item.id, // Use AniList ID as primary for routing to match backend expectation
     id: item.id,
     title: item.title?.english || item.title?.romaji || item.title?.native || 'Unknown',
@@ -35,7 +61,7 @@ const mapAnilistToManga = (item: any) => ({
     relations: item.relations
 });
 
-const mapScraperToManga = (scraperData: any) => ({
+const mapScraperToManga = (scraperData: ScraperManga) => ({
     mal_id: scraperData.id,
     id: scraperData.id,
     title: scraperData.title || 'Unknown',
@@ -56,10 +82,26 @@ const mapScraperToManga = (scraperData: any) => ({
     score: 0,
     status: scraperData.status || 'Unknown',
     genres: scraperData.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
-    authors: scraperData.author ? [{ name: scraperData.author, role: 'Story & Art' }] : [],
+    authors: scraperData.author ? [{ name: scraperData.author, role: 'Story & Art', mal_id: 0 }] : [],
     published: { from: '', to: '', string: '' },
     countryOfOrigin: 'JP'
 });
+
+interface ScraperManga {
+    id: string;
+    title: string;
+    thumbnail?: string;
+    coverImage?: string;
+    url: string;
+    latestChapter?: string;
+    status?: string;
+    genres?: string[];
+    author?: string;
+    source?: string;
+    altNames?: string[];
+    synopsis?: string;
+    chapters?: any[];
+}
 
 export const mangaService = {
     // Fetch top manga from AniList (sorted by SCORE)
@@ -146,6 +188,19 @@ export const mangaService = {
         };
     },
 
+    async getOneShotManga(page: number = 1) {
+        const res = await fetch(`${API_BASE}/anilist/top/one-shot?page=${page}`);
+        const data = await res.json();
+        return {
+            data: data.media?.map(mapAnilistToManga) || [],
+            pagination: {
+                last_visible_page: data.pageInfo?.lastPage || 1,
+                current_page: data.pageInfo?.currentPage || 1,
+                has_next_page: data.pageInfo?.hasNextPage || false
+            }
+        };
+    },
+
     // Get manga details by ID
     async getMangaDetails(id: number | string) {
         try {
@@ -194,7 +249,7 @@ export const mangaService = {
         const currentPage = Math.min(Math.max(page, 1), lastPage);
         const start = (currentPage - 1) * safeLimit;
         
-        const pageItems = items.slice(start, start + safeLimit).map((item: any) => ({
+        const pageItems = items.slice(start, start + safeLimit).map((item: ScraperManga) => ({
             mal_id: item.id,
             id: item.id,
             title: item.title || 'Unknown',
@@ -226,6 +281,51 @@ export const mangaService = {
                 last_visible_page: lastPage,
                 current_page: currentPage,
                 has_next_page: currentPage < lastPage
+            }
+        };
+    },
+
+    async getLatestMangaScraper(page: number = 1) {
+        const res = await fetch(`${API_BASE}/manga/latest?page=${page}`);
+        const data = await res.json();
+        const items = data.data || [];
+        const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
+        return {
+            data: items.map((item: ScraperManga) => ({ ...mapScraperToManga(item), latestChapter: item.latestChapter, id: item.id })),
+            pagination: {
+                last_visible_page: totalPages,
+                current_page: page,
+                has_next_page: page < totalPages
+            }
+        };
+    },
+
+    async getNewMangaScraper(page: number = 1) {
+        const res = await fetch(`${API_BASE}/manga/new-manga?page=${page}`);
+        const data = await res.json();
+        const items = data.data || [];
+        const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
+        return {
+            data: items.map((item: ScraperManga) => ({ ...mapScraperToManga(item), latestChapter: item.latestChapter, id: item.id })),
+            pagination: {
+                last_visible_page: totalPages,
+                current_page: page,
+                has_next_page: page < totalPages
+            }
+        };
+    },
+
+    async getMangaDirectory(page: number = 1) {
+        const res = await fetch(`${API_BASE}/manga/directory?page=${page}`);
+        const data = await res.json();
+        const items = data.data || [];
+        const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
+        return {
+            data: items.map((item: ScraperManga) => ({ ...mapScraperToManga(item), latestChapter: item.latestChapter, id: item.id })),
+            pagination: {
+                last_visible_page: totalPages,
+                current_page: page,
+                has_next_page: page < totalPages
             }
         };
     },
@@ -288,7 +388,7 @@ export const mangaService = {
             */
 
             // 2. Fallback: Return mapped scraper data
-            return mapScraperToManga(scraperData) as any;
+            return mapScraperToManga(scraperData as any) as Manga;
         } catch (error) {
             console.error('getScraperMangaDetails failed:', error);
             return null;
