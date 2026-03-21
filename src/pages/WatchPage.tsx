@@ -38,6 +38,7 @@ export default function WatchPage() {
         setShowQualityMenu,
         handleQualityChange,
         setAutoQuality,
+        setIsPlayerReady,
         navigate
     } = usePlayer(id);
 
@@ -132,6 +133,7 @@ export default function WatchPage() {
                         streamUrl={currentStream?.url}
                         isLoading={streamLoading}
                         isExpanded={isExpanded}
+                        onLoad={() => setIsPlayerReady(true)}
                     />
 
                     {/* Metadata & Controls Bar (Below Player) */}

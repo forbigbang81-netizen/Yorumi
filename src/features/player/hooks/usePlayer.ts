@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAnime } from '../../../hooks/useAnime';
 import { useStreams } from '../../../hooks/useStreams';
@@ -45,9 +45,15 @@ export function usePlayer(animeId: string | undefined) {
 
     // 3. UI State
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isPlayerReady, setIsPlayerReady] = useState(false);
     const [hasSeenEpisodeFetchStart, setHasSeenEpisodeFetchStart] = useState(false);
     const [episodesResolved, setEpisodesResolved] = useState(false);
     const epNumParam = searchParams.get('ep') || '1';
+    
+    // Watch time persistence
+    const accumulatedSecondsRef = useRef(0);
+    const lastTickRef = useRef(Date.now());
+
     const parseEpisodeNumber = (value: unknown): number => {
         if (typeof value === 'number' && Number.isFinite(value)) return value;
         const raw = String(value ?? '').trim();
@@ -64,6 +70,8 @@ export function usePlayer(animeId: string | undefined) {
         clearStreams();
         setHasSeenEpisodeFetchStart(false);
         setEpisodesResolved(false);
+        setIsPlayerReady(false);
+        accumulatedSecondsRef.current = 0;
     }, [animeId]);
 
     useEffect(() => {
@@ -109,17 +117,6 @@ export function usePlayer(animeId: string | undefined) {
             let targetEp: Episode | undefined;
 
             if (epNumParam === 'latest') {
-                // Find the episode with the highest number
-                // episodes are typically sorted, but let's be safe
-                // Assuming episodes are sorted desc or asc, usually we want the one with highest number
-                // But typically the list from AniList/Jikan is sorted.
-                // Let's just take the last one in the list if we assume chronological order, 
-                // OR find the max episodeNumber.
-                // Let's rely on the array order or a find max.
-                // Safe bet: Parse numbers and find max.
-
-                // Optimized: just grab the last one if available, or sort.
-                // Let's sort to be safe.
                 const sorted = [...episodes].sort((a, b) => parseFloat(a.episodeNumber) - parseFloat(b.episodeNumber));
                 targetEp = sorted[sorted.length - 1];
             } else {
@@ -181,30 +178,32 @@ export function usePlayer(animeId: string | undefined) {
         const targetAnimeIds = [primaryAnimeId, secondaryAnimeId].filter((id, index, arr) => id && arr.indexOf(id) === index);
         if (targetAnimeIds.length === 0) return;
 
-        let accumulatedSeconds = 0;
-        let lastTick = Date.now();
+        lastTickRef.current = Date.now();
 
         const isActiveWatching = () =>
             document.visibilityState === 'visible' && document.hasFocus();
 
         const flush = () => {
-            const seconds = Math.floor(accumulatedSeconds);
+            const seconds = Math.floor(accumulatedSecondsRef.current);
             if (seconds > 0) {
                 targetAnimeIds.forEach((id) => storage.addAnimeWatchTime(id, seconds));
-                accumulatedSeconds = 0;
+                accumulatedSecondsRef.current = 0;
             }
         };
 
         const interval = window.setInterval(() => {
             const now = Date.now();
-            const delta = (now - lastTick) / 1000;
-            lastTick = now;
+            let delta = (now - lastTickRef.current) / 1000;
+            lastTickRef.current = now;
 
-            if (isActiveWatching()) {
-                accumulatedSeconds += delta;
+            // Cap delta to prevent massive jumps (e.g., from computer sleep/hibernate)
+            if (delta > 2) delta = 1;
+
+            if (isActiveWatching() && isPlayerReady) {
+                accumulatedSecondsRef.current += delta;
             }
 
-            if (accumulatedSeconds >= 15) {
+            if (accumulatedSecondsRef.current >= 15) {
                 flush();
             }
         }, 1000);
@@ -214,10 +213,10 @@ export function usePlayer(animeId: string | undefined) {
             if (document.visibilityState !== 'visible') {
                 flush();
             }
-            lastTick = Date.now();
+            lastTickRef.current = Date.now();
         };
         const handleFocus = () => {
-            lastTick = Date.now();
+            lastTickRef.current = Date.now();
         };
 
         window.addEventListener('blur', handleBlur);
@@ -231,7 +230,7 @@ export function usePlayer(animeId: string | undefined) {
             document.removeEventListener('visibilitychange', handleVisibility);
             window.removeEventListener('focus', handleFocus);
         };
-    }, [selectedAnime?.id, selectedAnime?.mal_id, currentStream?.url]);
+    }, [selectedAnime?.id, selectedAnime?.mal_id, currentStream?.url, isPlayerReady]);
 
     // --- Actions ---
 
@@ -284,6 +283,7 @@ export function usePlayer(animeId: string | undefined) {
         // Loading States
         epLoading,
         streamLoading,
+        isPlayerReady,
 
         // UI State
         isExpanded,
@@ -293,6 +293,7 @@ export function usePlayer(animeId: string | undefined) {
 
         // Actions
         toggleExpand,
+        setIsPlayerReady,
         reloadPlayer,
         handlePrevEp,
         handleNextEp,

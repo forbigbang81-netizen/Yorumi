@@ -4,12 +4,14 @@ interface VideoPlayerProps {
     streamUrl?: string;
     isLoading: boolean;
     isExpanded: boolean;
+    onLoad?: () => void;
 }
 
 export default function VideoPlayer({
     streamUrl,
     isLoading,
-    isExpanded
+    isExpanded,
+    onLoad
 }: VideoPlayerProps) {
     return (
         <div className={`relative w-full ${isExpanded ? 'flex-1 min-h-[300px]' : 'aspect-video shrink-0'} bg-black group transition-all duration-300`}>
@@ -26,6 +28,7 @@ export default function VideoPlayer({
                     allowFullScreen
                     allow="autoplay"
                     title="Video Player"
+                    onLoad={onLoad}
                 />
             ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">
