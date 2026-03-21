@@ -11,11 +11,31 @@ import LatestMangaUpdates from '../features/manga/components/LatestMangaUpdates'
 import MangaCard from '../features/manga/components/MangaCard';
 import Genres from '../features/anime/components/Genres';
 import { useManga } from '../hooks/useManga';
+import { useContinueReading } from '../hooks/useContinueReading';
+import { slugify } from '../utils/slugify';
 import type { Manga } from '../types/manga';
+import MangaContinueReading from '../features/manga/components/MangaContinueReading';
 
 export default function MangaPage() {
     const navigate = useNavigate();
     const manga = useManga();
+    const { continueReadingList, removeFromHistory } = useContinueReading();
+
+
+    const handleReadClick = (mangaId: string, mangaTitle: string, chapterNumber: string) => {
+        const titleSlug = slugify(mangaTitle || 'manga');
+        navigate(`/manga/read/${titleSlug}/${mangaId}/c${chapterNumber}`);
+    };
+
+    const handleRemoveFromHistory = (mangaId: string) => {
+        removeFromHistory(mangaId);
+    };
+
+    const handleContinueReadingViewAll = () => {
+        // We can reuse the viewMode pattern if we want, or navigate to a dedicated page
+        // For now, there is already a /manga/continue-reading route in App.tsx
+        navigate('/manga/continue-reading');
+    };
 
 
 
@@ -91,6 +111,16 @@ export default function MangaPage() {
         <div className="min-h-screen pb-20">
             {/* Spotlight Hero Section */}
             <MangaSpotlight onMangaClick={handleSpotlightClick} />
+
+            {/* Continue Reading Section */}
+            <div className="container mx-auto px-4 mt-8">
+                <MangaContinueReading
+                    items={continueReadingList}
+                    onReadClick={handleReadClick}
+                    onRemove={handleRemoveFromHistory}
+                    onViewAll={handleContinueReadingViewAll}
+                />
+            </div>
 
             {/* Popular Manhwa Carousel */}
             <PopularManhwa
