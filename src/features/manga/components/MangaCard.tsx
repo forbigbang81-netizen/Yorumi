@@ -110,7 +110,7 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onReadClick, onMo
 
                 {/* Default Badges - Always Visible */}
                 {/* Top Right: Star Rating */}
-                {manga.score > 0 && (
+                {manga.score !== undefined && manga.score > 0 && (
                     <div className="absolute top-2 right-2 group-hover:opacity-0 transition-opacity duration-300 z-10">
                         <span className="bg-[#facc15] text-black px-2 py-1 rounded text-xs font-bold flex items-center gap-1">
                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
@@ -153,7 +153,7 @@ const MangaCard: React.FC<MangaCardProps> = ({ manga, onClick, onReadClick, onMo
 
                     {/* Rating + Info Row */}
                     <div className="flex items-center gap-1.5 mb-2 flex-wrap translate-z-10">
-                        {manga.score > 0 && (
+                        {manga.score !== undefined && manga.score > 0 && (
                             <span className="text-[#facc15] text-xs font-bold flex items-center gap-0.5">
                                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
                                 {manga.score.toFixed(1)}
