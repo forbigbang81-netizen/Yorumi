@@ -114,7 +114,20 @@ export async function getMangaDetails(id: string) {
  * Get chapter list
  */
 export async function getChapterList(id: string) {
-    const realId = id.startsWith('mk:') ? id.replace('mk:', '') : id;
+    let realId = id.startsWith('mk:') ? id.replace('mk:', '') : id;
+    if (realId.startsWith('http://') || realId.startsWith('https://') || realId.includes('/manga/')) {
+        try {
+            const maybeUrl = realId.startsWith('http') ? new URL(realId) : null;
+            const path = maybeUrl ? maybeUrl.pathname : realId;
+            const idx = path.indexOf('/manga/');
+            if (idx !== -1) {
+                realId = path.slice(idx + '/manga/'.length);
+            }
+            realId = realId.replace(/^\/+|\/+$/g, '').split('?')[0].split('#')[0].split('/')[0];
+        } catch {
+            realId = realId.replace(/^\/+|\/+$/g, '').split('?')[0].split('#')[0].split('/')[0];
+        }
+    }
     const now = Date.now();
     const redisKey = `${CHAPTER_LIST_CACHE_KEY_PREFIX}${realId}`;
 

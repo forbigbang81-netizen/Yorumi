@@ -32,11 +32,15 @@ export default function AnimeFormatPage() {
 
     const fetchData = useCallback(async (page: number, isNewFormat = false) => {
         if (!config) return;
-        
-        // Only show full-grid skeletons if transition is a major context switch (new format or initial mount)
-        if (isNewFormat) {
+
+        // Instant paint from cache for faster navigation.
+        const cached = animeService.peekTopAnime(page, config.anilistFormat);
+        if (cached?.data?.length) {
+            setAnimeList(cached.data);
+            setLastPage(cached?.pagination?.last_visible_page ?? 1);
+            setIsLoading(false);
+        } else if (isNewFormat) {
             setIsLoading(true);
-            setAnimeList([]); // Clear list on format change to trigger skeletons
         }
 
         try {

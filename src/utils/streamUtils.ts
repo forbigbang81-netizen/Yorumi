@@ -22,22 +22,26 @@ export const getStreamData = async (
     const data = await animeService.getStreams(scraperSession, episode.session);
 
     if (data && data.length > 0) {
+        // Prefer HLS sources first to keep playback path aligned with near-anime.
+        const preferred = data.some((s: StreamLink) => s.isHls)
+            ? data.filter((s: StreamLink) => s.isHls)
+            : data;
+
         const qualityMap = new Map<string, StreamLink>();
-        const sortedData = [...data].sort(
+        const sortedData = [...preferred].sort(
             (a: StreamLink, b: StreamLink) => (parseInt(b.quality) || 0) - (parseInt(a.quality) || 0)
         );
 
         sortedData.forEach((s: StreamLink) => {
             const mapped = getMappedQuality(s.quality);
-            // Filter out 360P as requested
-            if (mapped === '360P') return;
-
             if (!qualityMap.has(mapped)) {
                 qualityMap.set(mapped, s);
             }
         });
 
-        return Array.from(qualityMap.values());
+        const mappedStreams = Array.from(qualityMap.values());
+        // Safety fallback: if parsing/mapping deduped everything out, keep at least one playable source.
+        return mappedStreams.length > 0 ? mappedStreams : [sortedData[0]];
     }
     return [];
 };

@@ -100,7 +100,7 @@ export default function AnimeDetailsPage() {
     // We need to sync the URL ID with the hook's selectedAnime
     useEffect(() => {
         // Scroll to top on mount
-        window.scrollTo({ top: 0, behavior: 'instant' });
+        window.scrollTo({ top: 0, behavior: 'auto' });
 
         if (location.state?.anime) {
             // Instant load from navigation state
@@ -117,10 +117,15 @@ export default function AnimeDetailsPage() {
                     images: { jpg: { image_url: '', large_image_url: '' } } // Placeholder
                 } as Anime);
             } else {
-                animeHook.handleAnimeClick({ mal_id: parseInt(id) } as Anime);
+                const parsedId = Number.parseInt(id, 10);
+                if (Number.isFinite(parsedId) && parsedId > 0) {
+                    animeHook.handleAnimeClick({ mal_id: parsedId } as Anime);
+                } else {
+                    navigate('/', { replace: true });
+                }
             }
         }
-    }, [id, location.state]);
+    }, [id, location.state, navigate]);
 
     const { selectedAnime, episodes, epLoading, detailsLoading, error, watchedEpisodes, markEpisodeComplete } = animeHook;
     const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
@@ -261,7 +266,7 @@ export default function AnimeDetailsPage() {
                         <>
                             {/* Episodes Section */}
                             {!isUnreleased && (
-                                (detailsLoading || epLoading) ? (
+                                epLoading ? (
                                     <EpisodesSkeleton />
                                 ) : episodes.length > 0 ? (
                                     <DetailsEpisodeGrid

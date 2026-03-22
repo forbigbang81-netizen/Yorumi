@@ -1,6 +1,7 @@
 
 import { Browser, Page } from 'puppeteer-core';
 import { getBrowserInstance } from '../utils/browser';
+import axios from 'axios';
 
 const BASE_URL = 'https://animepahe.si';
 const API_URL = 'https://animepahe.si/api';
@@ -39,12 +40,31 @@ export interface StreamLink {
 
 export class AnimePaheScraper {
     private browser: Browser | null = null;
+    private readonly requestHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': BASE_URL,
+    };
 
     private async getBrowser(): Promise<Browser> {
         if (!this.browser) {
             this.browser = await getBrowserInstance();
         }
         return this.browser;
+    }
+
+    private async fetchApiJson(url: string): Promise<any | null> {
+        try {
+            const response = await axios.get(url, {
+                headers: this.requestHeaders,
+                timeout: 10000,
+                responseType: 'json',
+            });
+            return response.data ?? null;
+        } catch (error) {
+            return null;
+        }
     }
 
     async close() {
@@ -55,12 +75,31 @@ export class AnimePaheScraper {
     }
 
     async search(query: string): Promise<AnimeSearchResult[]> {
+        const searchUrl = `${API_URL}?m=search&q=${encodeURIComponent(query)}`;
+
+        // Fast path: direct API call via axios (no browser spin-up)
+        const apiResponse = await this.fetchApiJson(searchUrl);
+        if (apiResponse && Array.isArray(apiResponse.data)) {
+            return apiResponse.data.map((item: any) => ({
+                id: item.id,
+                session: item.session,
+                title: item.title,
+                url: `/anime/${item.session}`,
+                poster: item.poster,
+                status: item.status,
+                type: item.type,
+                episodes: item.episodes,
+                year: item.year,
+                score: item.score
+            }));
+        }
+
+        // Fallback: Puppeteer path for protected responses
         const browser = await this.getBrowser();
         const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await page.setUserAgent(this.requestHeaders['User-Agent']);
 
         try {
-            const searchUrl = `${API_URL}?m=search&q=${encodeURIComponent(query)}`;
             console.log(`Searching: ${searchUrl}`);
 
             // Go directly to search URL
@@ -113,12 +152,33 @@ export class AnimePaheScraper {
     }
 
     async getEpisodes(animeSessionId: string, pageNum: number = 1): Promise<{ episodes: Episode[], lastPage: number }> {
+        const apiUrl = `${API_URL}?m=release&id=${animeSessionId}&sort=episode_asc&page=${pageNum}`;
+
+        // Fast path: direct API call via axios (no browser spin-up)
+        const apiResponse = await this.fetchApiJson(apiUrl);
+        if (apiResponse && Array.isArray(apiResponse.data)) {
+            const episodes: Episode[] = apiResponse.data.map((item: any) => ({
+                id: item.id.toString(),
+                session: item.session,
+                episodeNumber: item.episode,
+                url: `/play/${animeSessionId}/${item.session}`,
+                title: item.title,
+                duration: item.duration,
+                snapshot: item.snapshot
+            }));
+
+            return {
+                episodes,
+                lastPage: apiResponse.last_page || 1
+            };
+        }
+
+        // Fallback: Puppeteer path for protected responses
         const browser = await this.getBrowser();
         const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await page.setUserAgent(this.requestHeaders['User-Agent']);
 
         try {
-            const apiUrl = `${API_URL}?m=release&id=${animeSessionId}&sort=episode_asc&page=${pageNum}`;
             console.log(`Fetching episodes: ${apiUrl}`);
 
             // Optimize: Block heavy resources
@@ -184,7 +244,7 @@ export class AnimePaheScraper {
     async getLinks(animeSession: string, episodeSession: string): Promise<StreamLink[]> {
         const browser = await this.getBrowser();
         const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await page.setUserAgent(this.requestHeaders['User-Agent']);
 
         const fullUrl = `${BASE_URL}/play/${animeSession}/${episodeSession}`;
 
@@ -205,27 +265,14 @@ export class AnimePaheScraper {
                 if (kwik) links.push({ kwik, quality: quality || '', audio: audio || '' });
             }
 
-            const streamLinks: StreamLink[] = [];
-
-            for (const link of links) {
-                // Now we need to go to each kwik link and extract the direct video URL
-                // To save time/resources, we'll only resolve the best one? 
-                // No, let's resolve all but sequentially with a shortcut
-                try {
-                    const directUrl = await this.resolveKwik(link.kwik);
-                    streamLinks.push({
-                        quality: link.quality,
-                        audio: link.audio,
-                        url: link.kwik, // Return the stable Kwik embed URL as primary
-                        directUrl: directUrl || undefined,
-                        isHls: false // The primary URL is an embed, not direct HLS
-                    });
-                } catch (e) {
-                    console.error(`Failed to resolve kwik link ${link.kwik}:`, e);
-                }
-            }
-
-            return streamLinks;
+            // Resolve links lazily: iframe playback only needs kwik URL, so avoid
+            // expensive per-quality deep-resolution for much faster startup.
+            return links.map((link) => ({
+                quality: link.quality,
+                audio: link.audio,
+                url: link.kwik,
+                isHls: false
+            }));
 
         } catch (error) {
             console.error('Error getting links:', error);

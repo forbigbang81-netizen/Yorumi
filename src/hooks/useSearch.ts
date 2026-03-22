@@ -50,6 +50,7 @@ export function useSearch(activeTab: 'anime' | 'manga', onSearchStart?: () => vo
             if (!isLoadMore) setSearchResults([]);
         } finally {
             setSearchLoading(false);
+            if (!isLoadMore) setIsSearching(false);
         }
     };
 

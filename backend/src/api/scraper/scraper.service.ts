@@ -1,15 +1,14 @@
-
-import { AnimePaheScraper } from '../../../src/scraper/animepahe';
+import { AniwatchScraper } from '../../../src/scraper/aniwatch';
 import { cacheGet, cacheSet } from '../../utils/redis-cache';
 
 export class ScraperService {
-    private scraper: AnimePaheScraper;
+    private fastScraper: AniwatchScraper;
     private cache = new Map<string, { expiresAt: number; value: any }>();
     private inFlight = new Map<string, Promise<any>>();
     private hotStreamKeys = new Map<string, { animeSession: string; epSession: string; hits: number; lastAccess: number }>();
 
     constructor() {
-        this.scraper = new AnimePaheScraper();
+        this.fastScraper = new AniwatchScraper();
     }
 
     private async getOrLoad<T>(key: string, ttlMs: number, loader: () => Promise<T>): Promise<T> {
@@ -84,51 +83,27 @@ export class ScraperService {
 
     async search(query: string) {
         const normalized = query.toLowerCase().trim();
-        return this.getOrLoad(`search:${normalized}`, 2 * 60 * 1000, () => this.scraper.search(query));
+        return this.getOrLoad(`search:${normalized}`, 2 * 60 * 1000, async () => {
+            const fast = await this.fastScraper.search(query);
+            return Array.isArray(fast) ? fast : [];
+        });
     }
 
     async getEpisodes(session: string) {
         return this.getOrLoad(`episodes:${session}`, 15 * 60 * 1000, async () => {
-            // Fetch first page to see how many pages there are
-            const firstPage = await this.scraper.getEpisodes(session, 1);
-            let allEpisodes = [...firstPage.episodes];
-
-            if (firstPage.lastPage > 1) {
-                console.log(`Anime has ${firstPage.lastPage} pages of episodes. Fetching the rest in batches...`);
-
-                // Helper for batching
-                const batchSize = 5;
-                const totalPages = firstPage.lastPage;
-
-                // Create array of page numbers to fetch (2 to lastPage)
-                const pagesToFetch = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
-
-                // Process in batches
-                for (let i = 0; i < pagesToFetch.length; i += batchSize) {
-                    const batch = pagesToFetch.slice(i, i + batchSize);
-                    console.log(`Fetching batch: pages ${batch[0]} - ${batch[batch.length - 1]}`);
-
-                    const batchPromises = batch.map(pageNum => this.scraper.getEpisodes(session, pageNum));
-                    const results = await Promise.all(batchPromises);
-
-                    results.forEach(res => {
-                        allEpisodes = [...allEpisodes, ...res.episodes];
-                    });
-                }
-            }
-
-            // Return structured data like the first page, but with all episodes
-            return {
-                episodes: allEpisodes,
-                lastPage: firstPage.lastPage
-            };
+            const fast = await this.fastScraper.getEpisodes(session);
+            if (Array.isArray(fast.episodes)) return fast;
+            return { episodes: [], lastPage: 1 };
         });
     }
 
     async getStreams(animeSession: string, epSession: string) {
         this.trackHotStream(animeSession, epSession);
         const key = `streams:${animeSession}:${epSession}`;
-        return this.getOrLoad(key, 20 * 60 * 1000, () => this.scraper.getLinks(animeSession, epSession));
+        return this.getOrLoad(key, 20 * 60 * 1000, async () => {
+            const fast = await this.fastScraper.getLinks(animeSession, epSession);
+            return Array.isArray(fast) ? fast : [];
+        });
     }
 
     async prefetchStreams(animeSession: string, epSessions: string[]) {

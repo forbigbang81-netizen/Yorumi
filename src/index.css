@@ -100,3 +100,10 @@ body {
 .animate-shimmer {
   animation: shimmer 2s infinite;
 }
+
+/* Force subtitle cues to readable white styling */
+video::cue {
+  color: #ffffff;
+  background-color: rgba(0, 0, 0, 0.75);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}

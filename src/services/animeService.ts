@@ -1,9 +1,14 @@
 // API Service for Anime operations - Using AniList
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
+import axios from "axios";
 import type { Anime } from "../types/anime";
 import { db } from "./firebase";
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const apiClient = axios.create({
+    baseURL: API_BASE,
+    timeout: 12000,
+});
 
 // Helper to map AniList response to our Anime interface format
 const mapAnilistToAnime = (item: any) => {
@@ -108,6 +113,9 @@ const cache = new Map<string, { data: any, timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const streamCache = new Map<string, { data: any, timestamp: number }>();
 const STREAM_CACHE_TTL = 20 * 60 * 1000; // 20 minutes
+const mappingCache = new Map<string, string>();
+const scraperSearchCache = new Map<string, { data: any[]; timestamp: number }>();
+const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
 
 const getCached = (key: string) => {
     if (cache.has(key)) {
@@ -137,8 +145,20 @@ const getCachedStream = (key: string) => {
 
 // Track in-flight requests to prevent duplicates
 const inFlightRequests = new Map<string, Promise<any>>();
+const isLegacyAnimePaheSession = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 export const animeService = {
+    peekTopAnime(page: number = 1, format?: string) {
+        const cacheKey = `top-anime-${page}-${format ?? 'all'}`;
+        return getCached(cacheKey);
+    },
+
+    prefetchTopAnimeFormats() {
+        const formats: Array<string | undefined> = [undefined, 'MOVIE', 'TV', 'OVA', 'ONA', 'SPECIAL'];
+        Promise.allSettled(formats.map((format) => this.getTopAnime(1, format))).catch(() => undefined);
+    },
+
     // Fetch top anime from AniList (Deduplicated)
     async getTopAnime(page: number = 1, format?: string) {
         const cacheKey = `top-anime-${page}-${format ?? 'all'}`;
@@ -196,15 +216,47 @@ export const animeService = {
 
     // Search anime on scraper (AnimePahe)
     async searchAnimeScraper(query: string, page: number = 1, limit: number = 18) {
-        const res = await fetch(`${API_BASE}/scraper/search?q=${encodeURIComponent(query)}`);
-        const data = await res.json();
-        const items = Array.isArray(data) ? data : (data?.data || []);
+        const normalizedQuery = query.trim().toLowerCase();
+        const cacheKey = `scraper-search:${normalizedQuery}`;
+
+        let items = getCached(cacheKey) as any[] | null;
+        if (!items) {
+            const mem = scraperSearchCache.get(cacheKey);
+            if (mem && Date.now() - mem.timestamp < SCRAPER_SEARCH_TTL) {
+                items = mem.data;
+            }
+        }
+
+        if (!items) {
+            if (inFlightRequests.has(cacheKey)) {
+                items = await inFlightRequests.get(cacheKey);
+            } else {
+                const fetchPromise = (async () => {
+                    const { data } = await apiClient.get('/scraper/search', {
+                        params: { q: query },
+                    });
+                    return Array.isArray(data) ? data : (data?.data || []);
+                })()
+                    .finally(() => {
+                        inFlightRequests.delete(cacheKey);
+                    });
+                inFlightRequests.set(cacheKey, fetchPromise);
+                items = await fetchPromise;
+            }
+
+            const fetchedItems = items ?? [];
+            items = fetchedItems;
+            setCache(cacheKey, fetchedItems);
+            scraperSearchCache.set(cacheKey, { data: fetchedItems, timestamp: Date.now() });
+        }
+
+        const resolvedItems = items ?? [];
         const safeLimit = Math.max(1, limit);
-        const total = items.length;
+        const total = resolvedItems.length;
         const lastPage = Math.max(1, Math.ceil(total / safeLimit));
         const currentPage = Math.min(Math.max(page, 1), lastPage);
         const start = (currentPage - 1) * safeLimit;
-        const pageItems = items.slice(start, start + safeLimit).map(mapScraperToAnime);
+        const pageItems = resolvedItems.slice(start, start + safeLimit).map(mapScraperToAnime);
         return {
             data: pageItems,
             pagination: {
@@ -277,8 +329,10 @@ export const animeService = {
 
     // Search anime on scraper (HiAnime)
     async searchScraper(title: string) {
-        const res = await fetch(`${API_BASE}/scraper/search?q=${encodeURIComponent(title)}`);
-        return res.json();
+        const { data } = await apiClient.get('/scraper/search', {
+            params: { q: title },
+        });
+        return data;
     },
 
     // Get popular this season from AniList (Deduplicated)
@@ -322,66 +376,91 @@ export const animeService = {
     },
 
 
-    // Get episodes from scraper with Firebase Caching
+    // Get episodes from scraper. Backend/Redis is the primary cache layer.
     async getEpisodes(session: string) {
-        // Only use caching if session is a potential ID (Anilist ID usually, but session here comes from scraper search sometimes)
-        // Wait, "session" in getEpisodes(session) typically refers to the anime ID or unique identifier used by the scraper.
-        // Let's verify what "session" actually is. It seems to be the ID used by the scraper.
+        const cacheKey = `episodes:${session}`;
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
 
-        // Use a consistent collection for episodes
         const CACHE_COLLECTION = "anime_episodes";
-        // Convert session to a string safe for document ID if needed, though usually it's safe.
         const docRef = doc(db, CACHE_COLLECTION, session);
 
-        try {
-            // 1. Try to get from Firestore
-            const docSnap = await getDoc(docRef);
-
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                // Optional: Check TTL here if needed. For now, assuming relatively static unless manually invalidated?
-                // Or maybe a 24h TTL? Episodes update weekly for airing, but completed ones don't change.
-                // Let's stick to simple caching first.
-                if (data.episodes && Array.isArray(data.episodes) && data.episodes.length > 0) {
-                    console.log(`[AnimeService] Hit Firebase cache for episodes: ${session}`);
-                    return { episodes: data.episodes };
-                }
-            }
-        } catch (error) {
-            console.warn("[AnimeService] Firebase read error:", error);
-            // Fallback to fetch
-        }
-
-        // 2. Fetch from API if not in cache
-        console.log(`[AnimeService] Missed cache, fetching episodes: ${session}`);
-        const res = await fetch(`${API_BASE}/scraper/episodes?session=${session}`);
-        const data = await res.json();
-
-        // 3. Save to Firestore
-        if (data && data.episodes && Array.isArray(data.episodes) && data.episodes.length > 0) {
+        const fetchPromise = (async () => {
             try {
-                await setDoc(docRef, {
-                    episodes: data.episodes,
-                    lastUpdated: Date.now()
+                const { data } = await apiClient.get('/scraper/episodes', {
+                    params: { session },
                 });
-                console.log(`[AnimeService] Cached episodes to Firebase: ${session}`);
-            } catch (error) {
-                console.warn("[AnimeService] Firebase write error:", error);
-            }
-        }
 
-        return data;
+                if (data?.episodes && Array.isArray(data.episodes) && data.episodes.length > 0) {
+                    setCache(cacheKey, data);
+                    // Persist cache asynchronously; don't block the UI.
+                    setDoc(docRef, {
+                        episodes: data.episodes,
+                        lastUpdated: Date.now()
+                    }).catch((error) => {
+                        console.warn("[AnimeService] Firebase write error:", error);
+                    });
+                }
+
+                return data;
+            } catch (primaryError) {
+                // Fallback to Firebase cache if backend request fails.
+                try {
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        const local = docSnap.data();
+                        if (local.episodes && Array.isArray(local.episodes) && local.episodes.length > 0) {
+                            const payload = { episodes: local.episodes };
+                            setCache(cacheKey, payload);
+                            return payload;
+                        }
+                    }
+                } catch (fallbackError) {
+                    console.warn("[AnimeService] Firebase read fallback error:", fallbackError);
+                }
+
+                throw primaryError;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
     },
 
     // Get mapping from AniList ID to Scraper Session
     async getAnimeMapping(malId: string | number) {
-        const docRef = doc(db, "anime_mappings", String(malId));
+        const key = String(malId);
+        const cached = mappingCache.get(key);
+        if (cached) {
+            if (isLegacyAnimePaheSession(cached)) {
+                mappingCache.delete(key);
+                return null;
+            }
+            return cached;
+        }
+
+        const docRef = doc(db, "anime_mappings", key);
         try {
-            const docSnap = await getDoc(docRef);
+            const docSnap = await Promise.race([
+                getDoc(docRef),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+            ]);
+            if (!docSnap) return null;
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 if (data.session) {
-                    console.log(`[AnimeService] Hit mapping cache: ${malId} -> ${data.session}`);
+                    if (isLegacyAnimePaheSession(data.session)) {
+                        mappingCache.delete(key);
+                        // Cleanup stale AnimePahe UUID mapping.
+                        deleteDoc(docRef).catch(() => undefined);
+                        return null;
+                    }
+                    mappingCache.set(key, data.session);
                     return data.session;
                 }
             }
@@ -393,7 +472,10 @@ export const animeService = {
 
     // Save mapping
     async saveAnimeMapping(malId: string | number, session: string) {
-        const docRef = doc(db, "anime_mappings", String(malId));
+        if (!session || isLegacyAnimePaheSession(session)) return;
+        const key = String(malId);
+        mappingCache.set(key, session);
+        const docRef = doc(db, "anime_mappings", key);
         try {
             await setDoc(docRef, {
                 session,
@@ -402,6 +484,17 @@ export const animeService = {
             console.log(`[AnimeService] Saved mapping: ${malId} -> ${session}`);
         } catch (error) {
             console.warn("[AnimeService] Error saving mapping:", error);
+        }
+    },
+
+    async clearAnimeMapping(malId: string | number) {
+        const key = String(malId);
+        mappingCache.delete(key);
+        const docRef = doc(db, "anime_mappings", key);
+        try {
+            await deleteDoc(docRef);
+        } catch {
+            // no-op
         }
     },
 
@@ -417,8 +510,12 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
-                const res = await fetch(`${API_BASE}/scraper/streams?anime_session=${animeSession}&ep_session=${episodeSession}`);
-                const data = await res.json();
+                const { data } = await apiClient.get('/scraper/streams', {
+                    params: {
+                        anime_session: animeSession,
+                        ep_session: episodeSession,
+                    },
+                });
                 if (Array.isArray(data) && data.length > 0) {
                     streamCache.set(cacheKey, { data, timestamp: Date.now() });
                 }

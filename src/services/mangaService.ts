@@ -1,6 +1,17 @@
 // API Service for Manga operations - Using AniList
 import type { Manga } from '../types/manga';
+import axios from 'axios';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const apiClient = axios.create({
+    baseURL: API_BASE,
+    timeout: 15000,
+});
+const chapterListCache = new Map<string, { data: any; timestamp: number }>();
+const chapterPagesCache = new Map<string, { data: any; timestamp: number }>();
+const chapterListInFlight = new Map<string, Promise<any>>();
+const chapterPagesInFlight = new Map<string, Promise<any>>();
+const CHAPTER_LIST_CACHE_TTL = 20 * 60 * 1000;
+const CHAPTER_PAGES_CACHE_TTL = 30 * 60 * 1000;
 
 interface AniListManga {
     id: number;
@@ -216,25 +227,67 @@ export const mangaService = {
 
     // Get manga chapters from MangaKatana scraper
     async getChapters(mangaId: string) {
-        const res = await fetch(`${API_BASE}/manga/chapters/${encodeURIComponent(mangaId)}`);
-        if (!res.ok) throw new Error(`Failed to fetch chapters (${res.status})`);
-        return res.json();
+        const now = Date.now();
+        const cached = chapterListCache.get(mangaId);
+        if (cached && now - cached.timestamp < CHAPTER_LIST_CACHE_TTL) {
+            return cached.data;
+        }
+
+        if (chapterListInFlight.has(mangaId)) {
+            return chapterListInFlight.get(mangaId)!;
+        }
+
+        const request = apiClient
+            .get(`/manga/chapters/${encodeURIComponent(mangaId)}`)
+            .then(({ data }) => {
+                if (data?.chapters && Array.isArray(data.chapters)) {
+                    chapterListCache.set(mangaId, { data, timestamp: Date.now() });
+                }
+                return data;
+            })
+            .finally(() => {
+                chapterListInFlight.delete(mangaId);
+            });
+
+        chapterListInFlight.set(mangaId, request);
+        return request;
     },
 
     // Get chapter pages from MangaKatana scraper
     async getChapterPages(chapterUrl: string) {
+        const now = Date.now();
+        const cached = chapterPagesCache.get(chapterUrl);
+        if (cached && now - cached.timestamp < CHAPTER_PAGES_CACHE_TTL) {
+            return cached.data;
+        }
+
+        if (chapterPagesInFlight.has(chapterUrl)) {
+            return chapterPagesInFlight.get(chapterUrl)!;
+        }
+
         const fetchOnce = async () => {
-            const res = await fetch(`${API_BASE}/manga/pages?url=${encodeURIComponent(chapterUrl)}`);
-            if (!res.ok) throw new Error(`Failed to fetch chapter pages (${res.status})`);
-            return res.json();
+            const { data } = await apiClient.get('/manga/pages', {
+                params: { url: chapterUrl },
+            });
+            if (data?.pages && Array.isArray(data.pages)) {
+                chapterPagesCache.set(chapterUrl, { data, timestamp: Date.now() });
+            }
+            return data;
         };
 
-        try {
-            return await fetchOnce();
-        } catch {
-            // Retry once to handle transient scraper/network failures.
-            return fetchOnce();
-        }
+        const request = (async () => {
+            try {
+                return await fetchOnce();
+            } catch {
+                // Retry once to handle transient scraper/network failures.
+                return fetchOnce();
+            } finally {
+                chapterPagesInFlight.delete(chapterUrl);
+            }
+        })();
+
+        chapterPagesInFlight.set(chapterUrl, request);
+        return request;
     },
 
     // Search manga on MangaKatana scraper with local pagination
@@ -339,11 +392,7 @@ export const mangaService = {
 
     async prefetchChapters(urls: string[]) {
         try {
-            await fetch(`${API_BASE}/manga/prefetch`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ urls }),
-            });
+            await apiClient.post('/manga/prefetch', { urls });
         } catch (err) {
             console.error('Prefetch failed', err);
         }

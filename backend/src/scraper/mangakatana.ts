@@ -1,7 +1,5 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { getBrowserInstance } from '../utils/browser';
-import { HTTPRequest } from 'puppeteer-core';
 
 const BASE_URL = 'https://mangakatana.com';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -22,6 +20,73 @@ const toAbsoluteUrl = (url: string) => {
     if (url.startsWith('http')) return url;
     if (url.startsWith('//')) return `https:${url}`;
     return `${BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
+const normalizeMangaId = (input: string): string => {
+    let value = String(input || '').trim();
+    if (!value) return '';
+
+    if (value.startsWith('mk:')) value = value.slice(3);
+
+    // Handle full URLs (absolute or embedded)
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+        try {
+            const u = new URL(value);
+            value = u.pathname;
+        } catch {
+            // fall through
+        }
+    }
+
+    // Handle values that include /manga/<id>
+    const marker = '/manga/';
+    const markerIdx = value.indexOf(marker);
+    if (markerIdx !== -1) {
+        value = value.slice(markerIdx + marker.length);
+    }
+
+    // Trim leading/trailing slashes and query/hash
+    value = value.replace(/^\/+|\/+$/g, '');
+    value = value.split('?')[0].split('#')[0];
+
+    // If a chapter URL slipped in, keep only manga ID.
+    // Example: one-piece.123/c1042  -> one-piece.123
+    value = value.split('/')[0];
+
+    return value;
+};
+
+const parseMangaItemsFromList = ($: any): MangaSearchResult[] => {
+    const results: MangaSearchResult[] = [];
+    $('#book_list > div.item').each((_: number, element: any) => {
+        const $el = $(element);
+        const linkEl = $el.find('div.text > h3 > a, .title a');
+        const title = linkEl.text().trim();
+        const url = linkEl.attr('href') || '';
+        const imgEl = $el.find('.media .wrap_img img, div.cover img, img');
+        const thumbnail = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
+
+        const chapters = $el.find('div.text .chapter a, .chapter a');
+        let latestChapter = '';
+        if (chapters.length > 0) {
+            latestChapter = chapters.first().text().trim();
+        }
+
+        const id = url.replace(`${BASE_URL}/manga/`, '').replace(/\/$/, '');
+        if (title && url) {
+            results.push({
+                id,
+                title,
+                url,
+                thumbnail,
+                latestChapter,
+                author: '',
+                altNames: [],
+                source: 'mangakatana'
+            });
+        }
+    });
+    return results;
 };
 
 export interface HotUpdate {
@@ -74,221 +139,34 @@ export interface ChapterPage {
  * Uses Puppeteer to bypass bot protection
  */
 export async function searchManga(query: string): Promise<MangaSearchResult[]> {
-    let browser = null;
-    try {
-        console.log(`[searchManga] Searching for: "${query}"`);
+    const searchUrl = `${BASE_URL}/?search=${encodeURIComponent(query)}&search_by=book_name`;
 
-        browser = await getBrowserInstance();
-        const page = await browser.newPage();
-
-        // Set a realistic user agent
-        await page.setUserAgent(USER_AGENT);
-
-        // Block images/css/fonts/media to speed up loading
-        await page.setRequestInterception(true);
-        page.on('request', (req: HTTPRequest) => {
-            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-
-        // Build search URL
-        const searchUrl = `${BASE_URL}/?search=${encodeURIComponent(query)}&search_by=book_name`;
-        console.log(`[searchManga] Navigating to: ${searchUrl}`);
-
-        // Navigate to the search page
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-        // Wait for search results or detail page
-        try {
-            await page.waitForSelector('#book_list, .info .heading', { timeout: 10000 });
-        } catch (e) {
-            console.warn('[searchManga] Timeout waiting for search results');
-        }
-
-        const content = await page.content();
-        const $ = cheerio.load(content);
-        const results: MangaSearchResult[] = [];
-
-        $('#book_list > div.item').each((_, element) => {
-            const $el = $(element);
-            const linkEl = $el.find('div.text > h3 > a');
-            const title = linkEl.text().trim();
-            const url = linkEl.attr('href') || '';
-            const imgEl = $el.find('.media .wrap_img img, div.cover img, img');
-            const thumbnail = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
-
-            // Try to extract genres if available (often in .genres or .meta)
-            const genres: string[] = [];
-            $el.find('.genres a').each((_, g) => {
-                genres.push($(g).text().toLowerCase());
-            });
-
-            // NSFW Filter
-            const isNsfw = ['hentai', 'adult', 'smut'].some(term =>
-                title.toLowerCase().includes(term) ||
-                genres.some(g => g.includes(term))
-            );
-
-            if (isNsfw) return; // Skip NSFW items
-
-            // Extract latest chapter
-            // Usually found in .chapter class inside text div
-            const chapters = $el.find('div.text .chapter a');
-            let latestChapter = '';
-            if (chapters.length > 0) {
-                latestChapter = chapters.first().text().trim();
-            }
-
-            // Extract ID from URL (e.g., /manga/one-piece.12345 -> one-piece.12345)
-            const id = url.replace(`${BASE_URL}/manga/`, '').replace(/\/$/, '');
-
-            if (title && url) {
-                results.push({
-                    id,
-                    title,
-                    url,
-                    thumbnail,
-                    latestChapter,
-                    author: '', // Initialize empty, will populate if we fetch details or find a way
-                    altNames: [],
-                    source: 'mangakatana'
-                });
-            }
-        });
-
-        // Check for redirect to detail page (no book_list, but has info heading)
-        if (results.length === 0) {
-            const detailTitle = $('.info .heading').text().trim();
-            if (detailTitle) {
-                // NSFW Check (for redirected detail page)
-                const genres: string[] = [];
-                $('.genres a').each((_, g) => {
-                    genres.push($(g).text().toLowerCase());
-                });
-
-                const isNsfw = ['hentai', 'adult', 'smut'].some(term =>
-                    detailTitle.toLowerCase().includes(term) ||
-                    genres.some(g => g.includes(term))
-                );
-
-                if (!isNsfw) {
-                    // We are on a detail page - get URL from page
-                    const finalUrl = page.url();
-
-                    if (finalUrl && finalUrl.includes('/manga/')) {
-                        const id = finalUrl.split('/manga/')[1].replace(/\/$/, '');
-                        const imgEl = $('div.media div.cover img, .media .wrap_img img, img');
-                        const thumbnail = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
-
-                        results.push({
-                            id,
-                            title: detailTitle,
-                            url: finalUrl,
-                            thumbnail,
-                            source: 'mangakatana'
-                        });
-                    }
-                }
-            }
-        }
-
-        console.log(`[searchManga] Found ${results.length} results for "${query}"`);
-        return results;
-    } catch (error) {
-        console.error('[searchManga] Error searching manga:', error);
-        throw error;
-    } finally {
-        if (browser) {
-            await browser.close();
-        }
-    }
+    const response = await axiosInstance.get(searchUrl);
+    const $ = cheerio.load(response.data);
+    const quickResults = parseMangaItemsFromList($);
+    console.log(`[searchManga:http] Found ${quickResults.length} results for "${query}"`);
+    return quickResults;
 }
 
 /**
  * Generic helper to fetch manga list from a specific path (e.g. /latest, /new-manga)
  */
 async function getMangaListByPath(path: string, pageNum: number = 1): Promise<{ results: MangaSearchResult[], totalPages: number }> {
-    let browser = null;
-    try {
-        const url = pageNum > 1 ? `${BASE_URL}${path}/page/${pageNum}` : `${BASE_URL}${path}`;
-        console.log(`[getMangaListByPath] Navigating to: ${url}`);
+    const url = pageNum > 1 ? `${BASE_URL}${path}/page/${pageNum}` : `${BASE_URL}${path}`;
 
-        browser = await getBrowserInstance();
-        const page = await browser.newPage();
-        await page.setUserAgent(USER_AGENT);
+    const response = await axiosInstance.get(url);
+    const $ = cheerio.load(response.data);
+    const results = parseMangaItemsFromList($);
 
-        await page.setRequestInterception(true);
-        page.on('request', (req: HTTPRequest) => {
-            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        try {
-            await page.waitForSelector('#book_list', { timeout: 10000 });
-        } catch (e) {
-            console.warn('[getMangaListByPath] Timeout waiting for #book_list');
-        }
-
-        const content = await page.content();
-        const $ = cheerio.load(content);
-        const results: MangaSearchResult[] = [];
-
-        $('#book_list > div.item').each((_, element) => {
-            const $el = $(element);
-            const linkEl = $el.find('div.text > h3 > a, .title a');
-            const title = linkEl.text().trim();
-            const url = linkEl.attr('href') || '';
-            const imgEl = $el.find('.media .wrap_img img, div.cover img, img');
-            const thumbnail = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
-            
-            // Extract latest chapter
-            const chapters = $el.find('div.text .chapter a, .chapter a');
-            let latestChapter = '';
-            if (chapters.length > 0) {
-                latestChapter = chapters.first().text().trim();
-            }
-
-            const id = url.replace(`${BASE_URL}/manga/`, '').replace(/\/$/, '');
-
-            if (title && url) {
-                results.push({
-                    id,
-                    title,
-                    url,
-                    thumbnail,
-                    latestChapter,
-                    source: 'mangakatana'
-                });
-            }
-        });
-
-        // Extract total pages
-        let totalPages = 1;
-        const lastPageEl = $('a.page-numbers:not(.next)').last();
-        if (lastPageEl.length > 0) {
-            const numText = lastPageEl.text().replace(/,/g, '').trim();
-            const parsedNum = parseInt(numText, 10);
-            if (!isNaN(parsedNum)) {
-                totalPages = parsedNum;
-            }
-        }
-
-        return { results, totalPages };
-    } catch (error) {
-        console.error(`[getMangaListByPath] Error fetching ${path}:`, error);
-        throw error;
-    } finally {
-        if (browser) {
-            await browser.close();
-        }
+    let totalPages = 1;
+    const lastPageEl = $('a.page-numbers:not(.next)').last();
+    if (lastPageEl.length > 0) {
+        const numText = lastPageEl.text().replace(/,/g, '').trim();
+        const parsedNum = parseInt(numText, 10);
+        if (!isNaN(parsedNum)) totalPages = parsedNum;
     }
+
+    return { results, totalPages };
 }
 
 export async function getLatestManga(page: number = 1): Promise<{ results: MangaSearchResult[], totalPages: number }> {
@@ -308,7 +186,8 @@ export async function getMangaDirectory(page: number = 1): Promise<{ results: Ma
  */
 export async function getMangaDetails(mangaId: string): Promise<MangaDetails> {
     try {
-        const url = `${BASE_URL}/manga/${mangaId}`;
+        const normalizedId = normalizeMangaId(mangaId);
+        const url = `${BASE_URL}/manga/${normalizedId}`;
         const response = await axiosInstance.get(url);
         const $ = cheerio.load(response.data);
 
@@ -322,7 +201,7 @@ export async function getMangaDetails(mangaId: string): Promise<MangaDetails> {
         const coverImage = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
 
         return {
-            id: mangaId,
+            id: normalizedId,
             title,
             altNames,
             author,
@@ -344,48 +223,9 @@ export async function getMangaDetails(mangaId: string): Promise<MangaDetails> {
  * Uses Puppeteer to bypass bot protection (same as getHotUpdates)
  */
 export async function getChapterList(mangaId: string): Promise<Chapter[]> {
-    let browser = null;
-    try {
-        const url = `${BASE_URL}/manga/${mangaId}`;
-        console.log(`[getChapterList] Fetching chapters from: ${url}`);
-
-        browser = await getBrowserInstance();
-        const page = await browser.newPage();
-
-        // Set a realistic user agent
-        await page.setUserAgent(USER_AGENT);
-
-        // Block images/css/fonts/media to speed up loading
-        await page.setRequestInterception(true);
-        page.on('request', (req: HTTPRequest) => {
-            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-
-        // Navigate to the manga page
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-        // Wait for chapter list to load
-        try {
-            await page.waitForSelector('div.chapters', { timeout: 10000 });
-        } catch (e) {
-            console.warn('[getChapterList] Timeout waiting for div.chapters, trying fallback...');
-            try {
-                await page.waitForSelector('.chapter', { timeout: 5000 });
-            } catch (e2) {
-                console.warn('[getChapterList] Timeout waiting for .chapter element');
-            }
-        }
-
-        const content = await page.content();
-        const $ = cheerio.load(content);
-
+    const parseFromHtml = (html: string) => {
+        const $ = cheerio.load(html);
         const chapters: Chapter[] = [];
-
-        // Chapters are in table rows with .chapter class
         $('tr:has(.chapter)').each((_, element) => {
             const $el = $(element);
             const linkEl = $el.find('.chapter a');
@@ -395,10 +235,7 @@ export async function getChapterList(mangaId: string): Promise<Chapter[]> {
                 ? rawChapterUrl
                 : `${BASE_URL}${rawChapterUrl.startsWith('/') ? '' : '/'}${rawChapterUrl}`;
             const uploadDate = $el.find('.update_time').text().trim();
-
-            // Keep stable short ID format for compatibility with existing UI state/history.
             const chapterId = chapterUrl.replace(/\/$/, '').split('/').pop() || '';
-
             if (chapterTitle && chapterUrl) {
                 chapters.push({
                     id: chapterId,
@@ -408,17 +245,28 @@ export async function getChapterList(mangaId: string): Promise<Chapter[]> {
                 });
             }
         });
-
-        console.log(`[getChapterList] Found ${chapters.length} chapters`);
         return chapters;
-    } catch (error) {
-        console.error('[getChapterList] Error fetching chapter list:', error);
-        throw error;
-    } finally {
-        if (browser) {
-            await browser.close();
+    };
+
+    const normalizedId = normalizeMangaId(mangaId);
+    const url = `${BASE_URL}/manga/${normalizedId}`;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+            const response = await axiosInstance.get(attempt === 0 ? url : `${url}?t=${Date.now()}`);
+            const chapters = parseFromHtml(response.data);
+            if (chapters.length > 0) {
+                console.log(`[getChapterList:http] Found ${chapters.length} chapters (attempt ${attempt + 1})`);
+                return chapters;
+            }
+        } catch (error) {
+            if (attempt === 1) {
+                console.error('[getChapterList:http] Error fetching chapter list:', error);
+            }
         }
+        await new Promise((resolve) => setTimeout(resolve, 250));
     }
+
+    return [];
 }
 
 /**
@@ -496,82 +344,9 @@ export async function getChapterPages(chapterUrl: string): Promise<ChapterPage[]
         console.log('[Fast] Failed, falling back to Puppeteer...', fastError);
     }
 
-    // Fall back to Puppeteer for JavaScript-heavy pages
-    let browser = null;
-    try {
-        console.log(`[Puppeteer] Launching for ${normalizedChapterUrl}...`);
-        browser = await getBrowserInstance();
-
-        const page = await browser.newPage();
-        await page.setUserAgent(USER_AGENT);
-
-        // Block images/css/fonts/media to speed up loading
-        await page.setRequestInterception(true);
-        page.on('request', (req: HTTPRequest) => {
-            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-
-        await page.goto(normalizedChapterUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        const imageUrls = await page.evaluate(() => {
-            // @ts-ignore
-            if (window.thzq && Array.isArray(window.thzq) && window.thzq.length > 0) return window.thzq;
-            // @ts-ignore
-            if (window.ytaw && Array.isArray(window.ytaw) && window.ytaw.length > 0) return window.ytaw;
-            // @ts-ignore
-            if (window.htnc && Array.isArray(window.htnc) && window.htnc.length > 0) return window.htnc;
-
-            const scripts = Array.from(document.querySelectorAll('script'));
-            for (const script of scripts) {
-                const content = script.textContent || '';
-                const matches = content.matchAll(/var\s+\w+\s*=\s*(\[[\s\S]*?\]);/g);
-                for (const m of matches) {
-                    const arrayText = m[1] || '';
-                    const urls: string[] = [];
-                    const urlMatches = arrayText.matchAll(/['"]([^'"]+)['"]/g);
-                    for (const u of urlMatches) {
-                        const value = u[1];
-                        if (value && (value.includes('http') || value.startsWith('//'))) {
-                            urls.push(value);
-                        }
-                    }
-                    if (urls.length > 0) return urls;
-                }
-            }
-
-            const imgs = document.querySelectorAll('#imgs img');
-            if (imgs.length > 0) {
-                return Array.from(imgs)
-                    .map(img => img.getAttribute('data-src') || img.getAttribute('src'))
-                    .filter(src => src && (src.includes('http') || src.startsWith('//')));
-            }
-
-            return [];
-        });
-
-        if (imageUrls && imageUrls.length > 0) {
-            console.log(`[Puppeteer] Found ${imageUrls.length} pages`);
-            return imageUrls.map((url: string, index: number) => ({
-                pageNumber: index + 1,
-                imageUrl: url.startsWith('//') ? `https:${url}` : url
-            }));
-        }
-
-        console.log('[Puppeteer] No pages found');
-        return [];
-    } catch (error) {
-        console.error('[Puppeteer] Error:', error);
-        throw error;
-    } finally {
-        if (browser) {
-            await browser.close();
-        }
-    }
+    // HTTP-only mode (no Puppeteer fallback)
+    console.log('[getChapterPages:http] No pages found via HTML parse');
+    return [];
 }
 
 /**
@@ -579,78 +354,26 @@ export async function getChapterPages(chapterUrl: string): Promise<ChapterPage[]
  * Uses Puppeteer to bypass bot protection
  */
 export async function getHotUpdates(): Promise<HotUpdate[]> {
-    let browser = null;
     try {
-        console.log('Fetching hot updates from MangaKatana via Puppeteer...');
-        browser = await getBrowserInstance();
-        const page = await browser.newPage();
-
-        // Set a realistic user agent
-        await page.setUserAgent(USER_AGENT);
-
-        // Block images/css/fonts/media to speed up loading
-        await page.setRequestInterception(true);
-        page.on('request', (req: HTTPRequest) => {
-            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-
-        // Navigate to the homepage
-        await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-        // Wait for potential Cloudflare challenge or content load
-        try {
-            await page.waitForSelector('#hot_update', { timeout: 10000 });
-        } catch (e) {
-            console.warn('Timeout waiting for #hot_update, trying fallback...');
-            try {
-                await page.waitForSelector('.widget-hot-update', { timeout: 5000 });
-            } catch (e2) {
-                console.warn('Timeout waiting for fallback widget...');
-            }
-        }
-
-        const content = await page.content();
-        const $ = cheerio.load(content);
+        const response = await axiosInstance.get(BASE_URL);
+        const $ = cheerio.load(response.data);
         const updates: HotUpdate[] = [];
 
-        // Strategy: Look for the specific "Hot Updates" section. 
-        // MK usually has #hot_update
-
         let container = $('#hot_update');
-        console.log('Found container #hot_update:', container.length);
-
         if (container.length === 0) {
-            // Fallback: look for typical "item" grid if id changed
             container = $('.widget-hot-update');
-            console.log('Found container .widget-hot-update:', container.length);
         }
 
         container.find('.item').each((_, element) => {
             const $el = $(element);
-
-            // Image
             const imgEl = $el.find('.wrap_img img');
             const thumbnail = imgEl.attr('data-src') || imgEl.attr('src') || '';
-
-            // Title
             const titleEl = $el.find('.title a');
             const title = titleEl.text().trim();
             const url = titleEl.attr('href') || '';
-
-            // NSFW Filter (Hot Updates - Title only as genres aren't always visible)
-            if (['hentai', 'adult', 'smut'].some(term => title.toLowerCase().includes(term))) {
-                return;
-            }
-
-            // Latest Chapter
+            if (['hentai', 'adult', 'smut'].some(term => title.toLowerCase().includes(term))) return;
             const chapterEl = $el.find('.chapter a');
-            // Sometimes multiple chapters, grab first
             const chapter = chapterEl.first().text().trim();
-
             if (title && url) {
                 const id = url.split('/manga/')[1]?.replace(/\/$/, '') || '';
                 updates.push({
@@ -664,14 +387,9 @@ export async function getHotUpdates(): Promise<HotUpdate[]> {
             }
         });
 
-        console.log(`Found ${updates.length} hot updates.`);
         return updates.slice(0, 15);
     } catch (error) {
         console.error('Error fetching hot updates:', error);
         return [];
-    } finally {
-        if (browser) {
-            await browser.close();
-        }
     }
 }

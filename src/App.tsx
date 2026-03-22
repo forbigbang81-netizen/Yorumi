@@ -26,6 +26,7 @@ import { mangaService } from './services/mangaService';
 import ScrollToTop from './components/ui/ScrollToTop';
 import { useTitleLanguage } from './context/TitleLanguageContext';
 import { getDisplayTitle, getSecondaryTitle } from './utils/titleLanguage';
+import { useDebounce } from './hooks/useDebounce';
 
 function App() {
   const navigate = useNavigate();
@@ -38,6 +39,7 @@ function App() {
   const searchRequestIdRef = useRef(0);
   const searchCacheRef = useRef(new Map<string, { data: any[]; timestamp: number }>());
   const SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
+  const debouncedSearchQuery = useDebounce(searchQuery, 280);
 
   // Derive active tab from URL or Query Params (to persist state on Search Page)
   const queryParams = new URLSearchParams(location.search);
@@ -51,7 +53,7 @@ function App() {
   // Perform search when debounced term changes
   useEffect(() => {
     const performSearch = async () => {
-      const term = searchQuery.trim();
+      const term = debouncedSearchQuery.trim();
       if (term.length < 2) {
         setSearchResults([]);
         setIsSearching(false);
@@ -114,7 +116,7 @@ function App() {
     };
 
     performSearch();
-  }, [searchQuery, activeTab, language]);
+  }, [debouncedSearchQuery, activeTab, language]);
   useEffect(() => {
     if (!location.pathname.startsWith('/search')) {
       // Don't clear query here as it might clear while user is typing if they navigate?
