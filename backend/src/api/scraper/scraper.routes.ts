@@ -33,6 +33,8 @@ const getPublicBase = (req: any) => {
     return `${proto}://${req.get('host')}`;
 };
 
+const sanitizeCookie = (raw: string) => String(raw || '').replace(/[\r\n]/g, '').trim();
+
 router.get('/search', async (req, res) => {
     try {
         const query = req.query.q as string;
@@ -109,6 +111,7 @@ router.post('/prefetch/streams', async (req, res) => {
 router.get('/proxy', async (req, res) => {
     const targetUrl = req.query.url as string;
     const requestedReferer = (req.query.referer as string) || '';
+    const requestedCookie = sanitizeCookie((req.query.cookie as string) || '');
 
     if (!targetUrl) {
         return res.status(400).send('Missing url parameter');
@@ -117,7 +120,7 @@ router.get('/proxy', async (req, res) => {
     try {
         const target = new URL(targetUrl);
         const cookieKey = target.origin;
-        const storedCookie = upstreamCookieJar.get(cookieKey) || '';
+        const storedCookie = sanitizeCookie(upstreamCookieJar.get(cookieKey) || '');
         const refererCandidates = [
             requestedReferer,
             `${target.origin}/`,
@@ -136,14 +139,15 @@ router.get('/proxy', async (req, res) => {
                         Referer: referer,
                         Origin: new URL(referer).origin,
                         Accept: '*/*',
-                        ...(storedCookie ? { Cookie: storedCookie } : {}),
+                        ...((requestedCookie || storedCookie) ? { Cookie: requestedCookie || storedCookie } : {}),
                     },
                     timeout: 15000,
                 });
 
                 const setCookie = response.headers?.['set-cookie'];
                 if (Array.isArray(setCookie) && setCookie.length > 0) {
-                    const merged = mergeCookieHeader(storedCookie, setCookie);
+                    const seedCookie = requestedCookie || storedCookie;
+                    const merged = mergeCookieHeader(seedCookie, setCookie);
                     if (merged) upstreamCookieJar.set(cookieKey, merged);
                 }
                 break;
@@ -184,6 +188,7 @@ router.get('/proxy', async (req, res) => {
         const urlObj = new URL(targetUrl);
         const basePath = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
         const nextReferer = `${urlObj.origin}/`;
+        const nextCookie = sanitizeCookie(upstreamCookieJar.get(cookieKey) || requestedCookie);
 
         const rewritten = body
             .split('\n')
@@ -196,7 +201,7 @@ router.get('/proxy', async (req, res) => {
                         const absoluteUri = uri.startsWith('http')
                             ? uri
                             : (uri.startsWith('/') ? `${urlObj.origin}${uri}` : `${basePath}${uri}`);
-                        return `URI="${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(nextReferer)}"`;
+                        return `URI="${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}"`;
                     });
                 }
 
@@ -206,7 +211,7 @@ router.get('/proxy', async (req, res) => {
                     ? trimmed
                     : (trimmed.startsWith('/') ? `${urlObj.origin}${trimmed}` : `${basePath}${trimmed}`);
 
-                return `${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absolute)}&referer=${encodeURIComponent(nextReferer)}`;
+                return `${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absolute)}&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}`;
             })
             .join('\n');
 
