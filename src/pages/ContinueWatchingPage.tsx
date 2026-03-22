@@ -16,10 +16,11 @@ export default function ContinueWatchingPage() {
                     variant="page"
                     onBack={() => navigate('/profile?tab=anime-overview')}
                     onRemove={(animeId) => removeFromHistory(animeId)}
-                    onWatchClick={(anime: Anime, episodeNumber: number) => {
+                    onWatchClick={(anime: Anime, episodeNumber: number, startSeconds?: number) => {
                         const title = slugify(anime.title || 'anime');
                         const targetId = anime.scraperId || anime.mal_id;
-                        navigate(`/anime/watch/${title}/${targetId}?ep=${episodeNumber}`);
+                        const resume = Number.isFinite(startSeconds) ? Math.max(0, Math.floor(startSeconds || 0)) : 0;
+                        navigate(`/anime/watch/${title}/${targetId}?ep=${episodeNumber}${resume > 0 ? `&t=${resume}` : ''}`);
                     }}
                 />
             </div>

@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useAnime } from '../hooks/useAnime';
+import { animeService } from '../services/animeService';
 import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
 
@@ -18,6 +19,7 @@ export default function HomePage() {
 
     useEffect(() => {
         anime.fetchHomeData();
+        animeService.prefetchTopAnimeFormats();
     }, []);
 
     // Navigation Handlers
@@ -26,7 +28,7 @@ export default function HomePage() {
         navigate(`/anime/details/${animeId}`, { state: { anime: item } });
     };
 
-    const handleWatchClick = (item: Anime, episodeNumber?: number) => {
+    const handleWatchClick = (item: Anime, episodeNumber?: number, startSeconds?: number) => {
         const title = slugify(item.title || item.title_english || 'anime');
         const id = item.scraperId || item.mal_id || item.id;
 
@@ -48,7 +50,8 @@ export default function HomePage() {
             }
         }
 
-        const url = `/anime/watch/${title}/${id}?ep=${targetEp}`;
+        const resume = Number.isFinite(startSeconds) ? Math.max(0, Math.floor(startSeconds || 0)) : 0;
+        const url = `/anime/watch/${title}/${id}?ep=${targetEp}${resume > 0 ? `&t=${resume}` : ''}`;
         navigate(url, { state: { anime: item } });
     };
 

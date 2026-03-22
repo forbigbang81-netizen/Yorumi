@@ -9,12 +9,14 @@ interface ContinueWatchingItem {
     episodeNumber: number;
     episodeTitle?: string;
     session?: string;
+    positionSeconds?: number;
+    durationSeconds?: number;
 }
 
 interface ContinueWatchingProps {
     items: ContinueWatchingItem[];
     variant?: 'dashboard' | 'page';
-    onWatchClick: (anime: Anime, episodeNumber: number) => void;
+    onWatchClick: (anime: Anime, episodeNumber: number, startSeconds?: number) => void;
     onRemove: (animeId: string | number) => void;
     onViewAll?: () => void;
     onBack?: () => void;
@@ -29,6 +31,44 @@ export default function ContinueWatching({
     onBack
 }: ContinueWatchingProps) {
     if (items.length === 0) return null;
+
+    const formatClock = (seconds: number) => {
+        const safe = Math.max(0, Math.floor(seconds || 0));
+        const h = Math.floor(safe / 3600);
+        const m = Math.floor((safe % 3600) / 60);
+        const s = safe % 60;
+        if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
+
+    const getProgressPercent = (item: ContinueWatchingItem) => {
+        const duration = item.durationSeconds || 0;
+        const position = item.positionSeconds || 0;
+        if (!duration || duration <= 0) return 0;
+        return Math.min(100, Math.max(0, (position / duration) * 100));
+    };
+
+    const renderCardProgress = (item: ContinueWatchingItem) => (
+        <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/90 via-black/65 to-transparent">
+            <div className="flex items-center justify-between text-[11px] font-semibold tracking-wide">
+                <span className="text-white/90 uppercase">EP {item.episodeNumber}</span>
+                {(item.durationSeconds || item.positionSeconds) ? (
+                    <span className="text-yorumi-accent font-bold">
+                        {formatClock(item.positionSeconds || 0)}
+                        <span className="text-white/65"> / {formatClock(item.durationSeconds || 0)}</span>
+                    </span>
+                ) : null}
+            </div>
+            {(item.durationSeconds || item.positionSeconds) ? (
+                <div className="mt-1 h-1 bg-white/25 overflow-hidden">
+                    <div
+                        className="h-full bg-yorumi-accent transition-all"
+                        style={{ width: `${getProgressPercent(item)}%` }}
+                    />
+                </div>
+            ) : null}
+        </div>
+    );
 
     if (variant === 'page') {
         return (
@@ -54,7 +94,7 @@ export default function ContinueWatching({
                                     mal_id: isHybrid ? 0 : parseInt(item.animeId),
                                     scraperId: isHybrid ? item.animeId : undefined,
                                     title: item.animeTitle
-                                } as Anime, item.episodeNumber);
+                                } as Anime, item.episodeNumber, item.positionSeconds);
                             }}
                         >
                             <div className="relative aspect-video rounded-lg overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors">
@@ -73,14 +113,12 @@ export default function ContinueWatching({
                                 <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-1.5 py-0.5 rounded border border-white/10">
                                     EP {item.episodeNumber}
                                 </div>
+                                {renderCardProgress(item)}
                             </div>
                             <div className="px-1">
                                 <h4 className="text-sm font-bold text-gray-200 truncate group-hover:text-yorumi-accent transition-colors">
                                     {item.animeTitle}
                                 </h4>
-                                <p className="text-xs text-gray-500 truncate mt-0.5">
-                                    {item.episodeTitle || `Episode ${item.episodeNumber}`}
-                                </p>
                             </div>
                         </div>
                     ))}
@@ -106,7 +144,7 @@ export default function ContinueWatching({
                             mal_id: isHybrid ? 0 : parseInt(item.animeId),
                             scraperId: isHybrid ? item.animeId : undefined,
                             title: item.animeTitle
-                        } as Anime, item.episodeNumber);
+                        } as Anime, item.episodeNumber, item.positionSeconds);
                     }}
                 >
                     <div className="relative aspect-video rounded-lg overflow-hidden mb-3 shadow-lg border border-white/5 transition-colors cursor-pointer">
@@ -125,6 +163,7 @@ export default function ContinueWatching({
                         <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-1.5 py-0.5 rounded border border-white/10">
                             EP {item.episodeNumber}
                         </div>
+                        {renderCardProgress(item)}
                         {/* Remove Button */}
                         <button
                             className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur hover:bg-red-500/80 text-white/80 hover:text-white transition-all opacity-0 group-hover:opacity-100 z-10"
@@ -141,9 +180,6 @@ export default function ContinueWatching({
                         <h4 className="text-sm font-bold text-gray-200 truncate group-hover:text-yorumi-accent transition-colors">
                             {item.animeTitle}
                         </h4>
-                        <p className="text-xs text-gray-500 truncate mt-0.5">
-                            {item.episodeTitle || `Episode ${item.episodeNumber}`}
-                        </p>
                     </div>
                 </div>
             ))}

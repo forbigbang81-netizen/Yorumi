@@ -29,7 +29,7 @@ interface AnimeDashboardProps {
     showEstimatedSchedule?: boolean;
     showGenres?: boolean;
     onAnimeClick: (anime: Anime) => void;
-    onWatchClick: (anime: Anime, episodeNumber?: number) => void;
+    onWatchClick: (anime: Anime, episodeNumber?: number, startSeconds?: number) => void;
     onViewAll: (type: 'trending' | 'seasonal' | 'continue_watching' | 'popular') => void;
     onRemoveFromHistory: (animeId: number | string) => void;
     onAnimeHover?: (anime: Anime) => void;

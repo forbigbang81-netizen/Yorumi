@@ -315,7 +315,10 @@ const RecentActivity = () => {
                         onClick={() => {
                             if (item.type === 'watching') {
                                 const title = slugify(item.title || 'anime');
-                                navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
+                                const resume = Number.isFinite((item as any).positionSeconds)
+                                    ? Math.max(0, Math.floor((item as any).positionSeconds))
+                                    : 0;
+                                navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}${resume > 0 ? `&t=${resume}` : ''}`);
                                 return;
                             }
 
@@ -1376,6 +1379,20 @@ const AnimeWatchListCarousel = () => {
 const AnimeContinueWatchingHighlights = ({ showSeeAll = false }: { showSeeAll?: boolean }) => {
     const { continueWatchingList: history } = useContinueWatching();
     const navigate = useNavigate();
+    const formatClock = (seconds?: number) => {
+        const safe = Math.max(0, Math.floor(seconds || 0));
+        const h = Math.floor(safe / 3600);
+        const m = Math.floor((safe % 3600) / 60);
+        const s = safe % 60;
+        if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
+    const getProgressPercent = (item: any) => {
+        const duration = Number(item.durationSeconds || 0);
+        const position = Number(item.positionSeconds || 0);
+        if (!duration || duration <= 0) return 0;
+        return Math.min(100, Math.max(0, (position / duration) * 100));
+    };
     // Deduplicate by title (keep first/most-recent occurrence per title)
     const seen = new Set<string>();
     const dedupedHistory = history.filter(item => {
@@ -1421,7 +1438,10 @@ const AnimeContinueWatchingHighlights = ({ showSeeAll = false }: { showSeeAll?: 
                         key={item.animeId}
                         onClick={() => {
                             const title = slugify(item.animeTitle || 'anime');
-                            navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}`);
+                            const resume = Number.isFinite((item as any).positionSeconds)
+                                ? Math.max(0, Math.floor((item as any).positionSeconds))
+                                : 0;
+                            navigate(`/anime/watch/${title}/${item.animeId}?ep=${item.episodeNumber}${resume > 0 ? `&t=${resume}` : ''}`);
                         }}
                         className="relative flex rounded-xl overflow-hidden h-24 md:h-28 cursor-pointer"
                         style={{
@@ -1434,8 +1454,25 @@ const AnimeContinueWatchingHighlights = ({ showSeeAll = false }: { showSeeAll?: 
                             <img src={item.animePoster || item.animeImage} alt={item.animeTitle} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0 flex flex-col justify-center relative z-10 px-4 md:px-5 py-3 md:py-4">
-                            <p className="text-[13px] md:text-[15px] font-bold text-gray-100 mb-0.5 truncate">Watched Episode {item.episodeNumber} of</p>
                             <p className="text-[13px] md:text-[15px] font-bold text-[#518feb] truncate">{item.animeTitle}</p>
+                            {(item.durationSeconds || item.positionSeconds) ? (
+                                <div className="mt-1">
+                                    <div className="flex items-center justify-between text-[12px] font-bold">
+                                        <span className="text-gray-100">EP {item.episodeNumber}</span>
+                                        <span className="text-[#ffb347]">
+                                            {formatClock(item.positionSeconds)} / {formatClock(item.durationSeconds)}
+                                        </span>
+                                    </div>
+                                    <div className="mt-1 h-1 bg-white/15 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-[#ffb347]"
+                                            style={{ width: `${getProgressPercent(item)}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-[13px] md:text-[15px] font-bold text-gray-100 mb-0.5 truncate">Watched Episode {item.episodeNumber}</p>
+                            )}
                         </div>
                     </div>
                 ))}
