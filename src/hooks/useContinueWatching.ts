@@ -6,6 +6,11 @@ import { useActivityHistory } from './useActivityHistory';
 import type { Anime, Episode } from '../types/anime';
 import { type WatchProgress } from '../utils/storage';
 
+interface PlaybackProgress {
+    positionSeconds?: number;
+    durationSeconds?: number;
+}
+
 export function useContinueWatching() {
     const { user } = useAuth();
     const { recordActivity } = useActivityHistory();
@@ -34,7 +39,7 @@ export function useContinueWatching() {
         return () => unsubscribe();
     }, [user]);
 
-    const saveProgress = useCallback(async (anime: Anime, episode: Episode) => {
+    const saveProgress = useCallback(async (anime: Anime, episode: Episode, playback?: PlaybackProgress) => {
         if (!user) return; // Only save if logged in
 
         const image = anime.anilist_banner_image || anime.images.jpg.large_image_url;
@@ -51,15 +56,23 @@ export function useContinueWatching() {
 
         const validId = anime.mal_id || anime.id;
         if (!validId) return;
+        const normalizedPosition = Number.isFinite(playback?.positionSeconds)
+            ? Math.max(0, Math.floor(Number(playback?.positionSeconds)))
+            : undefined;
+        const normalizedDuration = Number.isFinite(playback?.durationSeconds)
+            ? Math.max(0, Math.floor(Number(playback?.durationSeconds)))
+            : undefined;
         const progress: WatchProgress = {
             animeId: validId.toString(),
             episodeId: episode.session || (episode as any).id || '',
             episodeNumber: parseEpisodeNumber(episode.episodeNumber),
-            timestamp: Date.now(), // For video position if we track it
-            lastWatched: Date.now(), // For sorting
+            timestamp: Date.now(),
+            lastWatched: Date.now(),
             animeTitle: anime.title,
             animeImage: image,
-            animePoster: poster
+            animePoster: poster,
+            positionSeconds: normalizedPosition,
+            durationSeconds: normalizedDuration
         };
 
         try {

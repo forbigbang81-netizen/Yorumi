@@ -10,6 +10,8 @@ export interface WatchProgress {
     animeTitle: string;
     animeImage: string;
     animePoster?: string;
+    positionSeconds?: number;
+    durationSeconds?: number;
 }
 
 export interface ReadProgress {

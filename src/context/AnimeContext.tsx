@@ -62,7 +62,11 @@ interface AnimeContextType {
 
     // Continue Watching
     continueWatchingList: any[];
-    saveProgress: (anime: Anime, episode: any) => void;
+    saveProgress: (
+        anime: Anime,
+        episode: any,
+        playback?: { positionSeconds?: number; durationSeconds?: number }
+    ) => void;
     removeFromHistory: (malId: number | string) => void;
 
     // Episode Tracking
@@ -312,6 +316,8 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
     const resolveAndCacheEpisodes = async (anime: Anime): Promise<{ session: string | null, eps: Episode[] }> => {
         let session: string | null = null;
+        const isLegacyAnimePaheSession = (value: string) =>
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
         // Helper to normalize strings for comparison
         const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -377,16 +383,29 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             return score;
         };
 
-        if (scraperSessionCache.current.has(anime.mal_id)) {
-            session = scraperSessionCache.current.get(anime.mal_id)!;
-        } else {
+        // Fast path: when scraperId is already known, avoid extra mapping/search calls.
+        if (anime.scraperId) {
+            session = anime.scraperId;
+            if (anime.mal_id) {
+                scraperSessionCache.current.set(anime.mal_id, anime.scraperId);
+            }
+        }
+
+        if (!session && scraperSessionCache.current.has(anime.mal_id)) {
+            const cachedSession = scraperSessionCache.current.get(anime.mal_id)!;
+            if (!isLegacyAnimePaheSession(cachedSession)) {
+                session = cachedSession;
+            } else {
+                scraperSessionCache.current.delete(anime.mal_id);
+                animeService.clearAnimeMapping(anime.mal_id).catch(() => undefined);
+            }
+        } else if (!session) {
             // 0. Try to get from Firebase Mapping Cache
             try {
                 const cachedSession = await animeService.getAnimeMapping(anime.mal_id);
                 if (cachedSession) {
                     session = cachedSession;
                     scraperSessionCache.current.set(anime.mal_id, cachedSession);
-                    console.log(`[AnimeContext] Using cached mapping for ${anime.mal_id}`);
                 }
             } catch (e) {
                 console.warn("[AnimeContext] Failed to check mapping cache", e);
@@ -581,6 +600,11 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             setSelectedAnime(currentAnime);
         }
 
+        // Start episode preload early when we already have a strong identifier.
+        if (anime.scraperId || anime.title || anime.title_english) {
+            preloadEpisodes(anime);
+        }
+
         setDetailsLoading(true); // Start loading details
 
         try {
@@ -640,6 +664,8 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             setDetailsLoading(false); // Stop loading regardless of success
         }
 
+        // Always run one final preload using the fully resolved anime payload.
+        // This fixes race cases where early preload used partial card data and returned empty episodes.
         preloadEpisodes(currentAnime);
     };
 
