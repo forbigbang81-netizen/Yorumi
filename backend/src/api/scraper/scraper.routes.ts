@@ -87,23 +87,44 @@ router.post('/prefetch/streams', async (req, res) => {
 // Generic HLS proxy for stream sources (rewrites nested playlists and keys)
 router.get('/proxy', async (req, res) => {
     const targetUrl = req.query.url as string;
-    const referer = (req.query.referer as string) || 'https://megacloud.blog/';
+    const requestedReferer = (req.query.referer as string) || '';
 
     if (!targetUrl) {
         return res.status(400).send('Missing url parameter');
     }
 
     try {
-        const response = await axios.get(targetUrl, {
-            responseType: 'arraybuffer',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                Referer: referer,
-                Origin: new URL(referer).origin,
-                Accept: '*/*',
-            },
-            timeout: 15000,
-        });
+        const target = new URL(targetUrl);
+        const refererCandidates = [
+            requestedReferer,
+            `${target.origin}/`,
+            'https://megacloud.blog/',
+        ].filter(Boolean);
+
+        let response: any = null;
+        let lastError: any = null;
+
+        for (const referer of refererCandidates) {
+            try {
+                response = await axios.get(targetUrl, {
+                    responseType: 'arraybuffer',
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                        Referer: referer,
+                        Origin: new URL(referer).origin,
+                        Accept: '*/*',
+                    },
+                    timeout: 15000,
+                });
+                break;
+            } catch (error: any) {
+                lastError = error;
+                // Retry 403/401 with next referer candidate.
+                if (![401, 403].includes(error?.response?.status)) break;
+            }
+        }
+
+        if (!response) throw lastError;
 
         const contentType = response.headers['content-type'] || '';
         const lowerUrl = targetUrl.toLowerCase();
@@ -132,6 +153,7 @@ router.get('/proxy', async (req, res) => {
         const body = Buffer.from(response.data).toString('utf-8');
         const urlObj = new URL(targetUrl);
         const basePath = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
+        const nextReferer = `${urlObj.origin}/`;
 
         const rewritten = body
             .split('\n')
@@ -144,7 +166,7 @@ router.get('/proxy', async (req, res) => {
                         const absoluteUri = uri.startsWith('http')
                             ? uri
                             : (uri.startsWith('/') ? `${urlObj.origin}${uri}` : `${basePath}${uri}`);
-                        return `URI="${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(referer)}"`;
+                        return `URI="${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(nextReferer)}"`;
                     });
                 }
 
@@ -154,7 +176,7 @@ router.get('/proxy', async (req, res) => {
                     ? trimmed
                     : (trimmed.startsWith('/') ? `${urlObj.origin}${trimmed}` : `${basePath}${trimmed}`);
 
-                return `${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absolute)}&referer=${encodeURIComponent(referer)}`;
+                return `${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absolute)}&referer=${encodeURIComponent(nextReferer)}`;
             })
             .join('\n');
 
