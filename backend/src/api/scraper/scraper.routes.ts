@@ -4,6 +4,14 @@ import axios from 'axios';
 
 const router = Router();
 
+const getPublicBase = (req: any) => {
+    const xfProtoRaw = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+    const proto = xfProtoRaw === 'https' || xfProtoRaw === 'http'
+        ? xfProtoRaw
+        : (req.protocol === 'https' ? 'https' : 'http');
+    return `${proto}://${req.get('host')}`;
+};
+
 router.get('/search', async (req, res) => {
     try {
         const query = req.query.q as string;
@@ -43,7 +51,7 @@ router.get('/streams', async (req, res) => {
             return res.status(400).json({ error: 'anime_session and ep_session are required' });
         }
         const result = await scraperService.getStreams(animeSession, epSession);
-        const hostBase = `${req.protocol}://${req.get('host')}`;
+        const hostBase = getPublicBase(req);
         const normalized = Array.isArray(result)
             ? result.map((item: any) => {
                 if (!item?.url || typeof item.url !== 'string') return item;
@@ -136,7 +144,7 @@ router.get('/proxy', async (req, res) => {
                         const absoluteUri = uri.startsWith('http')
                             ? uri
                             : (uri.startsWith('/') ? `${urlObj.origin}${uri}` : `${basePath}${uri}`);
-                        return `URI="${req.protocol}://${req.get('host')}/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(referer)}"`;
+                        return `URI="${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absoluteUri)}&referer=${encodeURIComponent(referer)}"`;
                     });
                 }
 
@@ -146,7 +154,7 @@ router.get('/proxy', async (req, res) => {
                     ? trimmed
                     : (trimmed.startsWith('/') ? `${urlObj.origin}${trimmed}` : `${basePath}${trimmed}`);
 
-                return `${req.protocol}://${req.get('host')}/api/scraper/proxy?url=${encodeURIComponent(absolute)}&referer=${encodeURIComponent(referer)}`;
+                return `${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absolute)}&referer=${encodeURIComponent(referer)}`;
             })
             .join('\n');
 
