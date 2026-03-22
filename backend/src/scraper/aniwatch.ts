@@ -1,5 +1,3 @@
-import { HiAnime } from 'aniwatch';
-
 export interface AnimeSearchResult {
     id: string;
     title: string;
@@ -39,17 +37,24 @@ export interface StreamLink {
 }
 
 export class AniwatchScraper {
-    private readonly scraper: InstanceType<typeof HiAnime.Scraper>;
+    private scraperPromise: Promise<any> | null = null;
 
-    constructor() {
-        this.scraper = new HiAnime.Scraper();
+    constructor() { }
+
+    private async getScraper(): Promise<any> {
+        if (!this.scraperPromise) {
+            this.scraperPromise = import('aniwatch')
+                .then((mod: any) => new mod.HiAnime.Scraper());
+        }
+        return this.scraperPromise;
     }
 
     async close() { }
 
     async search(query: string): Promise<AnimeSearchResult[]> {
         try {
-            const res = await this.scraper.search(query, 1);
+            const scraper = await this.getScraper();
+            const res = await scraper.search(query, 1);
             return (res.animes || []).map((item: any) => ({
                 id: item.id,
                 session: item.id,
@@ -71,7 +76,8 @@ export class AniwatchScraper {
         animeSessionId: string
     ): Promise<{ episodes: Episode[]; lastPage: number }> {
         try {
-            const res = await this.scraper.getEpisodes(animeSessionId);
+            const scraper = await this.getScraper();
+            const res = await scraper.getEpisodes(animeSessionId);
             const eps = (res.episodes || []) as any[];
             return {
                 episodes: eps.map((ep: any) => ({
@@ -94,6 +100,7 @@ export class AniwatchScraper {
 
     async getLinks(_animeSession: string, episodeSession: string): Promise<StreamLink[]> {
         try {
+            const scraper = await this.getScraper();
             const candidates: Array<{ server: string; category: 'sub' | 'dub' }> = [
                 { server: 'hd-1', category: 'sub' },
                 { server: 'hd-2', category: 'sub' },
@@ -104,7 +111,7 @@ export class AniwatchScraper {
             let sourcePayload: any = null;
             for (const candidate of candidates) {
                 try {
-                    const payload = await this.scraper.getEpisodeSources(
+                    const payload = await scraper.getEpisodeSources(
                         episodeSession,
                         candidate.server as any,
                         candidate.category as any
