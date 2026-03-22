@@ -3,6 +3,27 @@ import { scraperService } from './scraper.service';
 import axios from 'axios';
 
 const router = Router();
+const upstreamCookieJar = new Map<string, string>();
+
+const mergeCookieHeader = (existing: string, setCookie: string[]) => {
+    const jar = new Map<string, string>();
+    existing
+        .split(';')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((pair) => {
+            const eq = pair.indexOf('=');
+            if (eq > 0) jar.set(pair.slice(0, eq), pair.slice(eq + 1));
+        });
+
+    setCookie.forEach((entry) => {
+        const first = String(entry || '').split(';')[0].trim();
+        const eq = first.indexOf('=');
+        if (eq > 0) jar.set(first.slice(0, eq), first.slice(eq + 1));
+    });
+
+    return Array.from(jar.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+};
 
 const getPublicBase = (req: any) => {
     const xfProtoRaw = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
@@ -95,6 +116,8 @@ router.get('/proxy', async (req, res) => {
 
     try {
         const target = new URL(targetUrl);
+        const cookieKey = target.origin;
+        const storedCookie = upstreamCookieJar.get(cookieKey) || '';
         const refererCandidates = [
             requestedReferer,
             `${target.origin}/`,
@@ -113,9 +136,16 @@ router.get('/proxy', async (req, res) => {
                         Referer: referer,
                         Origin: new URL(referer).origin,
                         Accept: '*/*',
+                        ...(storedCookie ? { Cookie: storedCookie } : {}),
                     },
                     timeout: 15000,
                 });
+
+                const setCookie = response.headers?.['set-cookie'];
+                if (Array.isArray(setCookie) && setCookie.length > 0) {
+                    const merged = mergeCookieHeader(storedCookie, setCookie);
+                    if (merged) upstreamCookieJar.set(cookieKey, merged);
+                }
                 break;
             } catch (error: any) {
                 lastError = error;
