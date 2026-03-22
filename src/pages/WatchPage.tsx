@@ -23,6 +23,7 @@ export default function WatchPage() {
         watchedEpisodes,
         episodesResolved,
         epNum,
+        resumeAtSeconds,
         cleanCurrentTitle,
         epLoading,
         streamLoading,
@@ -39,6 +40,7 @@ export default function WatchPage() {
         handleQualityChange,
         setAutoQuality,
         setIsPlayerReady,
+        handlePlaybackProgress,
         navigate
     } = usePlayer(id);
 
@@ -131,9 +133,13 @@ export default function WatchPage() {
                     {/* Video Player Container */}
                     <VideoPlayer
                         streamUrl={currentStream?.url}
+                        isHls={currentStream?.isHls}
+                        subtitles={currentStream?.subtitles}
                         isLoading={streamLoading}
                         isExpanded={isExpanded}
                         onLoad={() => setIsPlayerReady(true)}
+                        onProgress={handlePlaybackProgress}
+                        startAtSeconds={resumeAtSeconds}
                     />
 
                     {/* Metadata & Controls Bar (Below Player) */}

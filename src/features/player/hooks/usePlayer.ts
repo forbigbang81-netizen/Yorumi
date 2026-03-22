@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAnime } from '../../../hooks/useAnime';
 import { useStreams } from '../../../hooks/useStreams';
@@ -49,10 +49,18 @@ export function usePlayer(animeId: string | undefined) {
     const [hasSeenEpisodeFetchStart, setHasSeenEpisodeFetchStart] = useState(false);
     const [episodesResolved, setEpisodesResolved] = useState(false);
     const epNumParam = searchParams.get('ep') || '1';
+    const resumeAtSeconds = (() => {
+        const raw = searchParams.get('t');
+        if (!raw) return 0;
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+    })();
     
     // Watch time persistence
     const accumulatedSecondsRef = useRef(0);
-    const lastTickRef = useRef(Date.now());
+    const lastPlaybackSecondRef = useRef<number | null>(null);
+    const lastDurationSecondRef = useRef(0);
+    const lastSavedProgressRef = useRef<{ at: number; second: number }>({ at: 0, second: -1 });
 
     const parseEpisodeNumber = (value: unknown): number => {
         if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -72,6 +80,9 @@ export function usePlayer(animeId: string | undefined) {
         setEpisodesResolved(false);
         setIsPlayerReady(false);
         accumulatedSecondsRef.current = 0;
+        lastPlaybackSecondRef.current = null;
+        lastDurationSecondRef.current = 0;
+        lastSavedProgressRef.current = { at: 0, second: -1 };
     }, [animeId]);
 
     useEffect(() => {
@@ -137,15 +148,16 @@ export function usePlayer(animeId: string | undefined) {
         }
     }, [episodes, epNumParam, currentStream, streamLoading, selectedAnime?.id, selectedAnime?.mal_id, animeId]);
 
-    // Save Progress
+    // Episode-change bookkeeping.
     useEffect(() => {
-        if (selectedAnime && currentEpisode) {
-            saveProgress(selectedAnime, currentEpisode);
-            const episodeNumber = parseEpisodeNumber(currentEpisode.episodeNumber);
-            if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
-                markEpisodeComplete(episodeNumber);
-            }
+        if (!selectedAnime || !currentEpisode) return;
+        const episodeNumber = parseEpisodeNumber(currentEpisode.episodeNumber);
+        if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
+            markEpisodeComplete(episodeNumber);
         }
+        lastPlaybackSecondRef.current = null;
+        lastDurationSecondRef.current = 0;
+        lastSavedProgressRef.current = { at: 0, second: -1 };
     }, [selectedAnime, currentEpisode]);
 
     // Prewarm adjacent episode streams to make next/prev nearly instant.
@@ -169,68 +181,91 @@ export function usePlayer(animeId: string | undefined) {
         );
     }, [currentEpisode?.session, episodes, prefetchStream, scraperSession]);
 
-    // Track real watch time while player is active and visible.
-    useEffect(() => {
-        if (!selectedAnime || !currentStream?.url) return;
+    const flushWatchTime = useCallback(() => {
+        const seconds = Math.floor(accumulatedSecondsRef.current);
+        if (seconds <= 0 || !selectedAnime) return;
 
         const primaryAnimeId = String(selectedAnime.mal_id || '');
         const secondaryAnimeId = String(selectedAnime.id || '');
-        const targetAnimeIds = [primaryAnimeId, secondaryAnimeId].filter((id, index, arr) => id && arr.indexOf(id) === index);
-        if (targetAnimeIds.length === 0) return;
+        const targetAnimeIds = [primaryAnimeId, secondaryAnimeId]
+            .filter((id, index, arr) => id && arr.indexOf(id) === index);
 
-        lastTickRef.current = Date.now();
+        targetAnimeIds.forEach((id) => storage.addAnimeWatchTime(id, seconds));
+        accumulatedSecondsRef.current -= seconds;
+    }, [selectedAnime?.mal_id, selectedAnime?.id]);
 
-        const isActiveWatching = () =>
-            document.visibilityState === 'visible' && document.hasFocus();
+    const persistLatestProgress = useCallback(() => {
+        if (!selectedAnime || !currentEpisode) return;
+        if (lastPlaybackSecondRef.current === null) return;
+        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current));
+        if (second <= 0 && lastDurationSecondRef.current <= 0) return;
 
-        const flush = () => {
-            const seconds = Math.floor(accumulatedSecondsRef.current);
-            if (seconds > 0) {
-                targetAnimeIds.forEach((id) => storage.addAnimeWatchTime(id, seconds));
-                accumulatedSecondsRef.current = 0;
+        saveProgress(selectedAnime, currentEpisode, {
+            positionSeconds: second,
+            durationSeconds: Math.max(0, Math.floor(lastDurationSecondRef.current || 0))
+        });
+        lastSavedProgressRef.current = { at: Date.now(), second };
+    }, [selectedAnime, currentEpisode, saveProgress]);
+
+    // Flush watch-time when stream/episode changes or unmounting.
+    useEffect(() => {
+        return () => {
+            persistLatestProgress();
+            flushWatchTime();
+        };
+    }, [currentStream?.url, currentEpisode?.session, persistLatestProgress, flushWatchTime]);
+
+    useEffect(() => {
+        const handlePageHide = () => {
+            persistLatestProgress();
+            flushWatchTime();
+        };
+        const handleVisibility = () => {
+            if (document.visibilityState === 'hidden') {
+                persistLatestProgress();
+                flushWatchTime();
             }
         };
+        window.addEventListener('pagehide', handlePageHide);
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => {
+            window.removeEventListener('pagehide', handlePageHide);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
+    }, [persistLatestProgress, flushWatchTime]);
 
-        const interval = window.setInterval(() => {
-            const now = Date.now();
-            let delta = (now - lastTickRef.current) / 1000;
-            lastTickRef.current = now;
+    const handlePlaybackProgress = useCallback((progress: { currentTime: number; duration: number; ended?: boolean }) => {
+        if (!selectedAnime || !currentEpisode || !isPlayerReady) return;
 
-            // Cap delta to prevent massive jumps (e.g., from computer sleep/hibernate)
-            if (delta > 2) delta = 1;
+        const currentSecond = Number.isFinite(progress.currentTime) ? Math.max(0, Math.floor(progress.currentTime)) : 0;
+        const durationSeconds = Number.isFinite(progress.duration) ? Math.max(0, Math.floor(progress.duration)) : 0;
+        lastDurationSecondRef.current = durationSeconds;
 
-            if (isActiveWatching() && isPlayerReady) {
+        if (lastPlaybackSecondRef.current !== null) {
+            const delta = currentSecond - lastPlaybackSecondRef.current;
+            if (delta > 0 && delta <= 15) {
                 accumulatedSecondsRef.current += delta;
             }
+        }
+        lastPlaybackSecondRef.current = currentSecond;
 
-            if (accumulatedSecondsRef.current >= 15) {
-                flush();
-            }
-        }, 1000);
+        if (accumulatedSecondsRef.current >= 15 || progress.ended) {
+            flushWatchTime();
+        }
 
-        const handleBlur = () => flush();
-        const handleVisibility = () => {
-            if (document.visibilityState !== 'visible') {
-                flush();
-            }
-            lastTickRef.current = Date.now();
-        };
-        const handleFocus = () => {
-            lastTickRef.current = Date.now();
-        };
+        const now = Date.now();
+        const shouldSave = progress.ended || (
+            now - lastSavedProgressRef.current.at >= 8000
+            && Math.abs(currentSecond - lastSavedProgressRef.current.second) >= 2
+        );
+        if (!shouldSave) return;
 
-        window.addEventListener('blur', handleBlur);
-        document.addEventListener('visibilitychange', handleVisibility);
-        window.addEventListener('focus', handleFocus);
-
-        return () => {
-            window.clearInterval(interval);
-            flush();
-            window.removeEventListener('blur', handleBlur);
-            document.removeEventListener('visibilitychange', handleVisibility);
-            window.removeEventListener('focus', handleFocus);
-        };
-    }, [selectedAnime?.id, selectedAnime?.mal_id, currentStream?.url, isPlayerReady]);
+        saveProgress(selectedAnime, currentEpisode, {
+            positionSeconds: currentSecond,
+            durationSeconds
+        });
+        lastSavedProgressRef.current = { at: now, second: currentSecond };
+    }, [selectedAnime, currentEpisode, isPlayerReady, flushWatchTime, saveProgress]);
 
     // --- Actions ---
 
@@ -278,6 +313,7 @@ export function usePlayer(animeId: string | undefined) {
         watchedEpisodes,
         episodesResolved,
         epNum: epNumParam,
+        resumeAtSeconds,
         cleanCurrentTitle,
 
         // Loading States
@@ -301,6 +337,7 @@ export function usePlayer(animeId: string | undefined) {
         setShowQualityMenu,
         handleQualityChange,
         setAutoQuality,
+        handlePlaybackProgress,
         navigate // Expose navigate for back button
     };
 }
