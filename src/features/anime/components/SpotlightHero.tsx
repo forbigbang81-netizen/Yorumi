@@ -82,6 +82,9 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                                     ? `https://www.dailymotion.com/embed/video/${trailerId}?autoplay=1&mute=1&loop=1&controls=0`
                                     : null)
                             : null;
+                        const directDistance = Math.abs(index - selectedIndex);
+                        const loopDistance = Math.min(directDistance, animeList.length - directDistance);
+                        const shouldLoadBackdrop = loopDistance <= 1;
 
                         return (
                             <div key={anime.mal_id} className="relative min-w-full h-full flex-[0_0_100%]">
@@ -101,7 +104,7 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                                     <div
                                         className={`absolute right-0 top-0 w-full md:w-[70%] h-full bg-no-repeat bg-cover bg-center ${trailerUrl && isActive ? 'opacity-0' : 'md:opacity-80'}`}
                                         style={{
-                                            backgroundImage: `url(${landscapeImage})`,
+                                            backgroundImage: shouldLoadBackdrop ? `url(${landscapeImage})` : 'none',
                                             maskImage: 'linear-gradient(90deg, transparent 0%, black 20%, black 100%)',
                                             WebkitMaskImage: 'linear-gradient(90deg, transparent 0%, black 20%, black 100%)'
                                         }}

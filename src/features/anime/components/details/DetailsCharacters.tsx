@@ -22,6 +22,8 @@ export default function DetailsCharacters({ characters, title = "Characters & Vo
                                     src={char.node.image.large}
                                     alt={char.node.name.full}
                                     className="w-16 h-24 object-cover"
+                                    loading="lazy"
+                                    decoding="async"
                                 />
                                 <div className="p-2 flex flex-col justify-center min-w-0">
                                     <p className="text-sm font-bold text-gray-200 line-clamp-2">{char.node.name.full}</p>
@@ -36,6 +38,8 @@ export default function DetailsCharacters({ characters, title = "Characters & Vo
                                         src={va.image.large}
                                         alt={va.name.full}
                                         className="w-16 h-24 object-cover"
+                                        loading="lazy"
+                                        decoding="async"
                                     />
                                     <div className="p-2 flex flex-col justify-center min-w-0">
                                         <p className="text-sm font-bold text-gray-200 line-clamp-2">{va.name.full}</p>

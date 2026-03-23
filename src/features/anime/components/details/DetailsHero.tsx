@@ -20,6 +20,9 @@ export default function DetailsHero({ anime, onBack }: DetailsHeroProps) {
                     src={bannerImage}
                     alt={displayTitle}
                     className={`w-full h-full object-cover ${!anime.anilist_banner_image ? 'blur-xl opacity-50 scale-110' : ''}`}
+                    loading="eager"
+                    decoding="async"
+                    fetchPriority="high"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/60 to-transparent" />
                 <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#0a0a0a] to-transparent" />

@@ -116,6 +116,34 @@ const mapScraperToAnime = (item: any) => {
     };
 };
 
+const mapTopTenItemToAnime = (item: any, index: number): Anime => {
+    const anime = mapAnilistToAnime(item.anilist || {}) as Anime;
+    if (item.poster) {
+        anime.images.jpg.image_url = item.poster;
+        anime.images.jpg.large_image_url = item.poster;
+        anime.anilist_cover_image = item.poster;
+    }
+    if (!item.anilist || !item.anilist.id) {
+        const fallbackId = parseInt(item.dataId || '', 10) || 0;
+        anime.id = fallbackId || anime.id || 0;
+        anime.mal_id = fallbackId || anime.mal_id || 0;
+        anime.title = item.title || anime.title;
+        anime.score = anime.score || 0;
+        anime.type = anime.type || 'TV';
+        anime.episodes = anime.episodes ?? (item.sub || null);
+    }
+    if (!anime.mal_id) {
+        anime.mal_id = (parseInt(item.dataId || '', 10) || 0) || (index + 1);
+    }
+    if (item.sub && !anime.latestEpisode) {
+        anime.latestEpisode = item.sub;
+    }
+    if (item.scraperId) {
+        anime.scraperId = item.scraperId;
+    }
+    return anime;
+};
+
 // Simple in-memory cache
 const cache = new Map<string, { data: any, timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -124,6 +152,34 @@ const STREAM_CACHE_TTL = 20 * 60 * 1000; // 20 minutes
 const mappingCache = new Map<string, string>();
 const scraperSearchCache = new Map<string, { data: any[]; timestamp: number }>();
 const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
+const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v2';
+
+const readPersistedCache = (key: string, ttl: number) => {
+    try {
+        const raw = localStorage.getItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { data: any; timestamp: number };
+        if (!parsed || typeof parsed.timestamp !== 'number') return null;
+        if (Date.now() - parsed.timestamp > ttl) {
+            localStorage.removeItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
+            return null;
+        }
+        return parsed.data;
+    } catch {
+        return null;
+    }
+};
+
+const writePersistedCache = (key: string, data: any, timestamp: number) => {
+    try {
+        localStorage.setItem(
+            `${PERSISTED_CACHE_PREFIX}:${key}`,
+            JSON.stringify({ data, timestamp })
+        );
+    } catch {
+        // Ignore quota/storage errors.
+    }
+};
 
 const getCached = (key: string) => {
     if (cache.has(key)) {
@@ -133,11 +189,18 @@ const getCached = (key: string) => {
         }
         cache.delete(key);
     }
+    const persisted = readPersistedCache(key, CACHE_TTL);
+    if (persisted) {
+        cache.set(key, { data: persisted, timestamp: Date.now() });
+        return persisted;
+    }
     return null;
 };
 
 const setCache = (key: string, data: any) => {
-    cache.set(key, { data, timestamp: Date.now() });
+    const timestamp = Date.now();
+    cache.set(key, { data, timestamp });
+    writePersistedCache(key, data, timestamp);
 };
 
 const getCachedStream = (key: string) => {
@@ -157,6 +220,64 @@ const isLegacyAnimePaheSession = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 export const animeService = {
+    async getHomeFastData() {
+        const cacheKey = 'home-fast-data-v1';
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/anilist/home-fast`);
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch fast home data: ${res.statusText}`);
+                }
+                const payload = await res.json();
+
+                const spotlightAnime = Array.isArray(payload?.spotlight)
+                    ? payload.spotlight.map((item: any) => {
+                        const anime = mapAnilistToAnime(item.anilist || {}) as Anime;
+                        if (item.banner) anime.anilist_banner_image = item.banner;
+                        if (item.poster) {
+                            anime.images.jpg.image_url = item.poster;
+                            anime.images.jpg.large_image_url = item.poster;
+                            anime.anilist_cover_image = item.poster;
+                        }
+                        if (item.scraperId) anime.scraperId = item.scraperId;
+                        return anime;
+                    })
+                    : [];
+
+                const result = {
+                    spotlightAnime,
+                    trendingAnime: payload?.trending?.media?.map(mapAnilistToAnime) || [],
+                    popularSeason: payload?.seasonal?.media?.map(mapAnilistToAnime) || [],
+                    popularMonth: payload?.monthly?.media?.map(mapAnilistToAnime) || [],
+                    topAnime: payload?.topAnime?.media?.map(mapAnilistToAnime) || [],
+                    topAnimePagination: {
+                        last_visible_page: payload?.topAnime?.pageInfo?.lastPage || 1,
+                        current_page: payload?.topAnime?.pageInfo?.currentPage || 1,
+                        has_next_page: payload?.topAnime?.pageInfo?.hasNextPage || false,
+                    },
+                    topTenToday: Array.isArray(payload?.topTen?.day) ? payload.topTen.day.map(mapTopTenItemToAnime) : [],
+                    topTenWeek: Array.isArray(payload?.topTen?.week) ? payload.topTen.week.map(mapTopTenItemToAnime) : [],
+                    topTenMonth: Array.isArray(payload?.topTen?.month) ? payload.topTen.month.map(mapTopTenItemToAnime) : [],
+                };
+
+                setCache(cacheKey, result);
+                return result;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
+    },
+
     peekTopAnime(page: number = 1, format?: string) {
         const cacheKey = `top-anime-${page}-${format ?? 'all'}`;
         return getCached(cacheKey);
@@ -318,10 +439,30 @@ export const animeService = {
 
     // Get anime details from AniList
     async getAnimeDetails(id: number | string) {
-        const res = await fetch(`${API_BASE}/anilist/anime/${id}`);
-        const data = await res.json();
-        if (!data || data.error) return { data: null };
-        return { data: mapAnilistToAnime(data) };
+        const cacheKey = `anime-details:${id}`;
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/anilist/anime/${id}`);
+                const data = await res.json();
+                if (!data || data.error) return { data: null };
+                const result = { data: mapAnilistToAnime(data) };
+                if (result.data) {
+                    setCache(cacheKey, result);
+                }
+                return result;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
     },
 
     // Identify AniList ID from Scraper Slug/Title
@@ -608,33 +749,7 @@ export const animeService = {
                 }
                 const payload = await res.json();
                 const top10 = payload.top10 || [];
-                const data = top10.map((item: any, index: number) => {
-                    const anime = mapAnilistToAnime(item.anilist || {}) as Anime;
-                    if (item.poster) {
-                        anime.images.jpg.image_url = item.poster;
-                        anime.images.jpg.large_image_url = item.poster;
-                        anime.anilist_cover_image = item.poster;
-                    }
-                    if (!item.anilist || !item.anilist.id) {
-                        const fallbackId = parseInt(item.dataId || '', 10) || 0;
-                        anime.id = fallbackId || anime.id || 0;
-                        anime.mal_id = fallbackId || anime.mal_id || 0;
-                        anime.title = item.title || anime.title;
-                        anime.score = anime.score || 0;
-                        anime.type = anime.type || 'TV';
-                        anime.episodes = anime.episodes ?? (item.sub || null);
-                    }
-                    if (!anime.mal_id) {
-                        anime.mal_id = (parseInt(item.dataId || '', 10) || 0) || (index + 1);
-                    }
-                    if (item.sub && !anime.latestEpisode) {
-                        anime.latestEpisode = item.sub;
-                    }
-                    if (item.scraperId) {
-                        anime.scraperId = item.scraperId;
-                    }
-                    return anime;
-                });
+                const data = top10.map(mapTopTenItemToAnime);
 
                 const result = { data };
                 if (data.length > 0) {

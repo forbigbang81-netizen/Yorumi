@@ -21,6 +21,8 @@ export default function DetailsTrailers({ trailer }: DetailsTrailersProps) {
                         src={trailer.thumbnail}
                         alt="Trailer"
                         className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"
+                        loading="lazy"
+                        decoding="async"
                     />
                     <div className="absolute inset-0 flex items-center justify-center">
                         <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform">

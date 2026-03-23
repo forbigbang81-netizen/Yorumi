@@ -117,7 +117,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const [episodeSearchQuery, setEpisodeSearchQuery] = useState('');
 
     // View All State
-    const [viewMode, setViewMode] = useState<'default' | 'trending' | 'seasonal' | 'continue_watching'>('default');
+    const [viewMode, setViewMode] = useState<'default' | 'trending' | 'seasonal' | 'continue_watching' | 'popular'>('default');
     const [viewAllAnime, setViewAllAnime] = useState<Anime[]>([]);
     const [viewAllLoading, setViewAllLoading] = useState(false);
     const [viewAllPagination, setViewAllPagination] = useState({
@@ -126,100 +126,178 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         has_next_page: false
     });
 
+    const normalizeScraperId = (value: unknown): string => {
+        const raw = String(value ?? '').trim();
+        if (!raw) return '';
+        return raw.startsWith('s:') ? raw.slice(2) : raw;
+    };
+    const getAnimeCacheKey = (target: Anime): string | null => {
+        const mal = Number(target?.mal_id);
+        if (Number.isFinite(mal) && mal > 0) return `mal:${mal}`;
+        const aid = Number(target?.id);
+        if (Number.isFinite(aid) && aid > 0) return `anilist:${aid}`;
+        const sid = normalizeScraperId(target?.scraperId);
+        if (sid) return `scraper:${sid}`;
+        return null;
+    };
+    const HOME_CACHE_PREFIX = 'yorumi_home_cache_v2';
+    const readHomeCache = <T,>(key: string, ttlMs: number): T | null => {
+        try {
+            const raw = localStorage.getItem(`${HOME_CACHE_PREFIX}:${key}`);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw) as { timestamp: number; data: T };
+            if (!parsed || typeof parsed.timestamp !== 'number') return null;
+            if (Date.now() - parsed.timestamp > ttlMs) return null;
+            return parsed.data;
+        } catch {
+            return null;
+        }
+    };
+    const writeHomeCache = (key: string, data: unknown) => {
+        try {
+            localStorage.setItem(
+                `${HOME_CACHE_PREFIX}:${key}`,
+                JSON.stringify({ timestamp: Date.now(), data })
+            );
+        } catch {
+            // Ignore localStorage quota errors.
+        }
+    };
+
     // Caches
     const scraperSessionCache = useRef(new Map<string, string>());
     const episodesCache = useRef(new Map<string, Episode[]>());
+    const episodePreloadInFlight = useRef(new Map<string, Promise<{ session: string | null; eps: Episode[] }>>());
     const USE_PERSISTED_MAPPING_CACHE = true;
 
     // --- Actions ---
 
     const fetchHomeData = async () => {
+        const HOME_TTL = {
+            spotlight: 12 * 60 * 60 * 1000,
+            trending: 10 * 60 * 1000,
+            popularSeason: 10 * 60 * 1000,
+            popularMonth: 10 * 60 * 1000,
+            topTen: 10 * 60 * 1000,
+        };
+
+        const applyFastHomeData = (fast: any): boolean => {
+            let applied = false;
+            if (Array.isArray(fast?.spotlightAnime) && fast.spotlightAnime.length > 0) {
+                setSpotlightAnime(fast.spotlightAnime);
+                setSpotlightLoading(false);
+                writeHomeCache('spotlight', fast.spotlightAnime);
+                preloadLogos(fast.spotlightAnime.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                applied = true;
+            }
+            if (Array.isArray(fast?.trendingAnime) && fast.trendingAnime.length > 0) {
+                setTrendingAnime(fast.trendingAnime);
+                setTrendingLoading(false);
+                writeHomeCache('trending', fast.trendingAnime);
+                applied = true;
+            }
+            if (Array.isArray(fast?.popularSeason) && fast.popularSeason.length > 0) {
+                setPopularSeason(fast.popularSeason);
+                setPopularSeasonLoading(false);
+                writeHomeCache('popular-season', fast.popularSeason);
+                applied = true;
+            }
+            if (Array.isArray(fast?.popularMonth) && fast.popularMonth.length > 0) {
+                setPopularMonth(fast.popularMonth);
+                setPopularMonthLoading(false);
+                writeHomeCache('popular-month', fast.popularMonth);
+                applied = true;
+            }
+            if (Array.isArray(fast?.topTenToday) && Array.isArray(fast?.topTenWeek) && Array.isArray(fast?.topTenMonth)) {
+                setTopTenToday(fast.topTenToday);
+                setTopTenWeek(fast.topTenWeek);
+                setTopTenMonth(fast.topTenMonth);
+                setTopTenLoading(false);
+                writeHomeCache('top-ten', {
+                    day: fast.topTenToday,
+                    week: fast.topTenWeek,
+                    month: fast.topTenMonth
+                });
+                applied = true;
+            }
+            if (Array.isArray(fast?.topAnime) && fast.topAnime.length > 0) {
+                setTopAnime(fast.topAnime);
+                setLastVisiblePage(fast.topAnimePagination?.last_visible_page || 1);
+                setLoading(false);
+                applied = true;
+            }
+            return applied;
+        };
+
+        // Instant hydrate from local cache first (never block initial render).
+        const cachedSpotlight = readHomeCache<Anime[]>('spotlight', HOME_TTL.spotlight);
+        if (cachedSpotlight?.length) {
+            setSpotlightAnime(cachedSpotlight);
+            setSpotlightLoading(false);
+            preloadLogos(cachedSpotlight.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+        }
+        const cachedTrending = readHomeCache<Anime[]>('trending', HOME_TTL.trending);
+        if (cachedTrending?.length) {
+            setTrendingAnime(cachedTrending);
+            setTrendingLoading(false);
+        }
+        const cachedSeason = readHomeCache<Anime[]>('popular-season', HOME_TTL.popularSeason);
+        if (cachedSeason?.length) {
+            setPopularSeason(cachedSeason);
+            setPopularSeasonLoading(false);
+        }
+        const cachedMonth = readHomeCache<Anime[]>('popular-month', HOME_TTL.popularMonth);
+        if (cachedMonth?.length) {
+            setPopularMonth(cachedMonth);
+            setPopularMonthLoading(false);
+        }
+        const cachedTopTen = readHomeCache<{ day: Anime[]; week: Anime[]; month: Anime[] }>('top-ten', HOME_TTL.topTen);
+        if (cachedTopTen?.day?.length && cachedTopTen?.week?.length && cachedTopTen?.month?.length) {
+            setTopTenToday(cachedTopTen.day);
+            setTopTenWeek(cachedTopTen.week);
+            setTopTenMonth(cachedTopTen.month);
+            setTopTenLoading(false);
+        }
+
+        // Try fast bundle with a short budget; don't stall fallback path.
+        const fastBundlePromise = animeService.getHomeFastData()
+            .then((fast) => applyFastHomeData(fast))
+            .catch((error) => {
+                console.warn('[AnimeContext] Fast home bundle unavailable, using fallback fetches', error);
+                return false;
+            });
+        const fastResolvedQuickly = await Promise.race<boolean>([
+            fastBundlePromise,
+            new Promise<boolean>((resolve) => window.setTimeout(() => resolve(false), 300)),
+        ]);
+        if (fastResolvedQuickly) {
+            return;
+        }
+
         const fetchSpotlight = async () => {
             if (spotlightAnime.length > 0) {
                 setSpotlightLoading(false);
                 return;
             }
 
-            // Try to load from localStorage for instant display
-            const SPOTLIGHT_CACHE_KEY = 'yorumi_spotlight_cache';
-            const SPOTLIGHT_CACHE_TIME_KEY = 'yorumi_spotlight_cache_time';
-            const CACHE_MAX_AGE = 12 * 60 * 60 * 1000; // 12 hours
-
-            let hasCachedData = false;
-
-            try {
-                const cachedData = localStorage.getItem(SPOTLIGHT_CACHE_KEY);
-                const cacheTime = localStorage.getItem(SPOTLIGHT_CACHE_TIME_KEY);
-
-                if (cachedData && cacheTime) {
-                    const age = Date.now() - parseInt(cacheTime);
-                    if (age < CACHE_MAX_AGE) {
-                        const parsed = JSON.parse(cachedData);
-                        if (parsed && parsed.length > 0) {
-                            console.log('📦 Loaded spotlight from localStorage cache');
-                            setSpotlightAnime(parsed);
-                            setSpotlightLoading(false); // Cache loaded, stop showing skeleton
-                            // Preload logos for cached spotlight anime
-                            const spotlightIds = parsed.map((a: Anime) => a.id || a.mal_id).filter(Boolean);
-                            preloadLogos(spotlightIds);
-                            hasCachedData = true;
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to load spotlight from localStorage:', e);
+            const cached = readHomeCache<Anime[]>('spotlight', HOME_TTL.spotlight);
+            if (cached && cached.length > 0) {
+                setSpotlightAnime(cached);
+                setSpotlightLoading(false);
+                preloadLogos(cached.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+            } else {
+                setSpotlightLoading(true);
             }
 
-            // Background refresh function (non-blocking)
-            const refreshInBackground = () => {
-                animeService.getSpotlightAnime().then(({ data }) => {
-                    if (data && data.length > 0) {
-                        setSpotlightAnime(data);
-
-                        // Update localStorage cache
-                        try {
-                            localStorage.setItem(SPOTLIGHT_CACHE_KEY, JSON.stringify(data));
-                            localStorage.setItem(SPOTLIGHT_CACHE_TIME_KEY, Date.now().toString());
-                        } catch (e) {
-                            console.error('Failed to save spotlight to localStorage:', e);
-                        }
-
-                        // Preload logos for spotlight anime in background
-                        const spotlightIds = data.map((a: Anime) => a.id || a.mal_id).filter(Boolean);
-                        preloadLogos(spotlightIds);
-                    }
-                }).catch(e => {
-                    console.error("Failed to fetch AniWatch spotlight", e);
-                });
-            };
-
-            if (hasCachedData) {
-                // If we have cached data, trigger background refresh but don't await it
-                refreshInBackground();
-                return; // Return immediately - don't block the UI
-            }
-
-            // No cache available - must await the network request
-            setSpotlightLoading(true);
             try {
                 const { data } = await animeService.getSpotlightAnime();
                 if (data && data.length > 0) {
                     setSpotlightAnime(data);
-
-                    // Update localStorage cache
-                    try {
-                        localStorage.setItem(SPOTLIGHT_CACHE_KEY, JSON.stringify(data));
-                        localStorage.setItem(SPOTLIGHT_CACHE_TIME_KEY, Date.now().toString());
-                    } catch (e) {
-                        console.error('Failed to save spotlight to localStorage:', e);
-                    }
-
-                    // Preload logos for spotlight anime in background
-                    const spotlightIds = data.map((a: Anime) => a.id || a.mal_id).filter(Boolean);
-                    preloadLogos(spotlightIds);
+                    writeHomeCache('spotlight', data);
+                    preloadLogos(data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
                 }
             } catch (e) {
-                console.error("Failed to fetch AniWatch spotlight", e);
+                console.error('Failed to fetch AniWatch spotlight', e);
             } finally {
                 setSpotlightLoading(false);
             }
@@ -227,14 +305,20 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         const fetchTrending = async () => {
             if (trendingAnime.length > 0) return;
-            setTrendingLoading(true);
+            const cached = readHomeCache<Anime[]>('trending', HOME_TTL.trending);
+            if (cached && cached.length > 0) {
+                setTrendingAnime(cached);
+                setTrendingLoading(false);
+                preloadLogos(cached.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+            } else {
+                setTrendingLoading(true);
+            }
             try {
                 const tData = await animeService.getTrendingAnime(1, 10);
                 if (tData?.data) {
                     setTrendingAnime(tData.data);
-                    // Preload logos for trending anime in background
-                    const trendingIds = tData.data.map((a: Anime) => a.id || a.mal_id).filter(Boolean);
-                    preloadLogos(trendingIds);
+                    writeHomeCache('trending', tData.data);
+                    preloadLogos(tData.data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
                 }
             } catch (e) { console.error(e); }
             finally { setTrendingLoading(false); }
@@ -242,27 +326,53 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         const fetchPopular = async () => {
             if (popularSeason.length > 0) return;
-            setPopularSeasonLoading(true);
+            const cached = readHomeCache<Anime[]>('popular-season', HOME_TTL.popularSeason);
+            if (cached && cached.length > 0) {
+                setPopularSeason(cached);
+                setPopularSeasonLoading(false);
+            } else {
+                setPopularSeasonLoading(true);
+            }
             try {
                 const pData = await animeService.getPopularThisSeason(1, 10);
-                if (pData?.data) setPopularSeason(pData.data);
+                if (pData?.data) {
+                    setPopularSeason(pData.data);
+                    writeHomeCache('popular-season', pData.data);
+                }
             } catch (e) { console.error(e); }
             finally { setPopularSeasonLoading(false); }
         };
 
         const fetchPopularMonth = async () => {
             if (popularMonth.length > 0) return;
-            setPopularMonthLoading(true);
+            const cached = readHomeCache<Anime[]>('popular-month', HOME_TTL.popularMonth);
+            if (cached && cached.length > 0) {
+                setPopularMonth(cached);
+                setPopularMonthLoading(false);
+            } else {
+                setPopularMonthLoading(true);
+            }
             try {
-                const pData = await animeService.getPopularThisSeason(1, 10);
-                if (pData?.data) setPopularMonth(pData.data);
+                const pData = await animeService.getPopularThisMonth(1, 10);
+                if (pData?.data) {
+                    setPopularMonth(pData.data);
+                    writeHomeCache('popular-month', pData.data);
+                }
             } catch (e) { console.error(e); }
             finally { setPopularMonthLoading(false); }
         };
 
         const fetchTopTen = async () => {
             if (topTenToday.length >= 10 && topTenWeek.length >= 10 && topTenMonth.length >= 10) return;
-            setTopTenLoading(true);
+            const cached = readHomeCache<{ day: Anime[]; week: Anime[]; month: Anime[] }>('top-ten', HOME_TTL.topTen);
+            if (cached && cached.day?.length && cached.week?.length && cached.month?.length) {
+                setTopTenToday(cached.day);
+                setTopTenWeek(cached.week);
+                setTopTenMonth(cached.month);
+                setTopTenLoading(false);
+            } else {
+                setTopTenLoading(true);
+            }
             try {
                 const [day, week, month] = await Promise.all([
                     animeService.getAniwatchTopTen('day'),
@@ -272,11 +382,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 if (day?.data) setTopTenToday(day.data);
                 if (week?.data) setTopTenWeek(week.data);
                 if (month?.data) setTopTenMonth(month.data);
+                if (day?.data && week?.data && month?.data) {
+                    writeHomeCache('top-ten', { day: day.data, week: week.data, month: month.data });
+                }
             } catch (e) { console.error(e); }
             finally { setTopTenLoading(false); }
         };
 
-        // Execute all fetches in parallel
         await Promise.all([
             fetchSpotlight(),
             fetchTrending(),
@@ -290,6 +402,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // Re-fetch Top Anime when page changes
     useEffect(() => {
         const fetchPageData = async () => {
+            const cached = animeService.peekTopAnime(currentPage);
+            if (cached?.data?.length) {
+                setTopAnime(cached.data);
+                setLastVisiblePage(cached.pagination?.last_visible_page || 1);
+                setLoading(false);
+                return;
+            }
             setLoading(true);
             try {
                 // Skip if we already have data (prevents redundant fetches on provider re-mounts)
@@ -318,15 +437,6 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const resolveAndCacheEpisodes = async (anime: Anime): Promise<{ session: string | null, eps: Episode[] }> => {
         let session: string | null = null;
         let sessionFromCache = false;
-        const getAnimeCacheKey = (target: Anime): string | null => {
-            const mal = Number(target?.mal_id);
-            if (Number.isFinite(mal) && mal > 0) return `mal:${mal}`;
-            const aid = Number(target?.id);
-            if (Number.isFinite(aid) && aid > 0) return `anilist:${aid}`;
-            const sid = String(target?.scraperId || '').trim();
-            if (sid) return `scraper:${sid}`;
-            return null;
-        };
         const cacheKey = getAnimeCacheKey(anime);
         const mappingKey =
             (() => {
@@ -566,9 +676,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         // Fast path: when scraperId is already known, avoid extra mapping/search calls.
         if (anime.scraperId) {
-            session = anime.scraperId;
+            session = normalizeScraperId(anime.scraperId);
             if (cacheKey) {
-                scraperSessionCache.current.set(cacheKey, anime.scraperId);
+                scraperSessionCache.current.set(cacheKey, session);
             }
         }
 
@@ -708,16 +818,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         return { session, eps: [] };
     };
 
-    const preloadEpisodes = async (anime: Anime) => {
-        const getAnimeCacheKey = (target: Anime): string | null => {
-            const mal = Number(target?.mal_id);
-            if (Number.isFinite(mal) && mal > 0) return `mal:${mal}`;
-            const aid = Number(target?.id);
-            if (Number.isFinite(aid) && aid > 0) return `anilist:${aid}`;
-            const sid = String(target?.scraperId || '').trim();
-            if (sid) return `scraper:${sid}`;
-            return null;
-        };
+    const preloadEpisodes = async (anime: Anime, options?: { resetState?: boolean }) => {
         const cacheKey = getAnimeCacheKey(anime);
         if (cacheKey && scraperSessionCache.current.has(cacheKey)) {
             const session = scraperSessionCache.current.get(cacheKey)!;
@@ -728,12 +829,27 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             }
         }
 
+        const inFlightKey = cacheKey || `temp:${String(anime.scraperId || anime.id || anime.mal_id || anime.title || '')}`;
+        if (episodePreloadInFlight.current.has(inFlightKey)) {
+            const { session, eps } = await episodePreloadInFlight.current.get(inFlightKey)!;
+            if (session) setScraperSession(session);
+            if (eps.length > 0) setEpisodes(eps);
+            return;
+        }
+
         setEpLoading(true);
-        setEpisodes([]);
-        setScraperSession(null);
+        if (options?.resetState !== false) {
+            setEpisodes([]);
+            setScraperSession(null);
+        }
 
         try {
-            const { session, eps } = await resolveAndCacheEpisodes(anime);
+            const task = resolveAndCacheEpisodes(anime)
+                .finally(() => {
+                    episodePreloadInFlight.current.delete(inFlightKey);
+                });
+            episodePreloadInFlight.current.set(inFlightKey, task);
+            const { session, eps } = await task;
             if (session) setScraperSession(session);
             if (eps.length > 0) setEpisodes(eps);
         } catch (e) {
@@ -803,7 +919,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         // Start episode preload early when we already have a strong identifier.
         if (anime.scraperId || anime.title || anime.title_english) {
-            preloadEpisodes(anime);
+            preloadEpisodes(anime, { resetState: false });
         }
 
         setDetailsLoading(true); // Start loading details
@@ -815,8 +931,10 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             // If we have a scraperId but no valid mapped ID yet, try to fetch details using the scraper ID directly
             // The backend /anime/:id route now supports "s:scraperId" to do hybrid resolution.
             if (anime.scraperId && (!detailsId || detailsId === 0)) {
-                console.log('Fetching details using scraper ID:', anime.scraperId);
-                detailsId = `s:${anime.scraperId}`;
+                const normalizedScraperId = normalizeScraperId(anime.scraperId);
+                if (!normalizedScraperId) throw new Error('Could not identify scraper ID');
+                console.log('Fetching details using scraper ID:', normalizedScraperId);
+                detailsId = `s:${normalizedScraperId}`;
             }
 
             if (!detailsId) throw new Error('Could not identify anime ID');
@@ -867,7 +985,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         // Always run one final preload using the fully resolved anime payload.
         // This fixes race cases where early preload used partial card data and returned empty episodes.
-        preloadEpisodes(currentAnime);
+        preloadEpisodes(currentAnime, { resetState: false });
     };
 
     const startWatching = () => {
@@ -912,6 +1030,12 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     const prefetchEpisodes = (anime: Anime) => {
+        const detailsId = anime.scraperId
+            ? `s:${normalizeScraperId(anime.scraperId)}`
+            : (anime.id || anime.mal_id);
+        if (detailsId) {
+            animeService.getAnimeDetails(detailsId).catch(() => undefined);
+        }
         resolveAndCacheEpisodes(anime).catch(console.error);
     };
 
@@ -986,3 +1110,4 @@ export const useAnime = () => {
     }
     return context;
 };
+

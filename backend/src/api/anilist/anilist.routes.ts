@@ -1,8 +1,86 @@
 import { Router } from 'express';
 import { anilistService } from './anilist.service';
 import { HiAnimeScraper } from '../scraper/hianime.service';
+import { redis } from '../mapping/mapper';
 
 const router = Router();
+const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v1';
+const HOME_FAST_TTL_SECONDS = 120;
+let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
+let homeFastRefreshPromise: Promise<any> | null = null;
+
+const getFreshHomeFastFromMemory = () => {
+    if (!homeFastMemoryCache) return null;
+    if (Date.now() - homeFastMemoryCache.timestamp > HOME_FAST_TTL_SECONDS * 1000) return null;
+    return homeFastMemoryCache.data;
+};
+
+const buildHomeFastPayload = async () => {
+    const scraper = new HiAnimeScraper();
+    const [spotlight, trending, seasonal, monthly, topAnime, topDay, topWeek, topMonth] = await Promise.all([
+        scraper.getEnrichedSpotlight(),
+        anilistService.getTrendingAnime(1, 10),
+        anilistService.getPopularThisSeason(1, 10),
+        anilistService.getPopularThisMonth(1, 10),
+        anilistService.getTopAnime(1, 18),
+        scraper.getEnrichedTopTen('day'),
+        scraper.getEnrichedTopTen('week'),
+        scraper.getEnrichedTopTen('month'),
+    ]);
+
+    return {
+        spotlight: spotlight?.spotlight || [],
+        trending,
+        seasonal,
+        monthly,
+        topAnime,
+        topTen: {
+            day: topDay?.top10 || [],
+            week: topWeek?.top10 || [],
+            month: topMonth?.top10 || [],
+        },
+        generatedAt: Date.now(),
+    };
+};
+
+const refreshHomeFastCache = async () => {
+    if (homeFastRefreshPromise) return homeFastRefreshPromise;
+    homeFastRefreshPromise = (async () => {
+        try {
+            const payload = await buildHomeFastPayload();
+            homeFastMemoryCache = { data: payload, timestamp: Date.now() };
+            await redis.set(HOME_FAST_CACHE_KEY, payload, { ex: HOME_FAST_TTL_SECONDS });
+            return payload;
+        } finally {
+            homeFastRefreshPromise = null;
+        }
+    })();
+    return homeFastRefreshPromise;
+};
+
+router.get('/home-fast', async (_req, res) => {
+    try {
+        const memoryHit = getFreshHomeFastFromMemory();
+        if (memoryHit) {
+            res.json(memoryHit);
+            return;
+        }
+
+        const redisHit = await redis.get<any>(HOME_FAST_CACHE_KEY).catch(() => null);
+        if (redisHit) {
+            homeFastMemoryCache = { data: redisHit, timestamp: Date.now() };
+            res.json(redisHit);
+            refreshHomeFastCache().catch(() => undefined);
+            return;
+        }
+
+        const fresh = await refreshHomeFastCache();
+        res.json(fresh);
+    } catch (error) {
+        console.error('Error in home-fast route:', error);
+        res.status(500).json({ error: 'Failed to fetch home bundle' });
+    }
+});
 
 // Get top/popular anime
 router.get('/top', async (req, res) => {
