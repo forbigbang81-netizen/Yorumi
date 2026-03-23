@@ -1459,13 +1459,13 @@ const AnimeContinueWatchingHighlights = ({ showSeeAll = false }: { showSeeAll?: 
                                 <div className="mt-1">
                                     <div className="flex items-center justify-between text-[12px] font-bold">
                                         <span className="text-gray-100">EP {item.episodeNumber}</span>
-                                        <span className="text-[#ffb347]">
+                                        <span className="text-yorumi-accent">
                                             {formatClock(item.positionSeconds)} / {formatClock(item.durationSeconds)}
                                         </span>
                                     </div>
                                     <div className="mt-1 h-1 bg-white/15 rounded-full overflow-hidden">
                                         <div
-                                            className="h-full bg-[#ffb347]"
+                                            className="h-full bg-yorumi-accent"
                                             style={{ width: `${getProgressPercent(item)}%` }}
                                         />
                                     </div>
