@@ -130,7 +130,10 @@ export class AniwatchScraper {
             if (sources.length === 0) return [];
 
             const referer = sourcePayload?.headers?.Referer || 'https://megacloud.blog/';
-            const apiBase = process.env.API_URL || '/api';
+            const rawApiBase = String(process.env.API_URL || '/api').replace(/\/+$/, '');
+            const apiBase = rawApiBase === '/api' || rawApiBase.endsWith('/api')
+                ? rawApiBase
+                : `${rawApiBase}/api`;
             const subtitleList = (Array.isArray(sourcePayload?.subtitles) ? sourcePayload.subtitles : [])
                 .filter((sub: any) => sub?.url)
                 .map((sub: any) => ({
