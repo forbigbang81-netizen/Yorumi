@@ -11,7 +11,7 @@ export function useStreams(scraperSession: string | null) {
     const [selectedStreamIndex, setSelectedStreamIndex] = useState<number>(0);
     const [isAutoQuality, setIsAutoQuality] = useState(true);
     const [selectedAudio, setSelectedAudio] = useState<'sub' | 'dub'>('sub');
-    const [selectedProvider, setSelectedProvider] = useState<'vidsrc' | 'megacloud'>('vidsrc');
+    const [selectedProvider, setSelectedProvider] = useState<'vidsrc' | 'megacloud'>('megacloud');
     const [showQualityMenu, setShowQualityMenu] = useState(false);
     const [streamLoading, setStreamLoading] = useState(false);
     const streamCache = useRef(new Map<string, Promise<StreamLink[]>>());
@@ -108,13 +108,14 @@ export function useStreams(scraperSession: string | null) {
                 const hasMegaCloudForAudio = audioScoped.some((s) => normalizeProvider(s.provider || s.server || s.url) === 'megacloud');
                 const hasSelectedProviderForAudio = audioScoped.some((s) => normalizeProvider(s.provider || s.server || s.url) === selectedProvider);
 
-                // First load defaults to VidSrc if available, then MegaCloud.
+                // First load defaults to MegaCloud if available because it is
+                // generally more reliable for immediate autoplay in our embed flow.
                 // Subsequent loads keep user's provider selection when possible.
                 const nextProvider = isFirstLoadForAnime
-                    ? (hasVidSrcForAudio ? 'vidsrc' : (hasMegaCloudForAudio ? 'megacloud' : selectedProvider))
+                    ? (hasMegaCloudForAudio ? 'megacloud' : (hasVidSrcForAudio ? 'vidsrc' : selectedProvider))
                     : (hasSelectedProviderForAudio
                         ? selectedProvider
-                        : (hasVidSrcForAudio ? 'vidsrc' : (hasMegaCloudForAudio ? 'megacloud' : selectedProvider)));
+                        : (hasMegaCloudForAudio ? 'megacloud' : (hasVidSrcForAudio ? 'vidsrc' : selectedProvider)));
 
                 setSelectedAudio(nextAudio);
                 setSelectedProvider(nextProvider);
@@ -159,7 +160,7 @@ export function useStreams(scraperSession: string | null) {
         const alternateAudio: 'sub' | 'dub' = selectedAudio === 'sub' ? 'dub' : 'sub';
         if (availableAudios.includes(alternateAudio)) {
             setSelectedAudio(alternateAudio);
-            setSelectedProvider('vidsrc');
+            setSelectedProvider('megacloud');
             setSelectedStreamIndex(0);
             setIsAutoQuality(true);
             return true;
@@ -175,7 +176,7 @@ export function useStreams(scraperSession: string | null) {
         setStreams([]);
         setSelectedStreamIndex(0);
         setSelectedAudio('sub');
-        setSelectedProvider('vidsrc');
+        setSelectedProvider('megacloud');
         setStreamLoading(false);
         streamCache.current.clear();
     }, []);
