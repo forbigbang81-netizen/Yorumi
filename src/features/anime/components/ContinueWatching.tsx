@@ -55,7 +55,7 @@ export default function ContinueWatching({
                 {(item.durationSeconds || item.positionSeconds) ? (
                     <span className="text-yorumi-accent font-bold">
                         {formatClock(item.positionSeconds || 0)}
-                        <span className="text-white/65"> / {formatClock(item.durationSeconds || 0)}</span>
+                        <span className="text-yorumi-accent"> / {formatClock(item.durationSeconds || 0)}</span>
                     </span>
                 ) : null}
             </div>
