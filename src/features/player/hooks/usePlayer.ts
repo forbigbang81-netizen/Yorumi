@@ -40,10 +40,10 @@ export function usePlayer(animeId: string | undefined) {
         selectedStreamIndex,
         showQualityMenu,
         setShowQualityMenu,
-        handleQualityChange,
-        setAutoQuality,
-        setSelectedAudio,
-        setSelectedProvider,
+        handleQualityChange: applyQualityChange,
+        setAutoQuality: applyAutoQuality,
+        setSelectedAudio: applySelectedAudio,
+        setSelectedProvider: applySelectedProvider,
         tryNextStream,
         clearStreams,
         loadStream,
@@ -55,6 +55,7 @@ export function usePlayer(animeId: string | undefined) {
     const [isPlayerReady, setIsPlayerReady] = useState(false);
     const [hasSeenEpisodeFetchStart, setHasSeenEpisodeFetchStart] = useState(false);
     const [episodesResolved, setEpisodesResolved] = useState(false);
+    const [startAtOverrideSeconds, setStartAtOverrideSeconds] = useState<number | null>(null);
     const epNumParam = searchParams.get('ep') || '1';
     const resumeAtSeconds = (() => {
         const raw = searchParams.get('t');
@@ -87,6 +88,7 @@ export function usePlayer(animeId: string | undefined) {
         setHasSeenEpisodeFetchStart(false);
         setEpisodesResolved(false);
         setIsPlayerReady(false);
+        setStartAtOverrideSeconds(null);
         accumulatedSecondsRef.current = 0;
         lastPlaybackSecondRef.current = null;
         lastDurationSecondRef.current = 0;
@@ -151,6 +153,7 @@ export function usePlayer(animeId: string | undefined) {
                 if (String(targetEp.episodeNumber) !== epNumParam) {
                     setSearchParams({ ep: String(targetEp.episodeNumber) }, { replace: true });
                 }
+                setIsPlayerReady(false);
                 loadStream(targetEp);
             }
         }
@@ -282,6 +285,8 @@ export function usePlayer(animeId: string | undefined) {
             return;
         }
         streamErrorRetryRef.current = { url, at: now };
+        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
+        if (second > 0) setStartAtOverrideSeconds(second);
         tryNextStream();
     }, [currentStream?.url, tryNextStream]);
 
@@ -292,6 +297,8 @@ export function usePlayer(animeId: string | undefined) {
         if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
             markEpisodeComplete(episodeNumber);
         }
+        setStartAtOverrideSeconds(null);
+        setIsPlayerReady(false);
         setSearchParams({ ep: String(ep.episodeNumber) });
         loadStream(ep);
     };
@@ -300,8 +307,39 @@ export function usePlayer(animeId: string | undefined) {
 
     const reloadPlayer = () => {
         if (currentEpisode) {
+            const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
+            setStartAtOverrideSeconds(second > 0 ? second : null);
+            setIsPlayerReady(false);
             loadStream(currentEpisode);
         }
+    };
+
+    const handleQualityChange = (index: number) => {
+        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
+        if (second > 0) setStartAtOverrideSeconds(second);
+        setIsPlayerReady(false);
+        applyQualityChange(index);
+    };
+
+    const setAutoQuality = () => {
+        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
+        if (second > 0) setStartAtOverrideSeconds(second);
+        setIsPlayerReady(false);
+        applyAutoQuality();
+    };
+
+    const setSelectedAudio = (audio: 'sub' | 'dub') => {
+        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
+        if (second > 0) setStartAtOverrideSeconds(second);
+        setIsPlayerReady(false);
+        applySelectedAudio(audio);
+    };
+
+    const setSelectedProvider = (provider: 'vidsrc' | 'megacloud') => {
+        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
+        if (second > 0) setStartAtOverrideSeconds(second);
+        setIsPlayerReady(false);
+        applySelectedProvider(provider);
     };
 
     const handlePrevEp = () => {
@@ -331,7 +369,7 @@ export function usePlayer(animeId: string | undefined) {
         watchedEpisodes,
         episodesResolved,
         epNum: epNumParam,
-        resumeAtSeconds,
+        resumeAtSeconds: startAtOverrideSeconds ?? resumeAtSeconds,
         cleanCurrentTitle,
 
         // Loading States

@@ -148,8 +148,16 @@ export default function VideoPlayer({
         track.src = preferred.url;
         const lang = String(preferred.lang || '').trim().toLowerCase();
         track.srclang = (lang === 'english' || lang === 'eng') ? 'en' : (lang || 'en');
-        track.default = true;
+        // Don't force default at append time; wait until file is loaded to avoid
+        // browser caption-loading UI lingering while video is already playing.
+        track.default = false;
         video.appendChild(track);
+
+        const disableAllTracks = () => {
+            for (let i = 0; i < video.textTracks.length; i += 1) {
+                video.textTracks[i].mode = 'disabled';
+            }
+        };
 
         const applyMode = () => {
             for (let i = 0; i < video.textTracks.length; i += 1) {
@@ -159,7 +167,25 @@ export default function VideoPlayer({
             }
         };
 
-        window.setTimeout(applyMode, 80);
+        // Keep captions disabled until subtitle cues are ready.
+        disableAllTracks();
+        const handleTrackLoaded = () => applyMode();
+        const handleTrackError = () => {
+            // If subtitle source fails, remove it so it doesn't keep a loading state.
+            track.remove();
+            disableAllTracks();
+        };
+        track.addEventListener('load', handleTrackLoaded);
+        track.addEventListener('error', handleTrackError);
+
+        // Fallback in case some browsers don't fire the load event reliably.
+        const fallbackTimer = window.setTimeout(applyMode, 600);
+
+        return () => {
+            window.clearTimeout(fallbackTimer);
+            track.removeEventListener('load', handleTrackLoaded);
+            track.removeEventListener('error', handleTrackError);
+        };
     }, [subtitles, isHlsStream, streamUrl]);
 
     return (

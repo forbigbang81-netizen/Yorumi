@@ -11,7 +11,7 @@ export function useStreams(scraperSession: string | null) {
     const [selectedStreamIndex, setSelectedStreamIndex] = useState<number>(0);
     const [isAutoQuality, setIsAutoQuality] = useState(true);
     const [selectedAudio, setSelectedAudio] = useState<'sub' | 'dub'>('sub');
-    const [selectedProvider, setSelectedProvider] = useState<'vidsrc' | 'megacloud'>('megacloud');
+    const [selectedProvider, setSelectedProvider] = useState<'vidsrc' | 'megacloud'>('vidsrc');
     const [showQualityMenu, setShowQualityMenu] = useState(false);
     const [streamLoading, setStreamLoading] = useState(false);
     const streamCache = useRef(new Map<string, Promise<StreamLink[]>>());
@@ -79,6 +79,29 @@ export function useStreams(scraperSession: string | null) {
         return [...next].sort((a, b) => (parseInt(b.quality) || 0) - (parseInt(a.quality) || 0));
     }, []);
 
+    const pickBestProvider = useCallback(
+        (raw: StreamLink[], audio: 'sub' | 'dub', preferred: 'vidsrc' | 'megacloud') => {
+            const scoped = raw.filter((s) => normalizeAudio(s.audio) === audio);
+            const pool = scoped.length > 0 ? scoped : raw;
+            const providers: Array<'vidsrc' | 'megacloud'> = ['vidsrc', 'megacloud'];
+
+            const scoreProvider = (provider: 'vidsrc' | 'megacloud') => {
+                const p = pool.filter((s) => normalizeProvider(s.provider || s.server || s.url) === provider);
+                if (p.length === 0) return -1;
+                const hasHls = p.some((s) => Boolean(s.isHls) || String(s.url || '').includes('.m3u8'));
+                const maxQuality = p.reduce((mx, s) => Math.max(mx, parseInt(String(s.quality || '0'), 10) || 0), 0);
+                return (hasHls ? 100000 : 0) + maxQuality + (provider === preferred ? 5 : 0);
+            };
+
+            const ranked = providers
+                .map((provider) => ({ provider, score: scoreProvider(provider) }))
+                .sort((a, b) => b.score - a.score);
+
+            return ranked[0]?.score >= 0 ? ranked[0].provider : preferred;
+        },
+        []
+    );
+
     useEffect(() => {
         if (allStreams.length === 0) {
             setStreams([]);
@@ -91,7 +114,6 @@ export function useStreams(scraperSession: string | null) {
     }, [allStreams, selectedAudio, selectedProvider, filterStreams]);
 
     const loadStream = useCallback(async (episode: Episode) => {
-        const isFirstLoadForAnime = currentEpisode === null;
         setCurrentEpisode(episode);
         setStreamLoading(true);
         setAllStreams([]);
@@ -104,18 +126,16 @@ export function useStreams(scraperSession: string | null) {
                     ? selectedAudio
                     : (streamData.some((s) => normalizeAudio(s.audio) === 'sub') ? 'sub' : 'dub');
                 const audioScoped = streamData.filter((s) => normalizeAudio(s.audio) === nextAudio);
-                const hasVidSrcForAudio = audioScoped.some((s) => normalizeProvider(s.provider || s.server || s.url) === 'vidsrc');
-                const hasMegaCloudForAudio = audioScoped.some((s) => normalizeProvider(s.provider || s.server || s.url) === 'megacloud');
                 const hasSelectedProviderForAudio = audioScoped.some((s) => normalizeProvider(s.provider || s.server || s.url) === selectedProvider);
-
-                // First load defaults to MegaCloud if available because it is
-                // generally more reliable for immediate autoplay in our embed flow.
-                // Subsequent loads keep user's provider selection when possible.
-                const nextProvider = isFirstLoadForAnime
-                    ? (hasMegaCloudForAudio ? 'megacloud' : (hasVidSrcForAudio ? 'vidsrc' : selectedProvider))
-                    : (hasSelectedProviderForAudio
-                        ? selectedProvider
-                        : (hasMegaCloudForAudio ? 'megacloud' : (hasVidSrcForAudio ? 'vidsrc' : selectedProvider)));
+                const selectedProviderHasHls = audioScoped.some((s) => {
+                    const provider = normalizeProvider(s.provider || s.server || s.url);
+                    if (provider !== selectedProvider) return false;
+                    return Boolean(s.isHls) || String(s.url || '').includes('.m3u8');
+                });
+                const bestProvider = pickBestProvider(streamData, nextAudio, selectedProvider);
+                const nextProvider = !hasSelectedProviderForAudio
+                    ? bestProvider
+                    : (!selectedProviderHasHls ? bestProvider : selectedProvider);
 
                 setSelectedAudio(nextAudio);
                 setSelectedProvider(nextProvider);
@@ -128,7 +148,7 @@ export function useStreams(scraperSession: string | null) {
         } finally {
             setStreamLoading(false);
         }
-    }, [ensureStreamData, selectedAudio, selectedProvider, currentEpisode]);
+    }, [ensureStreamData, selectedAudio, selectedProvider, pickBestProvider]);
 
     const handleQualityChange = useCallback((index: number) => {
         setSelectedStreamIndex(index);
@@ -160,7 +180,7 @@ export function useStreams(scraperSession: string | null) {
         const alternateAudio: 'sub' | 'dub' = selectedAudio === 'sub' ? 'dub' : 'sub';
         if (availableAudios.includes(alternateAudio)) {
             setSelectedAudio(alternateAudio);
-            setSelectedProvider('megacloud');
+            setSelectedProvider('vidsrc');
             setSelectedStreamIndex(0);
             setIsAutoQuality(true);
             return true;
@@ -176,7 +196,7 @@ export function useStreams(scraperSession: string | null) {
         setStreams([]);
         setSelectedStreamIndex(0);
         setSelectedAudio('sub');
-        setSelectedProvider('megacloud');
+        setSelectedProvider('vidsrc');
         setStreamLoading(false);
         streamCache.current.clear();
     }, []);
