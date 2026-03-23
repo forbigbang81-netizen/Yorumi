@@ -129,7 +129,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // Caches
     const scraperSessionCache = useRef(new Map<string, string>());
     const episodesCache = useRef(new Map<string, Episode[]>());
-    const USE_PERSISTED_MAPPING_CACHE = false;
+    const USE_PERSISTED_MAPPING_CACHE = true;
 
     // --- Actions ---
 
@@ -338,8 +338,17 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         const isLegacyAnimePaheSession = (value: string) =>
             /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
-        // Helper to normalize strings for comparison
+        // Strict normalize for exact-ish comparisons.
         const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+        // Loose normalize for cross-source title variants (e.g. with/without "Season 3", "Part 1").
+        const normalizeLoose = (str: string) => normalize(
+            str
+                .replace(/\bseason\s*\d+\b/gi, ' ')
+                .replace(/\bpart\s*\d+\b/gi, ' ')
+                .replace(/\b\d+(st|nd|rd|th)\s*season\b/gi, ' ')
+                .replace(/\bshimet?s?u\s*kaiyuu\b/gi, ' ')
+                .replace(/\bculling\s*game(s)?\b/gi, 'cullinggame')
+        );
 
         // Helper to extract season number
         const getSeason = (title: string) => {
@@ -353,8 +362,15 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             const canTitle = candidate.title || '';
             const tgtTitle = target.title || '';
 
-            // 1. Text Similarity (Simple includes check + length proximity)
-            if (normalize(canTitle).includes(normalize(tgtTitle)) || normalize(tgtTitle).includes(normalize(canTitle))) {
+            // 1. Text Similarity (strict + loose variant checks)
+            const canNorm = normalize(canTitle);
+            const tgtNorm = normalize(tgtTitle);
+            const canLoose = normalizeLoose(canTitle);
+            const tgtLoose = normalizeLoose(tgtTitle);
+            if (
+                canNorm.includes(tgtNorm) || tgtNorm.includes(canNorm) ||
+                canLoose.includes(tgtLoose) || tgtLoose.includes(canLoose)
+            ) {
                 score += 10;
             }
 
@@ -399,6 +415,17 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 if (candidate.type.toLowerCase() === target.type.toLowerCase()) score += 3;
             }
 
+            // 5. Episode-count proximity (helps avoid cross-title false mappings)
+            const targetEpisodes = Number(target.episodes || 0);
+            const candidateEpisodes = Number(candidate.episodes || 0);
+            if (targetEpisodes > 0 && candidateEpisodes > 0) {
+                const diff = Math.abs(candidateEpisodes - targetEpisodes);
+                if (diff === 0) score += 30;
+                else if (diff <= 1) score += 20;
+                else if (diff <= 3) score += 8;
+                else score -= 25;
+            }
+
             return score;
         };
 
@@ -420,22 +447,35 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
                 if (allCandidates.length === 0) return null;
 
-                let bestMatch = null;
-                let maxScore = -100;
-                for (const candidate of allCandidates) {
-                    const score = getScore(candidate, anime);
-                    if (score > maxScore) {
-                        maxScore = score;
-                        bestMatch = candidate;
-                    }
-                }
+                const targetEpisodes = Number(anime.episodes || 0);
+                const ranked = allCandidates
+                    .map((candidate) => ({
+                        candidate,
+                        score: getScore(candidate, anime),
+                        diff: (targetEpisodes > 0 && Number(candidate?.episodes || 0) > 0)
+                            ? Math.abs(Number(candidate.episodes) - targetEpisodes)
+                            : Number.MAX_SAFE_INTEGER,
+                    }))
+                    .sort((a, b) => {
+                        if (b.score !== a.score) return b.score - a.score;
+                        return a.diff - b.diff;
+                    });
 
-                if (bestMatch && maxScore > 0) {
-                    if (cacheKey) scraperSessionCache.current.set(cacheKey, bestMatch.session);
+                // Prefer candidates near expected episode count when known.
+                const best = ranked.find((entry) => {
+                    if (entry.score <= 0) return false;
+                    if (targetEpisodes <= 0) return true;
+                    const cEps = Number(entry.candidate?.episodes || 0);
+                    if (cEps <= 0) return true;
+                    return cEps <= targetEpisodes + 1;
+                }) || ranked.find((entry) => entry.score > 0);
+
+                if (best?.candidate) {
+                    if (cacheKey) scraperSessionCache.current.set(cacheKey, best.candidate.session);
                     if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
-                        animeService.saveAnimeMapping(mappingKey, bestMatch.session).catch(console.error);
+                        animeService.saveAnimeMapping(mappingKey, best.candidate.session).catch(console.error);
                     }
-                    return bestMatch.session;
+                    return best.candidate.session;
                 }
             } catch (e) {
                 console.error("Error resolving scraper session", e);
@@ -460,10 +500,14 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
                 const normalizedCandidate = normalize(candidateTitle);
                 const normalizedTarget = normalize(targetTitle);
+                const looseCandidate = normalizeLoose(candidateTitle);
+                const looseTarget = normalizeLoose(targetTitle);
 
                 const titleMatch =
                     normalizedCandidate.includes(normalizedTarget) ||
-                    normalizedTarget.includes(normalizedCandidate);
+                    normalizedTarget.includes(normalizedCandidate) ||
+                    looseCandidate.includes(looseTarget) ||
+                    looseTarget.includes(looseCandidate);
 
                 const targetSeason = getSeason(targetTitle);
                 const candidateSeason = getSeason(candidateTitle);
@@ -516,7 +560,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             session = await resolveSessionBySearch();
         }
 
-        if (session) {
+        if (session && sessionFromCache) {
             const isValidSession = await isSessionLikelyMatch(session);
             if (!isValidSession) {
                 console.warn(`[AnimeContext] Rejected mismatched scraper session "${session}" for "${anime.title}"`);
@@ -534,7 +578,11 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             } else {
                 try {
                     const epData = await animeService.getEpisodes(session);
-                    const newEpisodes = epData?.episodes || epData?.ep_details || (Array.isArray(epData) ? epData : []);
+                    const rawEpisodes = epData?.episodes || epData?.ep_details || (Array.isArray(epData) ? epData : []);
+                    const expectedEpisodes = Number(anime.episodes || 0);
+                    const newEpisodes = (expectedEpisodes > 0 && Array.isArray(rawEpisodes) && rawEpisodes.length > expectedEpisodes)
+                        ? rawEpisodes.slice(0, expectedEpisodes)
+                        : rawEpisodes;
 
                     // Enrich with metadata titles if available
                     if (newEpisodes.length > 0) {
@@ -576,11 +624,10 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                     }
 
                     if (newEpisodes.length > 0) {
-                        const expectedEpisodes = Number(anime.episodes || 0);
                         const hasSuspiciousEpisodeOverflow =
                             sessionFromCache &&
                             expectedEpisodes > 0 &&
-                            newEpisodes.length >= expectedEpisodes + 2;
+                            rawEpisodes.length >= expectedEpisodes + 2;
 
                         if (hasSuspiciousEpisodeOverflow) {
                             console.warn(
@@ -594,7 +641,10 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                             const remappedSession = await resolveSessionBySearch();
                             if (remappedSession && remappedSession !== session) {
                                 const remappedData = await animeService.getEpisodes(remappedSession);
-                                const remappedEpisodes = remappedData?.episodes || remappedData?.ep_details || (Array.isArray(remappedData) ? remappedData : []);
+                                const remappedRawEpisodes = remappedData?.episodes || remappedData?.ep_details || (Array.isArray(remappedData) ? remappedData : []);
+                                const remappedEpisodes = (expectedEpisodes > 0 && Array.isArray(remappedRawEpisodes) && remappedRawEpisodes.length > expectedEpisodes)
+                                    ? remappedRawEpisodes.slice(0, expectedEpisodes)
+                                    : remappedRawEpisodes;
                                 if (Array.isArray(remappedEpisodes) && remappedEpisodes.length > 0) {
                                     session = remappedSession;
                                     episodesCache.current.set(remappedSession, remappedEpisodes);
