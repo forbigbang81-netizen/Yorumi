@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { usePlayer } from '../features/player/hooks/usePlayer';
@@ -13,6 +14,15 @@ import { getDisplayTitle } from '../utils/titleLanguage';
 export default function WatchPage() {
     const { id } = useParams<{ title: string; id: string }>();
     const { language } = useTitleLanguage();
+
+    useEffect(() => {
+        document.documentElement.classList.add('watch-safe-mode');
+        document.body.classList.add('watch-safe-mode');
+        return () => {
+            document.documentElement.classList.remove('watch-safe-mode');
+            document.body.classList.remove('watch-safe-mode');
+        };
+    }, []);
 
     const {
         anime,

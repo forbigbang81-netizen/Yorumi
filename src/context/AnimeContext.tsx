@@ -429,6 +429,39 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             return score;
         };
 
+        const isStrictCandidate = (candidate: any, target: Anime) => {
+            const canTitle = String(candidate?.title || '').trim();
+            const tgtTitle = String(target?.title_english || target?.title_romaji || target?.title || '').trim();
+            if (!canTitle || !tgtTitle) return false;
+
+            const canNorm = normalize(canTitle);
+            const tgtNorm = normalize(tgtTitle);
+            const canLoose = normalizeLoose(canTitle);
+            const tgtLoose = normalizeLoose(tgtTitle);
+            const titleMatch =
+                canNorm.includes(tgtNorm) ||
+                tgtNorm.includes(canNorm) ||
+                canLoose.includes(tgtLoose) ||
+                tgtLoose.includes(canLoose);
+            if (!titleMatch) return false;
+
+            const targetSeason = getSeason(tgtTitle);
+            const candidateSeason = getSeason(canTitle);
+            const seasonMatch =
+                targetSeason <= 1 ||
+                candidateSeason <= 1 ||
+                candidateSeason === targetSeason;
+            if (!seasonMatch) return false;
+
+            const targetEpisodes = Number(target?.episodes || 0);
+            const candidateEpisodes = Number(candidate?.episodes || candidate?.sub || 0);
+            if (targetEpisodes > 0 && candidateEpisodes > 0 && Math.abs(candidateEpisodes - targetEpisodes) > 3) {
+                return false;
+            }
+
+            return true;
+        };
+
         const resolveSessionBySearch = async (): Promise<string | null> => {
             const queries = new Set<string>();
             if (anime.title) queries.add(anime.title);
@@ -447,8 +480,12 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
                 if (allCandidates.length === 0) return null;
 
+                const strictCandidates = allCandidates.filter((candidate) => isStrictCandidate(candidate, anime));
+                const hasStrictMatches = strictCandidates.length > 0;
+                const candidatePool = hasStrictMatches ? strictCandidates : allCandidates;
+
                 const targetEpisodes = Number(anime.episodes || 0);
-                const ranked = allCandidates
+                const ranked = candidatePool
                     .map((candidate) => ({
                         candidate,
                         score: getScore(candidate, anime),
@@ -461,14 +498,18 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                         return a.diff - b.diff;
                     });
 
-                // Prefer candidates near expected episode count when known.
-                const best = ranked.find((entry) => {
-                    if (entry.score <= 0) return false;
-                    if (targetEpisodes <= 0) return true;
-                    const cEps = Number(entry.candidate?.episodes || 0);
-                    if (cEps <= 0) return true;
-                    return cEps <= targetEpisodes + 1;
-                }) || ranked.find((entry) => entry.score > 0);
+                // Strict pool should not be rejected by legacy score penalties.
+                const best = hasStrictMatches
+                    ? ranked[0]
+                    : (
+                        ranked.find((entry) => {
+                            if (entry.score <= 0) return false;
+                            if (targetEpisodes <= 0) return true;
+                            const cEps = Number(entry.candidate?.episodes || 0);
+                            if (cEps <= 0) return true;
+                            return cEps <= targetEpisodes + 1;
+                        }) || ranked.find((entry) => entry.score > 0)
+                    );
 
                 if (best?.candidate) {
                     if (cacheKey) scraperSessionCache.current.set(cacheKey, best.candidate.session);
@@ -511,7 +552,10 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
                 const targetSeason = getSeason(targetTitle);
                 const candidateSeason = getSeason(candidateTitle);
-                const seasonMatch = targetSeason <= 1 || candidateSeason === targetSeason;
+                const seasonMatch =
+                    targetSeason <= 1 ||
+                    candidateSeason <= 1 ||
+                    candidateSeason === targetSeason;
 
                 return titleMatch && seasonMatch;
             } catch {
