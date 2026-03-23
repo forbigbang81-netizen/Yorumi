@@ -127,7 +127,9 @@ import { warmSpotlightCache } from './api/scraper/manga.service';
 import { warmupAnimeDatabase } from './api/logo/fanart.service';
 import { startScraperWarmer } from './api/scraper/scraper-warmer';
 
-if (process.env.NODE_ENV !== 'production' || process.env.IS_ELECTRON) {
+const shouldRunStandaloneServer = !process.env.VERCEL;
+
+if (shouldRunStandaloneServer) {
     const startServer = async () => {
         console.log('🚀 Starting Yorumi Backend Server...');
 
