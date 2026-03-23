@@ -129,6 +129,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // Caches
     const scraperSessionCache = useRef(new Map<string, string>());
     const episodesCache = useRef(new Map<string, Episode[]>());
+    const USE_PERSISTED_MAPPING_CACHE = false;
 
     // --- Actions ---
 
@@ -316,6 +317,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
     const resolveAndCacheEpisodes = async (anime: Anime): Promise<{ session: string | null, eps: Episode[] }> => {
         let session: string | null = null;
+        let sessionFromCache = false;
         const getAnimeCacheKey = (target: Anime): string | null => {
             const mal = Number(target?.mal_id);
             if (Number.isFinite(mal) && mal > 0) return `mal:${mal}`;
@@ -400,6 +402,80 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             return score;
         };
 
+        const resolveSessionBySearch = async (): Promise<string | null> => {
+            const queries = new Set<string>();
+            if (anime.title) queries.add(anime.title);
+            if (anime.title_english) queries.add(anime.title_english);
+            if (anime.synonyms) anime.synonyms.slice(0, 2).forEach(s => queries.add(s));
+            const queryList = Array.from(queries).slice(0, 3);
+
+            try {
+                const results = await Promise.all(
+                    queryList.map(q => animeService.searchScraper(q).then(res => res || []).catch(() => []))
+                );
+
+                const allCandidates = Array.from(new Map(
+                    results.flat().map((c: any) => [c.session, c])
+                ).values());
+
+                if (allCandidates.length === 0) return null;
+
+                let bestMatch = null;
+                let maxScore = -100;
+                for (const candidate of allCandidates) {
+                    const score = getScore(candidate, anime);
+                    if (score > maxScore) {
+                        maxScore = score;
+                        bestMatch = candidate;
+                    }
+                }
+
+                if (bestMatch && maxScore > 0) {
+                    if (cacheKey) scraperSessionCache.current.set(cacheKey, bestMatch.session);
+                    if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
+                        animeService.saveAnimeMapping(mappingKey, bestMatch.session).catch(console.error);
+                    }
+                    return bestMatch.session;
+                }
+            } catch (e) {
+                console.error("Error resolving scraper session", e);
+            }
+            return null;
+        };
+
+        const isSessionLikelyMatch = async (candidateSession: string): Promise<boolean> => {
+            try {
+                const details = await animeService.getAnimeDetails(`s:${candidateSession}`);
+                const resolved = details?.data;
+                if (!resolved) return true;
+
+                const candidateTitle = String(
+                    resolved.title_english || resolved.title_romaji || resolved.title || ''
+                ).trim();
+                const targetTitle = String(
+                    anime.title_english || anime.title_romaji || anime.title || ''
+                ).trim();
+
+                if (!candidateTitle || !targetTitle) return true;
+
+                const normalizedCandidate = normalize(candidateTitle);
+                const normalizedTarget = normalize(targetTitle);
+
+                const titleMatch =
+                    normalizedCandidate.includes(normalizedTarget) ||
+                    normalizedTarget.includes(normalizedCandidate);
+
+                const targetSeason = getSeason(targetTitle);
+                const candidateSeason = getSeason(candidateTitle);
+                const seasonMatch = targetSeason <= 1 || candidateSeason === targetSeason;
+
+                return titleMatch && seasonMatch;
+            } catch {
+                // Don't block playback on transient validation failures.
+                return true;
+            }
+        };
+
         // Fast path: when scraperId is already known, avoid extra mapping/search calls.
         if (anime.scraperId) {
             session = anime.scraperId;
@@ -412,19 +488,21 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             const cachedSession = scraperSessionCache.current.get(cacheKey)!;
             if (!isLegacyAnimePaheSession(cachedSession)) {
                 session = cachedSession;
+                sessionFromCache = true;
             } else {
                 scraperSessionCache.current.delete(cacheKey);
-                if (mappingKey !== null) {
+                if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
                     animeService.clearAnimeMapping(mappingKey).catch(() => undefined);
                 }
             }
         } else if (!session) {
             // 0. Try to get from Firebase Mapping Cache
-            if (mappingKey !== null) {
+            if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
                 try {
                     const cachedSession = await animeService.getAnimeMapping(mappingKey);
                     if (cachedSession) {
                         session = cachedSession;
+                        sessionFromCache = true;
                         if (cacheKey) scraperSessionCache.current.set(cacheKey, cachedSession);
                     }
                 } catch (e) {
@@ -435,49 +513,18 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         }
 
         if (!session) {
-            const queries = new Set<string>();
-            if (anime.title) queries.add(anime.title);
-            if (anime.title_english) queries.add(anime.title_english);
-            // Limit synonyms to avoid too many requests
-            if (anime.synonyms) anime.synonyms.slice(0, 2).forEach(s => queries.add(s));
+            session = await resolveSessionBySearch();
+        }
 
-            const queryList = Array.from(queries).slice(0, 3); // Max 3 queries
-
-            try {
-                // Fetch all candidates from all queries
-                const results = await Promise.all(
-                    queryList.map(q => animeService.searchScraper(q).then(res => res || []).catch(() => []))
-                );
-
-                // Flatten and deduplicate by session ID
-                const allCandidates = Array.from(new Map(
-                    results.flat().map((c: any) => [c.session, c])
-                ).values());
-
-                if (allCandidates.length > 0) {
-                    // Find Best Match
-                    let bestMatch = null;
-                    let maxScore = -100;
-
-                    for (const candidate of allCandidates) {
-                        const score = getScore(candidate, anime);
-                        if (score > maxScore) {
-                            maxScore = score;
-                            bestMatch = candidate;
-                        }
-                    }
-
-                    if (bestMatch && maxScore > 0) { // Threshold for acceptance
-                        session = bestMatch.session;
-                        if (cacheKey) scraperSessionCache.current.set(cacheKey, bestMatch.session);
-                        // Save to Firebase Cache
-                        if (mappingKey !== null) {
-                            animeService.saveAnimeMapping(mappingKey, bestMatch.session).catch(console.error);
-                        }
-                    }
+        if (session) {
+            const isValidSession = await isSessionLikelyMatch(session);
+            if (!isValidSession) {
+                console.warn(`[AnimeContext] Rejected mismatched scraper session "${session}" for "${anime.title}"`);
+                if (cacheKey) scraperSessionCache.current.delete(cacheKey);
+                if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
+                    animeService.clearAnimeMapping(mappingKey).catch(() => undefined);
                 }
-            } catch (e) {
-                console.error("Error resolving scraper session", e);
+                session = await resolveSessionBySearch();
             }
         }
 
@@ -529,6 +576,33 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                     }
 
                     if (newEpisodes.length > 0) {
+                        const expectedEpisodes = Number(anime.episodes || 0);
+                        const hasSuspiciousEpisodeOverflow =
+                            sessionFromCache &&
+                            expectedEpisodes > 0 &&
+                            newEpisodes.length >= expectedEpisodes + 2;
+
+                        if (hasSuspiciousEpisodeOverflow) {
+                            console.warn(
+                                `[AnimeContext] Suspicious mapped episodes for "${anime.title}": expected ~${expectedEpisodes}, got ${newEpisodes.length}. Re-resolving session.`
+                            );
+                            if (cacheKey) scraperSessionCache.current.delete(cacheKey);
+                            if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
+                                animeService.clearAnimeMapping(mappingKey).catch(() => undefined);
+                            }
+
+                            const remappedSession = await resolveSessionBySearch();
+                            if (remappedSession && remappedSession !== session) {
+                                const remappedData = await animeService.getEpisodes(remappedSession);
+                                const remappedEpisodes = remappedData?.episodes || remappedData?.ep_details || (Array.isArray(remappedData) ? remappedData : []);
+                                if (Array.isArray(remappedEpisodes) && remappedEpisodes.length > 0) {
+                                    session = remappedSession;
+                                    episodesCache.current.set(remappedSession, remappedEpisodes);
+                                    return { session: remappedSession, eps: remappedEpisodes };
+                                }
+                            }
+                        }
+
                         episodesCache.current.set(session, newEpisodes);
                         return { session, eps: newEpisodes };
                     }

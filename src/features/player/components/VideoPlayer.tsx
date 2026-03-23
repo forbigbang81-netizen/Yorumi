@@ -163,17 +163,18 @@ export default function VideoPlayer({
     }, [subtitles, isHlsStream, streamUrl]);
 
     return (
-        <div className={`relative w-full aspect-video shrink-0 ${isExpanded ? 'max-h-[78vh]' : ''} bg-black group transition-all duration-300`}>
+        <div className={`relative w-full aspect-video shrink-0 ${isExpanded ? 'max-h-[78vh]' : ''} bg-black group transition-all duration-300 overflow-hidden`}>
+            <div className="absolute inset-0 bg-black" />
             {isLoading ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">
                     <LoadingSpinner />
                     <p className="mt-4 text-gray-400 animate-pulse">Loading Stream...</p>
                 </div>
             ) : streamUrl && isHlsStream ? (
-                <div className="relative w-full h-full">
+                <div className="relative w-full h-full z-10 flex items-center justify-center">
                     <video
                         ref={videoRef}
-                        className="w-full h-full object-contain object-center [color-scheme:dark]"
+                        className="max-w-full max-h-full w-auto h-auto object-contain object-center [color-scheme:dark] bg-black"
                         controls
                         playsInline
                         autoPlay
@@ -206,8 +207,8 @@ export default function VideoPlayer({
                     />
                 </div>
             ) : streamUrl ? (
-                <div className="relative w-full h-full bg-black flex items-center justify-center">
-                    <div className="h-full max-w-full" style={{ aspectRatio: '4 / 3' }}>
+                <div className="relative w-full h-full bg-black flex items-center justify-center z-10">
+                    <div className="w-full h-full max-w-full max-h-full flex items-center justify-center bg-black">
                         <iframe
                             key={streamUrl}
                             src={streamUrl}
