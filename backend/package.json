@@ -12,6 +12,7 @@
         "migrate:mappings": "tsx scripts/migrate-anilist-mappings.ts --apply"
     },
     "dependencies": {
+        "@sparticuz/chromium": "^143.0.4",
         "@types/cheerio": "^0.22.35",
         "@upstash/redis": "^1.36.1",
         "aniwatch": "^2.27.9",
