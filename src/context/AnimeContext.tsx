@@ -127,7 +127,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     });
 
     // Caches
-    const scraperSessionCache = useRef(new Map<number, string>());
+    const scraperSessionCache = useRef(new Map<string, string>());
     const episodesCache = useRef(new Map<string, Episode[]>());
 
     // --- Actions ---
@@ -316,6 +316,23 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
     const resolveAndCacheEpisodes = async (anime: Anime): Promise<{ session: string | null, eps: Episode[] }> => {
         let session: string | null = null;
+        const getAnimeCacheKey = (target: Anime): string | null => {
+            const mal = Number(target?.mal_id);
+            if (Number.isFinite(mal) && mal > 0) return `mal:${mal}`;
+            const aid = Number(target?.id);
+            if (Number.isFinite(aid) && aid > 0) return `anilist:${aid}`;
+            const sid = String(target?.scraperId || '').trim();
+            if (sid) return `scraper:${sid}`;
+            return null;
+        };
+        const cacheKey = getAnimeCacheKey(anime);
+        const mappingKey =
+            (() => {
+                const mal = Number(anime?.mal_id);
+                if (Number.isFinite(mal) && mal > 0) return mal;
+                const aid = Number(anime?.id);
+                return Number.isFinite(aid) && aid > 0 ? aid : null;
+            })();
         const isLegacyAnimePaheSession = (value: string) =>
             /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
@@ -386,29 +403,33 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         // Fast path: when scraperId is already known, avoid extra mapping/search calls.
         if (anime.scraperId) {
             session = anime.scraperId;
-            if (anime.mal_id) {
-                scraperSessionCache.current.set(anime.mal_id, anime.scraperId);
+            if (cacheKey) {
+                scraperSessionCache.current.set(cacheKey, anime.scraperId);
             }
         }
 
-        if (!session && scraperSessionCache.current.has(anime.mal_id)) {
-            const cachedSession = scraperSessionCache.current.get(anime.mal_id)!;
+        if (!session && cacheKey && scraperSessionCache.current.has(cacheKey)) {
+            const cachedSession = scraperSessionCache.current.get(cacheKey)!;
             if (!isLegacyAnimePaheSession(cachedSession)) {
                 session = cachedSession;
             } else {
-                scraperSessionCache.current.delete(anime.mal_id);
-                animeService.clearAnimeMapping(anime.mal_id).catch(() => undefined);
+                scraperSessionCache.current.delete(cacheKey);
+                if (mappingKey !== null) {
+                    animeService.clearAnimeMapping(mappingKey).catch(() => undefined);
+                }
             }
         } else if (!session) {
             // 0. Try to get from Firebase Mapping Cache
-            try {
-                const cachedSession = await animeService.getAnimeMapping(anime.mal_id);
-                if (cachedSession) {
-                    session = cachedSession;
-                    scraperSessionCache.current.set(anime.mal_id, cachedSession);
+            if (mappingKey !== null) {
+                try {
+                    const cachedSession = await animeService.getAnimeMapping(mappingKey);
+                    if (cachedSession) {
+                        session = cachedSession;
+                        if (cacheKey) scraperSessionCache.current.set(cacheKey, cachedSession);
+                    }
+                } catch (e) {
+                    console.warn("[AnimeContext] Failed to check mapping cache", e);
                 }
-            } catch (e) {
-                console.warn("[AnimeContext] Failed to check mapping cache", e);
             }
 
         }
@@ -448,9 +469,11 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
                     if (bestMatch && maxScore > 0) { // Threshold for acceptance
                         session = bestMatch.session;
-                        scraperSessionCache.current.set(anime.mal_id, bestMatch.session);
+                        if (cacheKey) scraperSessionCache.current.set(cacheKey, bestMatch.session);
                         // Save to Firebase Cache
-                        animeService.saveAnimeMapping(anime.mal_id, bestMatch.session).catch(console.error);
+                        if (mappingKey !== null) {
+                            animeService.saveAnimeMapping(mappingKey, bestMatch.session).catch(console.error);
+                        }
                     }
                 }
             } catch (e) {
@@ -510,7 +533,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                         return { session, eps: newEpisodes };
                     }
                 } catch (e) {
-                    scraperSessionCache.current.delete(anime.mal_id);
+                    if (cacheKey) scraperSessionCache.current.delete(cacheKey);
                 }
             }
         }
@@ -518,8 +541,18 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     const preloadEpisodes = async (anime: Anime) => {
-        if (scraperSessionCache.current.has(anime.mal_id)) {
-            const session = scraperSessionCache.current.get(anime.mal_id)!;
+        const getAnimeCacheKey = (target: Anime): string | null => {
+            const mal = Number(target?.mal_id);
+            if (Number.isFinite(mal) && mal > 0) return `mal:${mal}`;
+            const aid = Number(target?.id);
+            if (Number.isFinite(aid) && aid > 0) return `anilist:${aid}`;
+            const sid = String(target?.scraperId || '').trim();
+            if (sid) return `scraper:${sid}`;
+            return null;
+        };
+        const cacheKey = getAnimeCacheKey(anime);
+        if (cacheKey && scraperSessionCache.current.has(cacheKey)) {
+            const session = scraperSessionCache.current.get(cacheKey)!;
             if (episodesCache.current.has(session)) {
                 setEpisodes(episodesCache.current.get(session)!);
                 setScraperSession(session);

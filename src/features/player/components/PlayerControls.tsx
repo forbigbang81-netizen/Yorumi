@@ -151,13 +151,13 @@ export default function PlayerControls({
                 </button>
             </div>
 
-            <div className="mt-3 rounded-xl overflow-hidden border border-yorumi-accent/30 bg-[#1d2028] flex flex-col md:flex-row">
-                <div className="md:w-[290px] bg-yorumi-accent text-white px-4 py-3 flex items-center justify-center text-center font-semibold leading-tight">
+            <div className="mt-3 rounded-xl overflow-hidden border border-white/10 bg-[#1d2028] flex flex-col md:flex-row">
+                <div className="md:w-[290px] bg-yorumi-accent text-white px-4 py-3 flex items-center justify-center text-center leading-tight">
                     <div>
-                        <p>You are watching</p>
-                        <p className="text-[30px] font-extrabold leading-none my-1">Episode {episodeNumber}</p>
-                        <p>If current server doesn't work</p>
-                        <p>please try other servers beside.</p>
+                        <p className="text-[14px] font-semibold">You are watching</p>
+                        <p className="text-[20px] font-extrabold leading-none my-1">Episode {episodeNumber}</p>
+                        <p className="text-[14px] font-medium">If current server doesn't work</p>
+                        <p className="text-[14px] font-medium">please try other servers beside.</p>
                     </div>
                 </div>
 

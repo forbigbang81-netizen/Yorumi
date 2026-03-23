@@ -120,6 +120,30 @@ export class AniwatchScraper {
             };
 
             const links: StreamLink[] = [];
+            let fallbackSubtitles: { url: string; lang: string; default?: boolean }[] = [];
+            const fetchSubtitleList = async (server: string, category: 'sub' | 'dub') => {
+                try {
+                    const payload = await scraper.getEpisodeSources(
+                        episodeSession,
+                        server as any,
+                        category as any
+                    );
+                    const referer = payload?.headers?.Referer || 'https://megacloud.blog/';
+                    const rawApiBase = String(process.env.API_URL || '/api').replace(/\/+$/, '');
+                    const apiBase = rawApiBase === '/api' || rawApiBase.endsWith('/api')
+                        ? rawApiBase
+                        : `${rawApiBase}/api`;
+                    return (Array.isArray(payload?.subtitles) ? payload.subtitles : [])
+                        .filter((sub: any) => sub?.url)
+                        .map((sub: any) => ({
+                            url: `${apiBase}/scraper/proxy?url=${encodeURIComponent(String(sub.url))}&referer=${encodeURIComponent(referer)}`,
+                            lang: String(sub.lang || sub.language || 'Unknown'),
+                            default: Boolean(sub.default),
+                        }));
+                } catch {
+                    return [];
+                }
+            };
             for (const candidate of candidates) {
                 try {
                     const payload = await scraper.getEpisodeSources(
@@ -135,13 +159,19 @@ export class AniwatchScraper {
                     const apiBase = rawApiBase === '/api' || rawApiBase.endsWith('/api')
                         ? rawApiBase
                         : `${rawApiBase}/api`;
-                    const subtitleList = (Array.isArray(payload?.subtitles) ? payload.subtitles : [])
+                    const subtitleListRaw = (Array.isArray(payload?.subtitles) ? payload.subtitles : [])
                         .filter((sub: any) => sub?.url)
                         .map((sub: any) => ({
                             url: `${apiBase}/scraper/proxy?url=${encodeURIComponent(String(sub.url))}&referer=${encodeURIComponent(referer)}`,
                             lang: String(sub.lang || sub.language || 'Unknown'),
                             default: Boolean(sub.default),
                         }));
+                    if (candidate.category === 'sub' && subtitleListRaw.length > 0) {
+                        fallbackSubtitles = subtitleListRaw;
+                    }
+                    const subtitleList = subtitleListRaw.length > 0
+                        ? subtitleListRaw
+                        : (candidate.category === 'dub' ? fallbackSubtitles : []);
 
                     const candidateLinks = sources
                         .filter((source: any) => !!source?.url)
@@ -170,6 +200,20 @@ export class AniwatchScraper {
             }
 
             if (links.length === 0) return [];
+
+            // If dub links are present but still lack subtitles, fetch sub subtitles once as fallback.
+            const hasDubWithoutSubs = links.some((l) => l.audio === 'dub' && (!Array.isArray(l.subtitles) || l.subtitles.length === 0));
+            if (hasDubWithoutSubs && fallbackSubtitles.length === 0) {
+                const subHd1 = await fetchSubtitleList('hd-1', 'sub');
+                fallbackSubtitles = subHd1.length > 0 ? subHd1 : await fetchSubtitleList('hd-2', 'sub');
+            }
+            if (fallbackSubtitles.length > 0) {
+                links.forEach((l) => {
+                    if (l.audio === 'dub' && (!Array.isArray(l.subtitles) || l.subtitles.length === 0)) {
+                        l.subtitles = fallbackSubtitles;
+                    }
+                });
+            }
 
             const deduped = new Map<string, StreamLink>();
             links.forEach((link) => {

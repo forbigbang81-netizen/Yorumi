@@ -132,15 +132,22 @@ export default function VideoPlayer({
 
         Array.from(video.querySelectorAll('track[data-yorumi-subtitle="1"]')).forEach((track) => track.remove());
 
-        const english = subtitles.find((sub) => /english/i.test(sub.lang || ''));
-        if (!english?.url) return;
+        const preferred =
+            subtitles.find((sub) => Boolean(sub.default)) ||
+            subtitles.find((sub) => {
+                const lang = String(sub.lang || '').trim().toLowerCase();
+                return lang === 'english' || lang === 'eng' || lang === 'en' || lang.startsWith('en-');
+            }) ||
+            subtitles[0];
+        if (!preferred?.url) return;
 
         const track = document.createElement('track');
         track.setAttribute('data-yorumi-subtitle', '1');
         track.kind = 'subtitles';
-        track.label = 'English';
-        track.src = english.url;
-        track.srclang = 'en';
+        track.label = preferred.lang || 'Subtitle';
+        track.src = preferred.url;
+        const lang = String(preferred.lang || '').trim().toLowerCase();
+        track.srclang = (lang === 'english' || lang === 'eng') ? 'en' : (lang || 'en');
         track.default = true;
         video.appendChild(track);
 
