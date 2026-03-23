@@ -10,6 +10,7 @@ interface VideoPlayerProps {
     isLoading: boolean;
     isExpanded: boolean;
     onLoad?: () => void;
+    onError?: () => void;
     onProgress?: (progress: { currentTime: number; duration: number; ended?: boolean }) => void;
     startAtSeconds?: number;
 }
@@ -21,6 +22,7 @@ export default function VideoPlayer({
     isLoading,
     isExpanded,
     onLoad,
+    onError,
     onProgress,
     startAtSeconds = 0
 }: VideoPlayerProps) {
@@ -73,6 +75,11 @@ export default function VideoPlayer({
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
                 video.play().catch(() => undefined);
                 onLoadRef.current?.();
+            });
+            hls.on(Hls.Events.ERROR, (_event, data) => {
+                if (data?.fatal) {
+                    onError?.();
+                }
             });
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = streamUrl;
@@ -166,6 +173,7 @@ export default function VideoPlayer({
                         crossOrigin="anonymous"
                         preload="auto"
                         onLoadedData={onLoad}
+                        onError={onError}
                         onTimeUpdate={(e) => {
                             const el = e.currentTarget;
                             onProgress?.({
@@ -201,6 +209,7 @@ export default function VideoPlayer({
                             allow="autoplay"
                             title="Video Player"
                             onLoad={onLoad}
+                            onError={onError}
                         />
                     </div>
                 </div>

@@ -24,11 +24,14 @@ export default function WatchPage() {
         episodesResolved,
         epNum,
         resumeAtSeconds,
-        cleanCurrentTitle,
         epLoading,
         streamLoading,
         isExpanded,
         isAutoQuality,
+        selectedAudio,
+        selectedProvider,
+        availableAudios,
+        availableProviders,
         showQualityMenu,
         selectedStreamIndex,
         toggleExpand,
@@ -39,8 +42,11 @@ export default function WatchPage() {
         setShowQualityMenu,
         handleQualityChange,
         setAutoQuality,
+        setSelectedAudio,
+        setSelectedProvider,
         setIsPlayerReady,
         handlePlaybackProgress,
+        handleStreamError,
         navigate
     } = usePlayer(id);
 
@@ -138,21 +144,24 @@ export default function WatchPage() {
                         isLoading={streamLoading}
                         isExpanded={isExpanded}
                         onLoad={() => setIsPlayerReady(true)}
+                        onError={handleStreamError}
                         onProgress={handlePlaybackProgress}
                         startAtSeconds={resumeAtSeconds}
                     />
 
                     {/* Metadata & Controls Bar (Below Player) */}
                     <PlayerControls
-                        animeTitle={displayTitle}
                         episodeNumber={epNum}
-                        episodeTitle={cleanCurrentTitle}
                         isExpanded={isExpanded}
                         canPrev={epNum !== '1'}
                         isAutoQuality={isAutoQuality}
                         selectedStreamIndex={selectedStreamIndex}
                         streams={streams}
                         showQualityMenu={showQualityMenu}
+                        selectedAudio={selectedAudio}
+                        selectedProvider={selectedProvider}
+                        availableAudios={availableAudios}
+                        availableProviders={availableProviders}
                         onPrev={handlePrevEp}
                         onNext={handleNextEp}
                         onReload={reloadPlayer}
@@ -160,6 +169,8 @@ export default function WatchPage() {
                         setShowQualityMenu={setShowQualityMenu}
                         onQualityChange={handleQualityChange}
                         onSetAutoQuality={setAutoQuality}
+                        onAudioChange={setSelectedAudio}
+                        onProviderChange={setSelectedProvider}
                     />
                 </div>
 

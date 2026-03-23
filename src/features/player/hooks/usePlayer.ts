@@ -33,11 +33,18 @@ export function usePlayer(animeId: string | undefined) {
         currentEpisode,
         streams,
         isAutoQuality,
+        selectedAudio,
+        selectedProvider,
+        availableAudios,
+        availableProviders,
         selectedStreamIndex,
         showQualityMenu,
         setShowQualityMenu,
         handleQualityChange,
         setAutoQuality,
+        setSelectedAudio,
+        setSelectedProvider,
+        tryNextStream,
         clearStreams,
         loadStream,
         prefetchStream
@@ -61,6 +68,7 @@ export function usePlayer(animeId: string | undefined) {
     const lastPlaybackSecondRef = useRef<number | null>(null);
     const lastDurationSecondRef = useRef(0);
     const lastSavedProgressRef = useRef<{ at: number; second: number }>({ at: 0, second: -1 });
+    const streamErrorRetryRef = useRef<{ url: string; at: number }>({ url: '', at: 0 });
 
     const parseEpisodeNumber = (value: unknown): number => {
         if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -267,6 +275,16 @@ export function usePlayer(animeId: string | undefined) {
         lastSavedProgressRef.current = { at: now, second: currentSecond };
     }, [selectedAnime, currentEpisode, isPlayerReady, flushWatchTime, saveProgress]);
 
+    const handleStreamError = useCallback(() => {
+        const url = String(currentStream?.url || '');
+        const now = Date.now();
+        if (url && streamErrorRetryRef.current.url === url && now - streamErrorRetryRef.current.at < 1200) {
+            return;
+        }
+        streamErrorRetryRef.current = { url, at: now };
+        tryNextStream();
+    }, [currentStream?.url, tryNextStream]);
+
     // --- Actions ---
 
     const handleEpisodeClick = (ep: Episode) => {
@@ -324,6 +342,10 @@ export function usePlayer(animeId: string | undefined) {
         // UI State
         isExpanded,
         isAutoQuality,
+        selectedAudio,
+        selectedProvider,
+        availableAudios,
+        availableProviders,
         showQualityMenu,
         selectedStreamIndex,
 
@@ -337,7 +359,10 @@ export function usePlayer(animeId: string | undefined) {
         setShowQualityMenu,
         handleQualityChange,
         setAutoQuality,
+        setSelectedAudio,
+        setSelectedProvider,
         handlePlaybackProgress,
+        handleStreamError,
         navigate // Expose navigate for back button
     };
 }

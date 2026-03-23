@@ -10,6 +10,14 @@ const apiClient = axios.create({
     timeout: 12000,
 });
 
+const API_ORIGIN = API_BASE.replace(/\/+$/, '').replace(/\/api$/i, '');
+const normalizeProxyUrl = (url?: string) => {
+    if (!url || typeof url !== 'string') return url;
+    if (/^https?:\/\//i.test(url)) return url;
+    if (url.startsWith('/api/')) return `${API_ORIGIN}${url}`;
+    return url;
+};
+
 // Helper to map AniList response to our Anime interface format
 const mapAnilistToAnime = (item: any) => {
     // Debug metadata availability - Silenced to reduce console noise
@@ -516,10 +524,22 @@ export const animeService = {
                         ep_session: episodeSession,
                     },
                 });
-                if (Array.isArray(data) && data.length > 0) {
-                    streamCache.set(cacheKey, { data, timestamp: Date.now() });
+                const normalized = Array.isArray(data)
+                    ? data.map((item: any) => ({
+                        ...item,
+                        url: normalizeProxyUrl(item?.url),
+                        subtitles: Array.isArray(item?.subtitles)
+                            ? item.subtitles.map((sub: any) => ({
+                                ...sub,
+                                url: normalizeProxyUrl(sub?.url),
+                            }))
+                            : item?.subtitles,
+                    }))
+                    : data;
+                if (Array.isArray(normalized) && normalized.length > 0) {
+                    streamCache.set(cacheKey, { data: normalized, timestamp: Date.now() });
                 }
-                return data;
+                return normalized;
             } finally {
                 inFlightRequests.delete(cacheKey);
             }

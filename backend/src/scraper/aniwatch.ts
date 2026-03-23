@@ -30,6 +30,8 @@ export interface Episode {
 export interface StreamLink {
     quality: string;
     audio: string;
+    provider?: string;
+    server?: string;
     url: string;
     directUrl?: string;
     isHls: boolean;
@@ -108,7 +110,16 @@ export class AniwatchScraper {
                 { server: 'hd-2', category: 'dub' },
             ];
 
-            let sourcePayload: any = null;
+            const normalizeProvider = (server: string, url: string) => {
+                const hay = `${server} ${url}`.toLowerCase();
+                if (hay.includes('mega')) return 'megacloud';
+                if (hay.includes('vidsrc') || hay.includes('vidstream')) return 'vidsrc';
+                if (server === 'hd-1') return 'vidsrc';
+                if (server === 'hd-2') return 'megacloud';
+                return server || 'unknown';
+            };
+
+            const links: StreamLink[] = [];
             for (const candidate of candidates) {
                 try {
                     const payload = await scraper.getEpisodeSources(
@@ -117,49 +128,56 @@ export class AniwatchScraper {
                         candidate.category as any
                     );
                     const sources = Array.isArray(payload?.sources) ? payload.sources : [];
-                    if (sources.length > 0) {
-                        sourcePayload = payload;
-                        break;
-                    }
+                    if (sources.length === 0) continue;
+
+                    const referer = payload?.headers?.Referer || 'https://megacloud.blog/';
+                    const rawApiBase = String(process.env.API_URL || '/api').replace(/\/+$/, '');
+                    const apiBase = rawApiBase === '/api' || rawApiBase.endsWith('/api')
+                        ? rawApiBase
+                        : `${rawApiBase}/api`;
+                    const subtitleList = (Array.isArray(payload?.subtitles) ? payload.subtitles : [])
+                        .filter((sub: any) => sub?.url)
+                        .map((sub: any) => ({
+                            url: `${apiBase}/scraper/proxy?url=${encodeURIComponent(String(sub.url))}&referer=${encodeURIComponent(referer)}`,
+                            lang: String(sub.lang || sub.language || 'Unknown'),
+                            default: Boolean(sub.default),
+                        }));
+
+                    const candidateLinks = sources
+                        .filter((source: any) => !!source?.url)
+                        .map((source: any) => {
+                            const originalUrl = String(source.url);
+                            const proxiedUrl = `${apiBase}/scraper/proxy?url=${encodeURIComponent(originalUrl)}&referer=${encodeURIComponent(referer)}`;
+                            const qualityRaw = String(source.quality || '1080');
+                            const quality = /^\d+$/.test(qualityRaw) ? qualityRaw : '1080';
+                            const provider = normalizeProvider(candidate.server, originalUrl);
+                            return {
+                                quality,
+                                audio: candidate.category,
+                                provider,
+                                server: candidate.server,
+                                url: proxiedUrl,
+                                directUrl: originalUrl,
+                                isHls: Boolean(source.isM3U8 || originalUrl.includes('.m3u8')),
+                                subtitles: subtitleList,
+                            } satisfies StreamLink;
+                        });
+
+                    links.push(...candidateLinks);
                 } catch {
                     // try next server/category
                 }
             }
 
-            const sources = Array.isArray(sourcePayload?.sources) ? sourcePayload.sources : [];
-            if (sources.length === 0) return [];
+            if (links.length === 0) return [];
 
-            const referer = sourcePayload?.headers?.Referer || 'https://megacloud.blog/';
-            const rawApiBase = String(process.env.API_URL || '/api').replace(/\/+$/, '');
-            const apiBase = rawApiBase === '/api' || rawApiBase.endsWith('/api')
-                ? rawApiBase
-                : `${rawApiBase}/api`;
-            const subtitleList = (Array.isArray(sourcePayload?.subtitles) ? sourcePayload.subtitles : [])
-                .filter((sub: any) => sub?.url)
-                .map((sub: any) => ({
-                    url: `${apiBase}/scraper/proxy?url=${encodeURIComponent(String(sub.url))}&referer=${encodeURIComponent(referer)}`,
-                    lang: String(sub.lang || sub.language || 'Unknown'),
-                    default: Boolean(sub.default),
-                }));
+            const deduped = new Map<string, StreamLink>();
+            links.forEach((link) => {
+                const key = `${link.audio}|${link.provider}|${link.quality}|${link.directUrl || link.url}`;
+                if (!deduped.has(key)) deduped.set(key, link);
+            });
 
-            const links = sources
-                .filter((source: any) => !!source?.url)
-                .map((source: any) => {
-                    const originalUrl = String(source.url);
-                    const proxiedUrl = `${apiBase}/scraper/proxy?url=${encodeURIComponent(originalUrl)}&referer=${encodeURIComponent(referer)}`;
-                    const qualityRaw = String(source.quality || '1080');
-                    const quality = /^\d+$/.test(qualityRaw) ? qualityRaw : '1080';
-                    return {
-                        quality,
-                        audio: 'sub',
-                        url: proxiedUrl,
-                        directUrl: originalUrl,
-                        isHls: Boolean(source.isM3U8 || originalUrl.includes('.m3u8')),
-                        subtitles: subtitleList,
-                    } satisfies StreamLink;
-                });
-
-            return links;
+            return [...deduped.values()];
         } catch (error) {
             console.error('Aniwatch getLinks error:', error);
             return [];
