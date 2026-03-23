@@ -1,4 +1,4 @@
-import { AniwatchScraper } from '../../../src/scraper/aniwatch';
+import { AniwatchScraper } from '../../scraper/aniwatch';
 import { cacheGet, cacheSet } from '../../utils/redis-cache';
 
 export class ScraperService {
