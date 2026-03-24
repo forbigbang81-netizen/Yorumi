@@ -128,6 +128,25 @@ export class AniwatchScraper {
                 if (lower.includes('t-cloud') || lower.includes('tcloud')) return 'megacloud';
                 return lower || 'unknown';
             };
+            const isDeadEmbed = async (url: string): Promise<boolean> => {
+                try {
+                    const resp = await axios.get(url, {
+                        timeout: 8000,
+                        validateStatus: () => true,
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                            Referer: 'https://aniwatchtv.to/',
+                            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        },
+                    });
+                    const body = String(resp?.data || '').toLowerCase();
+                    return body.includes('file not found')
+                        || body.includes("we're sorry")
+                        || body.includes('copyright violation');
+                } catch {
+                    return true;
+                }
+            };
             const tryIframeFallback = async (): Promise<StreamLink[]> => {
                 try {
                     const rawEpisodeSession = String(episodeSession || '').trim();
@@ -188,6 +207,7 @@ export class AniwatchScraper {
                             const payload = resp?.data || {};
                             const embedUrl = String(payload?.link || '').trim();
                             if (!embedUrl) continue;
+                            if (await isDeadEmbed(embedUrl)) continue;
                             links.push({
                                 quality: '1080',
                                 audio: server.audio,

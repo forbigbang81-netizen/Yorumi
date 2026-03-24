@@ -118,10 +118,11 @@ export class ScraperService {
 
     async getStreams(animeSession: string, epSession: string) {
         this.trackHotStream(animeSession, epSession);
-        const key = `streams:${animeSession}:${epSession}`;
+        // Versioned key invalidates old poisoned cache payloads from previous extractors.
+        const key = `streams:v2:${animeSession}:${epSession}`;
         return this.getOrLoad(
             key,
-            20 * 60 * 1000,
+            5 * 60 * 1000,
             async () => {
                 const fast = await this.fastScraper.getLinks(animeSession, epSession);
                 return Array.isArray(fast) ? fast : [];
