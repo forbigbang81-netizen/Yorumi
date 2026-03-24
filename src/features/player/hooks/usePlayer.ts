@@ -6,7 +6,7 @@ import type { Anime, Episode } from '../../../types/anime';
 import { storage } from '../../../utils/storage';
 import { animeService } from '../../../services/animeService';
 
-export function usePlayer(animeId: string | undefined) {
+export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const location = useLocation();
@@ -70,6 +70,7 @@ export function usePlayer(animeId: string | undefined) {
     const lastDurationSecondRef = useRef(0);
     const lastSavedProgressRef = useRef<{ at: number; second: number }>({ at: 0, second: -1 });
     const streamErrorRetryRef = useRef<{ url: string; at: number }>({ url: '', at: 0 });
+    const autoLoadAttemptKeyRef = useRef<string>('');
 
     const parseEpisodeNumber = (value: unknown): number => {
         if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -79,6 +80,11 @@ export function usePlayer(animeId: string | undefined) {
         const match = raw.match(/(\d+(?:\.\d+)?)/);
         return match ? Number(match[1]) : NaN;
     };
+    const decodeSlugTitle = (slug?: string) =>
+        String(slug || '')
+            .replace(/-/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
 
     // --- Effects ---
 
@@ -93,6 +99,7 @@ export function usePlayer(animeId: string | undefined) {
         lastPlaybackSecondRef.current = null;
         lastDurationSecondRef.current = 0;
         lastSavedProgressRef.current = { at: 0, second: -1 };
+        autoLoadAttemptKeyRef.current = '';
     }, [animeId]);
 
     useEffect(() => {
@@ -122,9 +129,14 @@ export function usePlayer(animeId: string | undefined) {
             handleAnimeClick(location.state.anime);
         } else if (animeId) {
             const ids = isNaN(Number(animeId)) ? animeId : parseInt(animeId);
-            handleAnimeClick({ mal_id: ids } as Anime);
+            const fallbackTitle = decodeSlugTitle(animeSlugTitle);
+            handleAnimeClick({
+                mal_id: typeof ids === 'number' ? ids : 0,
+                id: typeof ids === 'number' ? ids : undefined,
+                title: fallbackTitle || String(animeId),
+            } as Anime);
         }
-    }, [animeId, location.state, selectedAnime]);
+    }, [animeId, animeSlugTitle, location.state, selectedAnime]);
 
     // Auto-load Episode
     useEffect(() => {
@@ -145,6 +157,12 @@ export function usePlayer(animeId: string | undefined) {
             }
 
             if (targetEp) {
+                const attemptKey = `${String(animeId || '')}:${String(targetEp.session || targetEp.episodeNumber || '')}`;
+                if (autoLoadAttemptKeyRef.current === attemptKey) {
+                    return;
+                }
+                autoLoadAttemptKeyRef.current = attemptKey;
+
                 const targetEpisodeNumber = parseEpisodeNumber(targetEp.episodeNumber);
                 if (Number.isFinite(targetEpisodeNumber) && targetEpisodeNumber > 0) {
                     markEpisodeComplete(targetEpisodeNumber);
@@ -293,6 +311,7 @@ export function usePlayer(animeId: string | undefined) {
     // --- Actions ---
 
     const handleEpisodeClick = (ep: Episode) => {
+        autoLoadAttemptKeyRef.current = '';
         const episodeNumber = parseEpisodeNumber(ep.episodeNumber);
         if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
             markEpisodeComplete(episodeNumber);
@@ -307,6 +326,7 @@ export function usePlayer(animeId: string | undefined) {
 
     const reloadPlayer = () => {
         if (currentEpisode) {
+            autoLoadAttemptKeyRef.current = '';
             const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
             setStartAtOverrideSeconds(second > 0 ? second : null);
             setIsPlayerReady(false);
@@ -329,6 +349,7 @@ export function usePlayer(animeId: string | undefined) {
     };
 
     const setSelectedAudio = (audio: 'sub' | 'dub') => {
+        autoLoadAttemptKeyRef.current = '';
         const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
         if (second > 0) setStartAtOverrideSeconds(second);
         setIsPlayerReady(false);
@@ -336,6 +357,7 @@ export function usePlayer(animeId: string | undefined) {
     };
 
     const setSelectedProvider = (provider: 'vidsrc' | 'megacloud') => {
+        autoLoadAttemptKeyRef.current = '';
         const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
         if (second > 0) setStartAtOverrideSeconds(second);
         setIsPlayerReady(false);

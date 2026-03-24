@@ -18,7 +18,11 @@ export default function ContinueWatchingPage() {
                     onRemove={(animeId) => removeFromHistory(animeId)}
                     onWatchClick={(anime: Anime, episodeNumber: number, startSeconds?: number) => {
                         const title = slugify(anime.title || 'anime');
-                        const targetId = anime.scraperId || anime.mal_id;
+                        const rawScraperId = String(anime.scraperId || '').trim();
+                        const targetId = rawScraperId
+                            ? (rawScraperId.startsWith('s:') ? rawScraperId : `s:${rawScraperId}`)
+                            : anime.mal_id;
+                        if (!targetId) return;
                         const resume = Number.isFinite(startSeconds) ? Math.max(0, Math.floor(startSeconds || 0)) : 0;
                         navigate(`/anime/watch/${title}/${targetId}?ep=${episodeNumber}${resume > 0 ? `&t=${resume}` : ''}`);
                     }}

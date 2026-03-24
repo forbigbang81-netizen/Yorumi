@@ -106,6 +106,8 @@ export default function AnimeLogoImage({ anilistId, title, className = '', size 
 
     useEffect(() => {
         let isMounted = true;
+        setLogoUrl(null);
+        setHasError(false);
 
         const fetchLogo = async () => {
             // Check cache first
@@ -208,7 +210,7 @@ export default function AnimeLogoImage({ anilistId, title, className = '', size 
         );
     }
 
-    // Default: Show text title (during loading AND as fallback)
+    // Default: Show text title immediately while logo is resolving.
     // This provides instant content - user sees title immediately
     return (
         <h1 className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white leading-tight ${className}`}>

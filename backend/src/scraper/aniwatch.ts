@@ -1,3 +1,6 @@
+import axios from 'axios';
+import * as cheerio from 'cheerio';
+
 export interface AnimeSearchResult {
     id: string;
     title: string;
@@ -118,9 +121,109 @@ export class AniwatchScraper {
                 if (server === 'hd-2') return 'megacloud';
                 return server || 'unknown';
             };
+            const normalizeProviderName = (name: string) => {
+                const lower = String(name || '').toLowerCase();
+                if (lower.includes('mega')) return 'megacloud';
+                if (lower.includes('vidsrc') || lower.includes('vidstream')) return 'vidsrc';
+                if (lower.includes('t-cloud') || lower.includes('tcloud')) return 'megacloud';
+                return lower || 'unknown';
+            };
+            const tryIframeFallback = async (): Promise<StreamLink[]> => {
+                try {
+                    const rawEpisodeSession = String(episodeSession || '').trim();
+                    const decodedEpisodeSession = (() => {
+                        try {
+                            return decodeURIComponent(rawEpisodeSession);
+                        } catch {
+                            return rawEpisodeSession;
+                        }
+                    })();
+                    // IMPORTANT: Prefer explicit ep query token.
+                    // Some slugs include numeric suffixes (e.g. "...-20401?ep=162349");
+                    // extracting the first digits causes cross-anime wrong streams.
+                    const epQueryMatch = decodedEpisodeSession.match(/[?&]ep=(\d+)/i);
+                    const numericOnlyMatch = decodedEpisodeSession.match(/^\d+$/);
+                    const episodeId = epQueryMatch?.[1] || numericOnlyMatch?.[0] || '';
+                    if (!episodeId) return [];
+
+                    const serversResp = await axios.get('https://aniwatchtv.to/ajax/v2/episode/servers', {
+                        params: { episodeId },
+                        timeout: 12000,
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                            Referer: 'https://aniwatchtv.to/',
+                            Accept: 'application/json, text/plain, */*',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+
+                    const html = String(serversResp?.data?.html || '');
+                    if (!html) return [];
+                    const $ = cheerio.load(html);
+                    const pool: Array<{ audio: 'sub' | 'dub'; serverName: string; sourceId: string }> = [];
+
+                    $('.server-item').each((_idx, el) => {
+                        const type = String($(el).attr('data-type') || '').toLowerCase();
+                        const sourceId = String($(el).attr('data-id') || '').trim();
+                        const serverName = $(el).find('a.btn').text().trim() || 'unknown';
+                        if (!sourceId) return;
+                        const audio: 'sub' | 'dub' = type === 'dub' ? 'dub' : 'sub';
+                        pool.push({ audio, serverName, sourceId });
+                    });
+                    if (pool.length === 0) return [];
+
+                    const links: StreamLink[] = [];
+                    for (const server of pool) {
+                        try {
+                            const resp = await axios.get('https://aniwatchtv.to/ajax/v2/episode/sources', {
+                                params: { id: server.sourceId },
+                                timeout: 12000,
+                                headers: {
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                                    Referer: 'https://aniwatchtv.to/',
+                                    Accept: 'application/json, text/plain, */*',
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                },
+                            });
+                            const payload = resp?.data || {};
+                            const embedUrl = String(payload?.link || '').trim();
+                            if (!embedUrl) continue;
+                            links.push({
+                                quality: '1080',
+                                audio: server.audio,
+                                provider: normalizeProviderName(server.serverName),
+                                server: server.serverName,
+                                url: embedUrl,
+                                directUrl: embedUrl,
+                                isHls: false,
+                                subtitles: [],
+                            });
+                        } catch {
+                            // continue other servers
+                        }
+                    }
+
+                    const dedup = new Map<string, StreamLink>();
+                    links.forEach((l) => {
+                        const key = `${l.audio}|${l.provider}|${l.directUrl || l.url}`;
+                        if (!dedup.has(key)) dedup.set(key, l);
+                    });
+                    return [...dedup.values()];
+                } catch {
+                    return [];
+                }
+            };
 
             const links: StreamLink[] = [];
             let fallbackSubtitles: { url: string; lang: string; default?: boolean }[] = [];
+
+            // Fast fallback path: upstream currently returns iframe links reliably,
+            // while source extraction may intermittently 404.
+            const iframeLinks = await tryIframeFallback();
+            if (iframeLinks.length > 0) {
+                return iframeLinks;
+            }
+
             const fetchSubtitleList = async (server: string, category: 'sub' | 'dub') => {
                 try {
                     const payload = await scraper.getEpisodeSources(

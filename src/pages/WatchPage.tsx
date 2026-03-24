@@ -12,7 +12,7 @@ import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 
 export default function WatchPage() {
-    const { id } = useParams<{ title: string; id: string }>();
+    const { id, title } = useParams<{ title: string; id: string }>();
     const { language } = useTitleLanguage();
 
     useEffect(() => {
@@ -58,7 +58,7 @@ export default function WatchPage() {
         handlePlaybackProgress,
         handleStreamError,
         navigate
-    } = usePlayer(id);
+    } = usePlayer(id, title);
 
     const animeMatch = !!(anime && id && (String(anime.id) === String(id) || String(anime.mal_id) === String(id)));
     const isPageLoading = !anime || !animeMatch;

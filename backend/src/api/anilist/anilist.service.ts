@@ -1031,7 +1031,7 @@ export const anilistService = {
     },
 
     async getAnimeById(id: number) {
-        const query = `
+        const queryById = `
             query ($id: Int) {
                 Media(id: $id, type: ANIME) {
                     ${MEDIA_FIELDS}
@@ -1081,10 +1081,64 @@ export const anilistService = {
                 }
             }
         `;
+        const queryByMalId = `
+            query ($idMal: Int) {
+                Media(idMal: $idMal, type: ANIME) {
+                    ${MEDIA_FIELDS}
+                    relations {
+                        edges {
+                            relationType
+                            node {
+                                id
+                                title { romaji english }
+                                coverImage { large }
+                                format
+                                isAdult
+                            }
+                        }
+                    }
+                    recommendations(perPage: 6) {
+                        nodes {
+                            mediaRecommendation {
+                                id
+                                title { romaji english }
+                                coverImage { large }
+                                isAdult
+                            }
+                        }
+                    }
+                    trailer {
+                        id
+                        site
+                        thumbnail
+                    }
+                    characters(sort: [ROLE, RELEVANCE, ID], perPage: 12) {
+                        edges {
+                            role
+                            node {
+                                id
+                                name { full }
+                                image { large }
+                            }
+                            voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) {
+                                id
+                                name { full }
+                                image { large }
+                                languageV2
+                            }
+                        }
+                    }
+                }
+            }
+        `;
 
         try {
-            const response = await rateLimitedRequest(query, { id }, { cacheTtlSeconds: 3600 });
-            const media = response.data.Media;
+            const response = await rateLimitedRequest(queryById, { id }, { cacheTtlSeconds: 3600 });
+            let media = response.data.Media;
+            if (!media) {
+                const byMal = await rateLimitedRequest(queryByMalId, { idMal: id }, { cacheTtlSeconds: 3600 });
+                media = byMal.data.Media;
+            }
             if (media && media.recommendations && media.recommendations.nodes) {
                 media.recommendations.nodes = media.recommendations.nodes.filter((node: any) => !node.mediaRecommendation?.isAdult);
             }

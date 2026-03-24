@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { anilistService } from './anilist.service';
 import { HiAnimeScraper } from '../scraper/hianime.service';
 import { redis } from '../mapping/mapper';
+import { mappingService } from '../mapping/mapping.service';
+import { scraperService } from '../scraper/scraper.service';
 
 const router = Router();
 const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v1';
@@ -312,6 +314,120 @@ router.get('/search/manga', async (req, res) => {
     } catch (error) {
         console.error('Error in search manga route:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/anime/:id/fast', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const normalize = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const rankCandidate = (title: string, candidate: any) => {
+            const source = normalize(title);
+            const target = normalize(String(candidate?.title || ''));
+            if (!source || !target) return 0;
+            if (source === target) return 100;
+            if (source.includes(target) || target.includes(source)) return 70;
+            return 0;
+        };
+
+        let animeDetails: any = null;
+        let resolvedSession: string | null = null;
+
+        if (id.startsWith('s:')) {
+            resolvedSession = id.substring(2).trim() || null;
+            const scraperDetails = resolvedSession
+                ? await new HiAnimeScraper().getAnimeInfo(resolvedSession)
+                : null;
+
+            if (scraperDetails?.title) {
+                const searchRes = await anilistService.searchAnime(scraperDetails.title, 1, 1);
+                const anilistMatch = searchRes?.media?.[0];
+                if (anilistMatch?.id) {
+                    const full = await anilistService.getAnimeById(anilistMatch.id);
+                    if (full) {
+                        animeDetails = {
+                            ...full,
+                            id,
+                            mal_id: full.id,
+                            scraperId: resolvedSession,
+                        };
+                    }
+                }
+            }
+
+            if (!animeDetails && scraperDetails) {
+                animeDetails = {
+                    id,
+                    title: { romaji: scraperDetails.title, english: scraperDetails.title },
+                    coverImage: { large: scraperDetails.poster },
+                    description: scraperDetails.description,
+                    status: scraperDetails.status,
+                    episodes: scraperDetails.stats?.episodes?.sub || null,
+                    format: 'TV',
+                    genres: [],
+                    averageScore: 0,
+                    scraperId: resolvedSession,
+                };
+            }
+        } else {
+            const numericId = parseInt(id, 10);
+            if (Number.isNaN(numericId)) {
+                res.status(400).json({ error: 'Invalid ID' });
+                return;
+            }
+
+            animeDetails = await anilistService.getAnimeById(numericId);
+            if (!animeDetails) {
+                res.status(404).json({ error: 'Anime not found' });
+                return;
+            }
+
+            const mapped = await mappingService.getMapping(String(numericId)).catch(() => null);
+            if (mapped?.id) {
+                resolvedSession = String(mapped.id).trim();
+            }
+
+            if (!resolvedSession) {
+                const titles = [
+                    animeDetails?.title?.english,
+                    animeDetails?.title?.romaji,
+                    ...(Array.isArray(animeDetails?.synonyms) ? animeDetails.synonyms.slice(0, 2) : [])
+                ].filter(Boolean) as string[];
+
+                for (const title of titles.slice(0, 2)) {
+                    const found = await scraperService.search(title).catch(() => []);
+                    if (!Array.isArray(found) || found.length === 0) continue;
+                    const ranked = [...found]
+                        .map((candidate) => ({
+                            candidate,
+                            score: rankCandidate(title, candidate),
+                        }))
+                        .sort((a, b) => b.score - a.score);
+                    const best = ranked[0]?.candidate;
+                    if (best?.session) {
+                        resolvedSession = String(best.session);
+                        await mappingService.saveMapping(String(numericId), resolvedSession, String(best.title || title)).catch(() => undefined);
+                        break;
+                    }
+                }
+            }
+        }
+
+        let episodes: any[] = [];
+        if (resolvedSession) {
+            const ep = await scraperService.getEpisodes(resolvedSession).catch(() => ({ episodes: [] }));
+            episodes = Array.isArray(ep?.episodes) ? ep.episodes : [];
+        }
+
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+        res.json({
+            anime: animeDetails,
+            scraperSession: resolvedSession,
+            episodes,
+        });
+    } catch (error) {
+        console.error('Error in anime fast route:', error);
+        res.status(500).json({ error: 'Failed to fetch fast anime details' });
     }
 });
 

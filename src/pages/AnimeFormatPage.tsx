@@ -73,7 +73,11 @@ export default function AnimeFormatPage() {
 
     const handleWatchClick = (item: Anime) => {
         const title = slugify(item.title || item.title_english || 'anime');
-        const id = item.scraperId || item.mal_id || item.id;
+        const rawScraperId = String(item.scraperId || '').trim();
+        const id = rawScraperId
+            ? (rawScraperId.startsWith('s:') ? rawScraperId : `s:${rawScraperId}`)
+            : (item.mal_id || item.id);
+        if (!id) return;
         const ep = item.status === 'Currently Airing' ? 'latest' : 1;
         navigate(`/anime/watch/${title}/${id}?ep=${ep}`, { state: { anime: item } });
     };

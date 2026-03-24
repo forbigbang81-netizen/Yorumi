@@ -23,6 +23,14 @@ export default function HomePage() {
     }, []);
 
     // Navigation Handlers
+    const getWatchRouteId = (item: Anime): string | number | undefined => {
+        const rawScraperId = String(item.scraperId || '').trim();
+        if (rawScraperId) {
+            return rawScraperId.startsWith('s:') ? rawScraperId : `s:${rawScraperId}`;
+        }
+        return item.mal_id || item.id;
+    };
+
     const handleAnimeClick = (item: Anime) => {
         const animeId = item.id || item.mal_id;
         navigate(`/anime/details/${animeId}`, { state: { anime: item } });
@@ -30,7 +38,8 @@ export default function HomePage() {
 
     const handleWatchClick = (item: Anime, episodeNumber?: number, startSeconds?: number) => {
         const title = slugify(item.title || item.title_english || 'anime');
-        const id = item.scraperId || item.mal_id || item.id;
+        const id = getWatchRouteId(item);
+        if (!id) return;
 
         let targetEp = episodeNumber;
 

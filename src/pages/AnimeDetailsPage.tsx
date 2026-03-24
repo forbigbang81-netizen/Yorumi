@@ -14,11 +14,11 @@ import DetailsCharacters from '../features/anime/components/details/DetailsChara
 import DetailsTrailers from '../features/anime/components/details/DetailsTrailers';
 import DetailsRelations from '../features/anime/components/details/DetailsRelations';
 
-const EpisodesSkeleton = () => (
+const EpisodesSkeleton = ({ count = 10 }: { count?: number }) => (
     <div className="py-6 border-t border-white/10 mt-6">
         <h3 className="text-xl font-bold text-white mb-4">Episodes</h3>
         <div className="mt-6 grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 animate-pulse">
-            {Array.from({ length: 10 }).map((_, idx) => (
+            {Array.from({ length: count }).map((_, idx) => (
                 <div key={idx} className="aspect-square rounded bg-white/10" />
             ))}
         </div>
@@ -193,6 +193,12 @@ export default function AnimeDetailsPage() {
     }
 
     const isUnreleased = selectedAnime.status === 'NOT_YET_RELEASED';
+    const isEpisodesResolving = epLoading || detailsLoading;
+    const expectedEpisodeCount = Number(selectedAnime.episodes || 0);
+    const episodeSkeletonCount = Math.min(
+        20,
+        Math.max(10, Number.isFinite(expectedEpisodeCount) && expectedEpisodeCount > 0 ? expectedEpisodeCount : 10)
+    );
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] pb-20 fade-in animate-in duration-300">
@@ -213,6 +219,7 @@ export default function AnimeDetailsPage() {
                 <DetailsInfo
                     anime={selectedAnime}
                     episodesCount={episodes.length}
+                    isLoading={isEpisodesResolving}
                     inList={inList}
                     inFavorites={inFavorites}
                     onWatch={() => {
@@ -266,8 +273,8 @@ export default function AnimeDetailsPage() {
                         <>
                             {/* Episodes Section */}
                             {!isUnreleased && (
-                                epLoading ? (
-                                    <EpisodesSkeleton />
+                                isEpisodesResolving ? (
+                                    <EpisodesSkeleton count={episodeSkeletonCount} />
                                 ) : episodes.length > 0 ? (
                                     <DetailsEpisodeGrid
                                         episodes={episodes}

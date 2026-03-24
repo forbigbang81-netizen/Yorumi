@@ -34,6 +34,38 @@ const getPublicBase = (req: any) => {
 };
 
 const sanitizeCookie = (raw: string) => String(raw || '').replace(/[\r\n]/g, '').trim();
+const normalizeEpisodeSession = (animeSessionRaw: string, raw: string) => {
+    const source = String(raw || '').trim();
+    if (!source) return source;
+    const animeSession = String(animeSessionRaw || '').trim().replace(/\/+$/, '');
+
+    // Handle legacy forms like "...-20401?ep=162349" or full URLs containing ?ep=
+    const tryDecode = (value: string) => {
+        try {
+            return decodeURIComponent(value);
+        } catch {
+            return value;
+        }
+    };
+
+    const decoded = tryDecode(tryDecode(source));
+    const pairMatch = decoded.match(/([^?#]+)\?ep=([^&#]+)/i);
+    if (pairMatch?.[1] && pairMatch?.[2]) {
+        const base = pairMatch[1].trim().replace(/\/+$/, '');
+        const ep = pairMatch[2].trim();
+        return `${base}?ep=${ep}`;
+    }
+    const epOnlyMatch = decoded.match(/[?&]?ep=([^&#]+)/i);
+    if (epOnlyMatch?.[1] && animeSession) {
+        return `${animeSession}?ep=${epOnlyMatch[1].trim()}`;
+    }
+
+    const stripped = decoded.split('#')[0].split('?')[0].trim();
+    const withoutTrailingSlash = stripped.replace(/\/+$/, '');
+    if (!withoutTrailingSlash) return source;
+    const lastSegment = withoutTrailingSlash.split('/').pop() || withoutTrailingSlash;
+    return lastSegment.trim() || source;
+};
 
 router.get('/search', async (req, res) => {
     try {
@@ -68,7 +100,8 @@ router.get('/episodes', async (req, res) => {
 router.get('/streams', async (req, res) => {
     try {
         const animeSession = req.query.anime_session as string;
-        const epSession = req.query.ep_session as string;
+        const epSessionRaw = req.query.ep_session as string;
+        const epSession = normalizeEpisodeSession(animeSession, epSessionRaw);
 
         if (!epSession || !animeSession) {
             return res.status(400).json({ error: 'anime_session and ep_session are required' });
@@ -84,7 +117,12 @@ router.get('/streams', async (req, res) => {
                 return item;
             })
             : result;
-        res.set('Cache-Control', 'public, max-age=300, s-maxage=900, stale-while-revalidate=1800');
+        if (Array.isArray(normalized) && normalized.length === 0) {
+            // Do not cache empty stream payloads in browser/proxies.
+            res.set('Cache-Control', 'no-store');
+        } else {
+            res.set('Cache-Control', 'public, max-age=300, s-maxage=900, stale-while-revalidate=1800');
+        }
         res.json(normalized);
     } catch (error: any) {
         res.status(500).json({ error: error.message });

@@ -11,17 +11,31 @@ export class ScraperService {
         this.fastScraper = new AniwatchScraper();
     }
 
-    private async getOrLoad<T>(key: string, ttlMs: number, loader: () => Promise<T>): Promise<T> {
+    private async getOrLoad<T>(
+        key: string,
+        ttlMs: number,
+        loader: () => Promise<T>,
+        options?: {
+            shouldCache?: (value: T) => boolean;
+            allowCached?: (value: T) => boolean;
+        }
+    ): Promise<T> {
         const now = Date.now();
         const cached = this.cache.get(key);
         if (cached && cached.expiresAt > now) {
-            return cached.value as T;
+            const value = cached.value as T;
+            if (!options?.allowCached || options.allowCached(value)) {
+                return value;
+            }
+            this.cache.delete(key);
         }
 
         const redisCached = await cacheGet<T>(key);
         if (redisCached !== null) {
-            this.cache.set(key, { expiresAt: now + ttlMs, value: redisCached });
-            return redisCached;
+            if (!options?.allowCached || options.allowCached(redisCached)) {
+                this.cache.set(key, { expiresAt: now + ttlMs, value: redisCached });
+                return redisCached;
+            }
         }
 
         const inFlight = this.inFlight.get(key);
@@ -31,10 +45,15 @@ export class ScraperService {
 
         const promise = loader()
             .then((value) => {
-                this.cache.set(key, { expiresAt: Date.now() + ttlMs, value });
-                cacheSet(key, value, Math.ceil(ttlMs / 1000)).catch((error) => {
-                    console.warn(`[ScraperService] Redis cache set failed for "${key}"`, error);
-                });
+                const shouldCache = options?.shouldCache ? options.shouldCache(value) : true;
+                if (shouldCache) {
+                    this.cache.set(key, { expiresAt: Date.now() + ttlMs, value });
+                    cacheSet(key, value, Math.ceil(ttlMs / 1000)).catch((error) => {
+                        console.warn(`[ScraperService] Redis cache set failed for "${key}"`, error);
+                    });
+                } else {
+                    this.cache.delete(key);
+                }
                 return value;
             })
             .finally(() => {
@@ -100,10 +119,19 @@ export class ScraperService {
     async getStreams(animeSession: string, epSession: string) {
         this.trackHotStream(animeSession, epSession);
         const key = `streams:${animeSession}:${epSession}`;
-        return this.getOrLoad(key, 20 * 60 * 1000, async () => {
-            const fast = await this.fastScraper.getLinks(animeSession, epSession);
-            return Array.isArray(fast) ? fast : [];
-        });
+        return this.getOrLoad(
+            key,
+            20 * 60 * 1000,
+            async () => {
+                const fast = await this.fastScraper.getLinks(animeSession, epSession);
+                return Array.isArray(fast) ? fast : [];
+            },
+            {
+                // Avoid cache poisoning when upstream temporarily returns no links.
+                shouldCache: (value) => Array.isArray(value) && value.length > 0,
+                allowCached: (value) => Array.isArray(value) && value.length > 0,
+            }
+        );
     }
 
     async prefetchStreams(animeSession: string, epSessions: string[]) {

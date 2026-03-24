@@ -465,6 +465,41 @@ export const animeService = {
         return fetchPromise;
     },
 
+    async getAnimeDetailsFast(id: number | string) {
+        const cacheKey = `anime-details-fast:${id}`;
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/anilist/anime/${id}/fast`);
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch fast anime details: ${res.statusText}`);
+                }
+                const payload = await res.json();
+                const mappedAnime = payload?.anime ? (mapAnilistToAnime(payload.anime) as Anime) : null;
+                if (mappedAnime && payload?.scraperSession) {
+                    mappedAnime.scraperId = String(payload.scraperSession);
+                }
+                const result = {
+                    data: mappedAnime,
+                    episodes: Array.isArray(payload?.episodes) ? payload.episodes : [],
+                    scraperSession: payload?.scraperSession ? String(payload.scraperSession) : null,
+                };
+                setCache(cacheKey, result);
+                return result;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
+    },
+
     // Identify AniList ID from Scraper Slug/Title
     async identifyAnime(slug: string, title: string) {
         const res = await fetch(`${API_BASE}/mapping/identify`, {
@@ -537,38 +572,60 @@ export const animeService = {
         const CACHE_COLLECTION = "anime_episodes";
         const docRef = doc(db, CACHE_COLLECTION, session);
 
-        const fetchPromise = (async () => {
+        const readFirebaseEpisodes = async (timeoutMs: number): Promise<{ episodes: any[] } | null> => {
             try {
-                const { data } = await apiClient.get('/scraper/episodes', {
-                    params: { session },
-                });
+                const docSnap = await Promise.race([
+                    getDoc(docRef),
+                    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+                ]);
+                if (!docSnap || !docSnap.exists()) return null;
+                const local = docSnap.data();
+                if (!Array.isArray(local?.episodes) || local.episodes.length === 0) return null;
+                return { episodes: local.episodes };
+            } catch (error) {
+                console.warn("[AnimeService] Firebase read error:", error);
+                return null;
+            }
+        };
 
-                if (data?.episodes && Array.isArray(data.episodes) && data.episodes.length > 0) {
-                    setCache(cacheKey, data);
-                    // Persist cache asynchronously; don't block the UI.
-                    setDoc(docRef, {
-                        episodes: data.episodes,
-                        lastUpdated: Date.now()
-                    }).catch((error) => {
-                        console.warn("[AnimeService] Firebase write error:", error);
-                    });
+        const fetchFromBackend = async () => {
+            const { data } = await apiClient.get('/scraper/episodes', {
+                params: { session },
+            });
+
+            if (data?.episodes && Array.isArray(data.episodes) && data.episodes.length > 0) {
+                setCache(cacheKey, data);
+                // Persist cache asynchronously; don't block the UI.
+                setDoc(docRef, {
+                    episodes: data.episodes,
+                    lastUpdated: Date.now()
+                }).catch((error) => {
+                    console.warn("[AnimeService] Firebase write error:", error);
+                });
+            }
+
+            return data;
+        };
+
+        const fetchPromise = (async () => {
+            const backendPromise = fetchFromBackend();
+            try {
+                // Fast path: if Firebase has episodes cached, render immediately.
+                // Keep backend request running in background to refresh cache.
+                const quickFirebase = await readFirebaseEpisodes(350);
+                if (quickFirebase) {
+                    setCache(cacheKey, quickFirebase);
+                    backendPromise.catch(() => undefined);
+                    return quickFirebase;
                 }
 
-                return data;
+                return await backendPromise;
             } catch (primaryError) {
                 // Fallback to Firebase cache if backend request fails.
-                try {
-                    const docSnap = await getDoc(docRef);
-                    if (docSnap.exists()) {
-                        const local = docSnap.data();
-                        if (local.episodes && Array.isArray(local.episodes) && local.episodes.length > 0) {
-                            const payload = { episodes: local.episodes };
-                            setCache(cacheKey, payload);
-                            return payload;
-                        }
-                    }
-                } catch (fallbackError) {
-                    console.warn("[AnimeService] Firebase read fallback error:", fallbackError);
+                const fallback = await readFirebaseEpisodes(1200);
+                if (fallback) {
+                    setCache(cacheKey, fallback);
+                    return fallback;
                 }
 
                 throw primaryError;
@@ -597,7 +654,7 @@ export const animeService = {
         try {
             const docSnap = await Promise.race([
                 getDoc(docRef),
-                new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
             ]);
             if (!docSnap) return null;
             if (docSnap.exists()) {
