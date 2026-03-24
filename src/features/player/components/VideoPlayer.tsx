@@ -241,6 +241,7 @@ export default function VideoPlayer({
                             className="w-full h-full border-0 bg-black"
                             allowFullScreen
                             allow="autoplay"
+                            referrerPolicy="no-referrer"
                             title="Video Player"
                             onLoad={onLoad}
                             onError={onError}
