@@ -649,12 +649,43 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             return true;
         };
 
-        const resolveSessionBySearch = async (): Promise<string | null> => {
+        const buildScraperQueries = (target: Anime): string[] => {
             const queries = new Set<string>();
-            if (anime.title) queries.add(anime.title);
-            if (anime.title_english) queries.add(anime.title_english);
-            if (anime.synonyms) anime.synonyms.slice(0, 2).forEach(s => queries.add(s));
-            const queryList = Array.from(queries).slice(0, 2);
+            const add = (value: unknown) => {
+                const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
+                if (raw) queries.add(raw);
+            };
+            const addSeasonAliases = (value: unknown) => {
+                const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
+                if (!raw) return;
+                add(raw);
+
+                const seasonMatch = raw.match(/\bseason\s*(\d+)\b/i) || raw.match(/\b(\d+)(st|nd|rd|th)\s*season\b/i);
+                if (seasonMatch?.[1]) {
+                    const seasonNumber = Number(seasonMatch[1]);
+                    const ordinal =
+                        seasonNumber % 100 >= 11 && seasonNumber % 100 <= 13
+                            ? `${seasonNumber}th`
+                            : `${seasonNumber}${(['th', 'st', 'nd', 'rd'][seasonNumber % 10] || 'th')}`;
+                    add(raw.replace(/\bseason\s*\d+\b/ig, `${ordinal} Season`));
+                    add(raw.replace(/\b\d+(st|nd|rd|th)\s*season\b/ig, `Season ${seasonNumber}`));
+                }
+
+                add(raw.replace(/:\s*[^:]+$/, '').trim());
+                add(raw.replace(/\bpart\s*\d+\b/ig, '').replace(/\s+/g, ' ').trim());
+            };
+
+            addSeasonAliases(target.title);
+            addSeasonAliases(target.title_english);
+            addSeasonAliases(target.title_romaji);
+            addSeasonAliases(target.title_japanese);
+            (target.synonyms || []).slice(0, 6).forEach(addSeasonAliases);
+
+            return Array.from(queries).slice(0, 8);
+        };
+
+        const resolveSessionBySearch = async (): Promise<string | null> => {
+            const queryList = buildScraperQueries(anime);
 
             try {
                 const results = await Promise.all(
@@ -717,6 +748,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (cacheKey) {
                 scraperSessionCache.current.set(cacheKey, session);
             }
+            sessionFromCache = true;
         }
 
         if (!session && cacheKey && scraperSessionCache.current.has(cacheKey)) {
@@ -767,6 +799,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                     // Cached/older mappings can occasionally resolve to a valid session with no episode payload.
                     // Re-resolve once via search before giving up, so users don't need a manual page reload.
                     if (newEpisodes.length === 0 && sessionFromCache) {
+                        if (anime.scraperId && String(anime.scraperId).trim() === session) {
+                            delete (anime as Partial<Anime>).scraperId;
+                        }
                         if (cacheKey) scraperSessionCache.current.delete(cacheKey);
                         if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
                             animeService.clearAnimeMapping(mappingKey).catch(() => undefined);
@@ -967,6 +1002,15 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const handleAnimeClick = async (anime: Anime) => {
         const requestId = ++detailsRequestIdRef.current;
         const isStaleRequest = () => requestId !== detailsRequestIdRef.current;
+        const hasSearchableMetadata = (target: Anime) =>
+            Boolean(
+                normalizeScraperId(target?.scraperId) ||
+                String(target?.title || '').trim() ||
+                String(target?.title_english || '').trim() ||
+                String(target?.title_romaji || '').trim() ||
+                String(target?.title_japanese || '').trim() ||
+                (Array.isArray(target?.synonyms) && target.synonyms.some((entry) => String(entry || '').trim()))
+            );
         setSelectedAnime(null);
         setEpisodes([]);
         setScraperSession(null);
@@ -1064,11 +1108,12 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             }
 
             if (!episodesApplied && !isStaleRequest()) {
+                const initialPreloadWasSparse = !hasSearchableMetadata(anime);
                 const sameTarget =
                     String(currentAnime.id || '') === String(anime.id || '') &&
                     String(currentAnime.mal_id || '') === String(anime.mal_id || '') &&
                     String(currentAnime.scraperId || '') === String(anime.scraperId || '');
-                if (!preloadStarted || !sameTarget) {
+                if (!preloadStarted || !sameTarget || initialPreloadWasSparse) {
                     preloadEpisodes(currentAnime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);
                 }
             }

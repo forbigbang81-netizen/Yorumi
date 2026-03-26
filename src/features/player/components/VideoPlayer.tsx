@@ -9,6 +9,7 @@ interface VideoPlayerProps {
     subtitles?: SubtitleTrack[];
     isLoading: boolean;
     isExpanded: boolean;
+    hasPlayableSource?: boolean;
     onLoad?: () => void;
     onError?: () => void;
     onProgress?: (progress: { currentTime: number; duration: number; ended?: boolean }) => void;
@@ -21,6 +22,7 @@ export default function VideoPlayer({
     subtitles = [],
     isLoading,
     isExpanded,
+    hasPlayableSource = true,
     onLoad,
     onError,
     onProgress,
@@ -93,7 +95,7 @@ export default function VideoPlayer({
                 hlsRef.current = null;
             }
         };
-    }, [streamUrl, isHlsStream]);
+    }, [streamUrl, isHlsStream, onError]);
 
     useEffect(() => {
         if (!videoRef.current || !isHlsStream) return;
@@ -148,8 +150,6 @@ export default function VideoPlayer({
         track.src = preferred.url;
         const lang = String(preferred.lang || '').trim().toLowerCase();
         track.srclang = (lang === 'english' || lang === 'eng') ? 'en' : (lang || 'en');
-        // Don't force default at append time; wait until file is loaded to avoid
-        // browser caption-loading UI lingering while video is already playing.
         track.default = false;
         video.appendChild(track);
 
@@ -167,18 +167,15 @@ export default function VideoPlayer({
             }
         };
 
-        // Keep captions disabled until subtitle cues are ready.
         disableAllTracks();
         const handleTrackLoaded = () => applyMode();
         const handleTrackError = () => {
-            // If subtitle source fails, remove it so it doesn't keep a loading state.
             track.remove();
             disableAllTracks();
         };
         track.addEventListener('load', handleTrackLoaded);
         track.addEventListener('error', handleTrackError);
 
-        // Fallback in case some browsers don't fire the load event reliably.
         const fallbackTimer = window.setTimeout(applyMode, 600);
 
         return () => {
@@ -247,6 +244,13 @@ export default function VideoPlayer({
                             onError={onError}
                         />
                     </div>
+                </div>
+            ) : !hasPlayableSource ? (
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 relative z-10">
+                    <p className="text-lg font-semibold text-white">No playable source from scraper</p>
+                    <p className="mt-2 text-sm text-gray-500 text-center max-w-md px-6">
+                        This episode only exposed a dead embed or no direct media source.
+                    </p>
                 </div>
             ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">

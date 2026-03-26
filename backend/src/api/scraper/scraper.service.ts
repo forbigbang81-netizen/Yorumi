@@ -1,14 +1,14 @@
-import { AniwatchScraper } from '../../scraper/aniwatch';
+import { AnimeKaiScraper } from '../../scraper/animekai';
 import { cacheGet, cacheSet } from '../../utils/redis-cache';
 
 export class ScraperService {
-    private fastScraper: AniwatchScraper;
+    private fastScraper: AnimeKaiScraper;
     private cache = new Map<string, { expiresAt: number; value: any }>();
     private inFlight = new Map<string, Promise<any>>();
     private hotStreamKeys = new Map<string, { animeSession: string; epSession: string; hits: number; lastAccess: number }>();
 
     constructor() {
-        this.fastScraper = new AniwatchScraper();
+        this.fastScraper = new AnimeKaiScraper();
     }
 
     private async getOrLoad<T>(
@@ -102,14 +102,14 @@ export class ScraperService {
 
     async search(query: string) {
         const normalized = query.toLowerCase().trim();
-        return this.getOrLoad(`search:${normalized}`, 2 * 60 * 1000, async () => {
+        return this.getOrLoad(`search:v2:${normalized}`, 2 * 60 * 1000, async () => {
             const fast = await this.fastScraper.search(query);
             return Array.isArray(fast) ? fast : [];
         });
     }
 
     async getEpisodes(session: string) {
-        return this.getOrLoad(`episodes:${session}`, 15 * 60 * 1000, async () => {
+        return this.getOrLoad(`episodes:v3:${session}`, 15 * 60 * 1000, async () => {
             const fast = await this.fastScraper.getEpisodes(session);
             if (Array.isArray(fast.episodes)) return fast;
             return { episodes: [], lastPage: 1 };
@@ -118,17 +118,15 @@ export class ScraperService {
 
     async getStreams(animeSession: string, epSession: string) {
         this.trackHotStream(animeSession, epSession);
-        // Versioned key invalidates old poisoned cache payloads from previous extractors.
-        const key = `streams:v2:${animeSession}:${epSession}`;
+        const key = `streams:v5:${animeSession}:${epSession}`;
         return this.getOrLoad(
             key,
             5 * 60 * 1000,
             async () => {
-                const fast = await this.fastScraper.getLinks(animeSession, epSession);
-                return Array.isArray(fast) ? fast : [];
+                const links = await this.fastScraper.getLinks(animeSession, epSession);
+                return Array.isArray(links) ? links : [];
             },
             {
-                // Avoid cache poisoning when upstream temporarily returns no links.
                 shouldCache: (value) => Array.isArray(value) && value.length > 0,
                 allowCached: (value) => Array.isArray(value) && value.length > 0,
             }

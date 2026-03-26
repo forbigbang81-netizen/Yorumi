@@ -321,13 +321,82 @@ router.get('/anime/:id/fast', async (req, res) => {
     try {
         const { id } = req.params;
         const normalize = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const getSeason = (title: string) => {
+            const match = String(title || '').match(/\bseason\s*(\d+)\b/i) || String(title || '').match(/\b(\d+)(st|nd|rd|th)\s*season\b/i);
+            return match ? parseInt(match[1], 10) : 1;
+        };
+        const buildScraperQueries = (details: any): string[] => {
+            const queries = new Set<string>();
+            const add = (value: unknown) => {
+                const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
+                if (raw) queries.add(raw);
+            };
+            const addSeasonAliases = (value: unknown) => {
+                const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
+                if (!raw) return;
+                add(raw);
+
+                const seasonMatch = raw.match(/\bseason\s*(\d+)\b/i) || raw.match(/\b(\d+)(st|nd|rd|th)\s*season\b/i);
+                if (seasonMatch?.[1]) {
+                    const seasonNumber = Number(seasonMatch[1]);
+                    const ordinal =
+                        seasonNumber % 100 >= 11 && seasonNumber % 100 <= 13
+                            ? `${seasonNumber}th`
+                            : `${seasonNumber}${(['th', 'st', 'nd', 'rd'][seasonNumber % 10] || 'th')}`;
+                    add(raw.replace(/\bseason\s*\d+\b/ig, `${ordinal} Season`));
+                    add(raw.replace(/\b\d+(st|nd|rd|th)\s*season\b/ig, `Season ${seasonNumber}`));
+                }
+
+                add(raw.replace(/:\s*[^:]+$/, '').trim());
+                add(raw.replace(/\bpart\s*\d+\b/ig, '').replace(/\s+/g, ' ').trim());
+            };
+
+            addSeasonAliases(details?.title?.english);
+            addSeasonAliases(details?.title?.romaji);
+            addSeasonAliases(details?.title?.native);
+            (Array.isArray(details?.synonyms) ? details.synonyms : []).slice(0, 6).forEach(addSeasonAliases);
+
+            return Array.from(queries).slice(0, 8);
+        };
         const rankCandidate = (title: string, candidate: any) => {
             const source = normalize(title);
             const target = normalize(String(candidate?.title || ''));
             if (!source || !target) return 0;
-            if (source === target) return 100;
-            if (source.includes(target) || target.includes(source)) return 70;
-            return 0;
+            let score = 0;
+            if (source === target) score += 100;
+            else if (source.includes(target) || target.includes(source)) score += 70;
+
+            const sourceSeason = getSeason(title);
+            const candidateSeason = getSeason(String(candidate?.title || ''));
+            if (sourceSeason === candidateSeason) score += 30;
+            else if (sourceSeason > 1 && candidateSeason > 1) score -= 40;
+
+            return score;
+        };
+        const rankAgainstAnime = (details: any, candidate: any) => {
+            const titles = buildScraperQueries(details);
+            const titleScore = titles.reduce((best, title) => Math.max(best, rankCandidate(title, candidate)), 0);
+            let score = titleScore;
+
+            const expectedEpisodes = Number(details?.episodes || 0);
+            const candidateEpisodes = Number(candidate?.episodes || 0);
+            if (expectedEpisodes > 0 && candidateEpisodes > 0) {
+                const diff = Math.abs(candidateEpisodes - expectedEpisodes);
+                if (diff === 0) score += 40;
+                else if (diff <= 1) score += 25;
+                else if (diff <= 3) score += 10;
+                else score -= 35;
+            }
+
+            const animeYear = Number(details?.seasonYear || 0);
+            const candidateYear = Number(candidate?.year || 0);
+            if (animeYear > 0 && candidateYear > 0) {
+                const diff = Math.abs(candidateYear - animeYear);
+                if (diff === 0) score += 10;
+                else if (diff > 1) score -= 10;
+            }
+
+            return score;
         };
 
         let animeDetails: any = null;
@@ -388,27 +457,30 @@ router.get('/anime/:id/fast', async (req, res) => {
             }
 
             if (!resolvedSession) {
-                const titles = [
-                    animeDetails?.title?.english,
-                    animeDetails?.title?.romaji,
-                    ...(Array.isArray(animeDetails?.synonyms) ? animeDetails.synonyms.slice(0, 2) : [])
-                ].filter(Boolean) as string[];
+                const titles = buildScraperQueries(animeDetails);
+                const candidateMap = new Map<string, any>();
 
-                for (const title of titles.slice(0, 2)) {
+                for (const title of titles) {
                     const found = await scraperService.search(title).catch(() => []);
                     if (!Array.isArray(found) || found.length === 0) continue;
-                    const ranked = [...found]
-                        .map((candidate) => ({
-                            candidate,
-                            score: rankCandidate(title, candidate),
-                        }))
-                        .sort((a, b) => b.score - a.score);
-                    const best = ranked[0]?.candidate;
-                    if (best?.session) {
-                        resolvedSession = String(best.session);
-                        await mappingService.saveMapping(String(numericId), resolvedSession, String(best.title || title)).catch(() => undefined);
-                        break;
-                    }
+                    found.forEach((candidate) => {
+                        if (candidate?.session && !candidateMap.has(String(candidate.session))) {
+                            candidateMap.set(String(candidate.session), candidate);
+                        }
+                    });
+                }
+
+                const ranked = [...candidateMap.values()]
+                    .map((candidate) => ({
+                        candidate,
+                        score: rankAgainstAnime(animeDetails, candidate),
+                    }))
+                    .sort((a, b) => b.score - a.score);
+
+                const best = ranked.find((entry) => entry.score > 0)?.candidate;
+                if (best?.session) {
+                    resolvedSession = String(best.session);
+                    await mappingService.saveMapping(String(numericId), resolvedSession, String(best.title || animeDetails?.title?.english || animeDetails?.title?.romaji || '')).catch(() => undefined);
                 }
             }
         }
@@ -417,6 +489,44 @@ router.get('/anime/:id/fast', async (req, res) => {
         if (resolvedSession) {
             const ep = await scraperService.getEpisodes(resolvedSession).catch(() => ({ episodes: [] }));
             episodes = Array.isArray(ep?.episodes) ? ep.episodes : [];
+        }
+
+        if (episodes.length === 0 && animeDetails && !id.startsWith('s:')) {
+            const numericId = parseInt(id, 10);
+            if (!Number.isNaN(numericId)) {
+                const titles = buildScraperQueries(animeDetails);
+                const candidateMap = new Map<string, any>();
+
+                for (const title of titles) {
+                    const found = await scraperService.search(title).catch(() => []);
+                    if (!Array.isArray(found) || found.length === 0) continue;
+                    found.forEach((candidate) => {
+                        if (candidate?.session && !candidateMap.has(String(candidate.session))) {
+                            candidateMap.set(String(candidate.session), candidate);
+                        }
+                    });
+                }
+
+                const ranked = [...candidateMap.values()]
+                    .map((candidate) => ({
+                        candidate,
+                        score: rankAgainstAnime(animeDetails, candidate),
+                    }))
+                    .sort((a, b) => b.score - a.score);
+
+                const best = ranked.find((entry) => entry.score > 0)?.candidate;
+                if (best?.session && String(best.session) !== String(resolvedSession || '')) {
+                    resolvedSession = String(best.session);
+                    await mappingService.saveMapping(
+                        String(numericId),
+                        resolvedSession,
+                        String(best.title || animeDetails?.title?.english || animeDetails?.title?.romaji || '')
+                    ).catch(() => undefined);
+
+                    const retry = await scraperService.getEpisodes(resolvedSession).catch(() => ({ episodes: [] }));
+                    episodes = Array.isArray(retry?.episodes) ? retry.episodes : [];
+                }
+            }
         }
 
         res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');

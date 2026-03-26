@@ -89,6 +89,7 @@ const mapScraperToAnime = (item: any) => {
     const score = typeof item.score === 'number' ? item.score : parseFloat(item.score || '0');
     const year = typeof item.year === 'number' ? item.year : parseInt(item.year || '', 10);
     const episodes = typeof item.episodes === 'number' ? item.episodes : parseInt(item.episodes || '', 10);
+    const image = item.poster || item.image || '';
     return {
         mal_id: 0,
         id: 0,
@@ -98,8 +99,8 @@ const mapScraperToAnime = (item: any) => {
         title_romaji: item.title,
         images: {
             jpg: {
-                image_url: item.poster || '',
-                large_image_url: item.poster || ''
+                image_url: image,
+                large_image_url: image
             }
         },
         synopsis: '',
@@ -468,7 +469,13 @@ export const animeService = {
     async getAnimeDetailsFast(id: number | string) {
         const cacheKey = `anime-details-fast:${id}`;
         const cached = getCached(cacheKey);
-        if (cached) return cached;
+        if (cached) {
+            const cachedEpisodes = Array.isArray((cached as any)?.episodes) ? (cached as any).episodes : [];
+            const cachedSession = String((cached as any)?.scraperSession || '').trim();
+            if (cachedEpisodes.length > 0 || cachedSession) {
+                return cached;
+            }
+        }
         if (inFlightRequests.has(cacheKey)) {
             return inFlightRequests.get(cacheKey);
         }
@@ -489,7 +496,9 @@ export const animeService = {
                     episodes: Array.isArray(payload?.episodes) ? payload.episodes : [],
                     scraperSession: payload?.scraperSession ? String(payload.scraperSession) : null,
                 };
-                setCache(cacheKey, result);
+                if (result.episodes.length > 0 || result.scraperSession) {
+                    setCache(cacheKey, result);
+                }
                 return result;
             } finally {
                 inFlightRequests.delete(cacheKey);

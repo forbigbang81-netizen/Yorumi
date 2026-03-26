@@ -33,6 +33,8 @@ export interface Episode {
 export interface StreamLink {
     quality: string;
     audio: string;
+    provider?: string;
+    server?: string;
     url: string; // The original embed URL
     directUrl?: string; // The resolved .m3u8 URL
     isHls: boolean;

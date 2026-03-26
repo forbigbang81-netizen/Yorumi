@@ -112,7 +112,11 @@ router.get('/streams', async (req, res) => {
             ? result.map((item: any) => {
                 if (!item?.url || typeof item.url !== 'string') return item;
                 if (item.url.includes('/api/scraper/proxy?')) {
-                    item.url = item.url.replace(/^https?:\/\/[^/]+/i, hostBase);
+                    if (item.url.startsWith('/api/')) {
+                        item.url = hostBase + item.url;
+                    } else {
+                        item.url = item.url.replace(/^https?:\/\/[^/]+/i, hostBase);
+                    }
                 }
                 return item;
             })
@@ -177,6 +181,7 @@ router.get('/proxy', async (req, res) => {
                         Referer: referer,
                         Origin: new URL(referer).origin,
                         Accept: '*/*',
+                        ...(req.headers.range ? { Range: req.headers.range } : {}),
                         ...((requestedCookie || storedCookie) ? { Cookie: requestedCookie || storedCookie } : {}),
                     },
                     timeout: 15000,
@@ -200,13 +205,20 @@ router.get('/proxy', async (req, res) => {
 
         const contentType = response.headers['content-type'] || '';
         const lowerUrl = targetUrl.toLowerCase();
+
         const isSubtitle = lowerUrl.includes('.vtt') || lowerUrl.includes('.srt');
         const normalizedContentType = isSubtitle
             ? (lowerUrl.includes('.vtt') ? 'text/vtt; charset=utf-8' : 'text/plain; charset=utf-8')
             : contentType;
 
+        res.status(response.status);
         res.set('Content-Type', normalizedContentType);
         res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+        
+        if (response.headers['content-range']) res.set('Content-Range', response.headers['content-range']);
+        if (response.headers['accept-ranges']) res.set('Accept-Ranges', response.headers['accept-ranges']);
+        if (response.headers['content-length']) res.set('Content-Length', response.headers['content-length']);
 
         const isM3u8 =
             contentType.includes('mpegurl') ||
@@ -225,7 +237,9 @@ router.get('/proxy', async (req, res) => {
         const body = Buffer.from(response.data).toString('utf-8');
         const urlObj = new URL(targetUrl);
         const basePath = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
-        const nextReferer = `${urlObj.origin}/`;
+        // Preserve the original upstream referer across nested HLS playlists.
+        // Some hosts reject variant/segment requests when referer is replaced with the CDN origin.
+        const nextReferer = requestedReferer || `${urlObj.origin}/`;
         const nextCookie = sanitizeCookie(upstreamCookieJar.get(cookieKey) || requestedCookie);
 
         const rewritten = body

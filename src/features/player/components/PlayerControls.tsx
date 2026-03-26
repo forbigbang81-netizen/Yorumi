@@ -1,18 +1,13 @@
-import { ChevronLeft, ChevronRight, Settings, RotateCw, Maximize, Minimize, Captions, Mic } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Settings, RotateCw, Maximize, Minimize } from 'lucide-react';
 import type { StreamLink } from '../../../types/stream';
 
 interface PlayerControlsProps {
-    episodeNumber: string;
     isExpanded: boolean;
     canPrev: boolean;
     isAutoQuality: boolean;
     selectedStreamIndex: number;
     streams: StreamLink[];
     showQualityMenu: boolean;
-    selectedAudio: 'sub' | 'dub';
-    selectedProvider: 'vidsrc' | 'megacloud';
-    availableAudios: Array<'sub' | 'dub'>;
-    availableProviders: Array<'vidsrc' | 'megacloud'>;
     onPrev: () => void;
     onNext: () => void;
     onReload: () => void;
@@ -20,37 +15,23 @@ interface PlayerControlsProps {
     setShowQualityMenu: (show: boolean) => void;
     onQualityChange: (index: number) => void;
     onSetAutoQuality: () => void;
-    onAudioChange: (audio: 'sub' | 'dub') => void;
-    onProviderChange: (provider: 'vidsrc' | 'megacloud') => void;
 }
 
 export default function PlayerControls({
-    episodeNumber,
     isExpanded,
     canPrev,
     isAutoQuality,
     selectedStreamIndex,
     streams,
     showQualityMenu,
-    selectedAudio,
-    selectedProvider,
-    availableAudios,
-    availableProviders,
     onPrev,
     onNext,
     onReload,
     onToggleExpand,
     setShowQualityMenu,
     onQualityChange,
-    onSetAutoQuality,
-    onAudioChange,
-    onProviderChange
+    onSetAutoQuality
 }: PlayerControlsProps) {
-    const hasSub = availableAudios.includes('sub');
-    const hasDub = availableAudios.includes('dub');
-    const hasVidSrc = availableProviders.includes('vidsrc');
-    const hasMegaCloud = availableProviders.includes('megacloud');
-
     return (
         <div className="p-4">
             {/* Controls Row */}
@@ -151,70 +132,6 @@ export default function PlayerControls({
                 </button>
             </div>
 
-            <div className="mt-3 rounded-xl overflow-hidden border border-white/10 bg-[#1d2028] flex flex-col md:flex-row">
-                <div className="md:w-[290px] bg-yorumi-accent text-white px-4 py-3 flex items-center justify-center text-center leading-tight">
-                    <div>
-                        <p className="text-[14px] font-semibold">You are watching</p>
-                        <p className="text-[20px] font-extrabold leading-none my-1">Episode {episodeNumber}</p>
-                        <p className="text-[14px] font-medium">If current server doesn't work</p>
-                        <p className="text-[14px] font-medium">please try other servers beside.</p>
-                    </div>
-                </div>
-
-                <div className="flex-1 p-4">
-                    <div className="flex items-center gap-3">
-                        <Captions className="w-4 h-4 text-yorumi-accent" />
-                        <span className="font-bold text-yorumi-accent min-w-12">SUB:</span>
-                        <button
-                            onClick={() => {
-                                onAudioChange('sub');
-                                onProviderChange('vidsrc');
-                            }}
-                            disabled={!hasSub || !hasVidSrc}
-                            className={`px-6 py-2 rounded-md text-sm font-semibold transition-colors ${selectedAudio === 'sub' && selectedProvider === 'vidsrc' ? 'bg-yorumi-accent text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'} disabled:opacity-40 disabled:cursor-not-allowed`}
-                        >
-                            VidSrc
-                        </button>
-                        <button
-                            onClick={() => {
-                                onAudioChange('sub');
-                                onProviderChange('megacloud');
-                            }}
-                            disabled={!hasSub || !hasMegaCloud}
-                            className={`px-6 py-2 rounded-md text-sm font-semibold transition-colors ${selectedAudio === 'sub' && selectedProvider === 'megacloud' ? 'bg-yorumi-accent text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'} disabled:opacity-40 disabled:cursor-not-allowed`}
-                        >
-                            MegaCloud
-                        </button>
-                    </div>
-
-                    <div className="my-3 border-t border-white/10" />
-
-                    <div className="flex items-center gap-3">
-                        <Mic className="w-4 h-4 text-yorumi-accent" />
-                        <span className="font-bold text-yorumi-accent min-w-12">DUB:</span>
-                        <button
-                            onClick={() => {
-                                onAudioChange('dub');
-                                onProviderChange('vidsrc');
-                            }}
-                            disabled={!hasDub || !hasVidSrc}
-                            className={`px-6 py-2 rounded-md text-sm font-semibold transition-colors ${selectedAudio === 'dub' && selectedProvider === 'vidsrc' ? 'bg-yorumi-accent text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'} disabled:opacity-40 disabled:cursor-not-allowed`}
-                        >
-                            VidSrc
-                        </button>
-                        <button
-                            onClick={() => {
-                                onAudioChange('dub');
-                                onProviderChange('megacloud');
-                            }}
-                            disabled={!hasDub || !hasMegaCloud}
-                            className={`px-6 py-2 rounded-md text-sm font-semibold transition-colors ${selectedAudio === 'dub' && selectedProvider === 'megacloud' ? 'bg-yorumi-accent text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'} disabled:opacity-40 disabled:cursor-not-allowed`}
-                        >
-                            MegaCloud
-                        </button>
-                    </div>
-                </div>
-            </div>
         </div >
     );
 }

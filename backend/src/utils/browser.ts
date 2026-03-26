@@ -1,7 +1,12 @@
 import { Browser } from 'puppeteer-core';
 
+let browserInstance: Browser | null = null;
+
 export const getBrowserInstance = async (): Promise<Browser> => {
-    let browser: Browser;
+    // Return existing connected browser
+    if (browserInstance && browserInstance.isConnected()) {
+        return browserInstance;
+    }
 
     // Check if we are running locally or on Vercel
     const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
@@ -17,7 +22,7 @@ export const getBrowserInstance = async (): Promise<Browser> => {
         const chromium = chromiumModule.default || chromiumModule;
         const puppeteer = puppeteerModule.default || puppeteerModule;
 
-        browser = await puppeteer.launch({
+        browserInstance = await puppeteer.launch({
             args: chromium.args,
             defaultViewport: chromium.defaultViewport,
             executablePath: await chromium.executablePath(),
@@ -27,14 +32,24 @@ export const getBrowserInstance = async (): Promise<Browser> => {
         console.log('Launching Local Puppeteer...');
         // Dynamic import to avoid bundling puppeteer in production
         // @ts-ignore
-        const localPuppeteerModule = await import('puppeteer') as any;
+        const localPuppeteerModule = await import('puppeteer-extra') as any;
         const localPuppeteer = localPuppeteerModule.default || localPuppeteerModule;
+        
+        // Use stealth plugin to bypass basic bot checks
+        const stealthPluginModule = await import('puppeteer-extra-plugin-stealth') as any;
+        const StealthPlugin = stealthPluginModule.default || stealthPluginModule;
+        localPuppeteer.use(StealthPlugin());
 
-        browser = await localPuppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        browserInstance = await localPuppeteer.launch({
+            headless: true, // Use new headless mode for better evasion
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
+            ]
         }) as unknown as Browser;
     }
 
-    return browser;
+    return browserInstance;
 };
