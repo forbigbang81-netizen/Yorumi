@@ -3,8 +3,8 @@ import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import axios from "axios";
 import type { Anime } from "../types/anime";
 import { db } from "./firebase";
+import { API_BASE } from "../config/api";
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 const apiClient = axios.create({
     baseURL: API_BASE,
     timeout: 12000,

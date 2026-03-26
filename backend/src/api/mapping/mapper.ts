@@ -3,11 +3,30 @@ import { request, gql } from 'graphql-request';
 import Fuse from 'fuse.js';
 
 // --- CONFIGURATION ---
-// 1. Get these from your Upstash Console
-const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL!,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
+type RedisLike = {
+    get<T>(key: string): Promise<T | null>;
+    set(key: string, value: unknown, options?: Record<string, unknown>): Promise<unknown>;
+    del(key: string): Promise<unknown>;
+};
+
+const hasRedisConfig = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+
+const redis: RedisLike = hasRedisConfig
+    ? new Redis({
+        url: process.env.UPSTASH_REDIS_REST_URL!,
+        token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    })
+    : {
+        async get<T>() {
+            return null;
+        },
+        async set() {
+            return null;
+        },
+        async del() {
+            return null;
+        },
+    };
 
 const ANILIST_ENDPOINT = 'https://graphql.anilist.co';
 

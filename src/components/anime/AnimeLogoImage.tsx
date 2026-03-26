@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_BASE } from '../../config/api';
 
 interface AnimeLogoImageProps {
     anilistId: number;
@@ -9,7 +10,6 @@ interface AnimeLogoImageProps {
 }
 
 const LOGO_CACHE_KEY = 'yorumi_logo_cache';
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // Hydrate logo cache from localStorage on module load
 function loadCacheFromStorage(): Map<number, string | null> {

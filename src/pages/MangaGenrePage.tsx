@@ -5,8 +5,7 @@ import MangaCard from '../features/manga/components/MangaCard';
 import Pagination from '../components/ui/Pagination';
 import MangaCardSkeleton from '../features/manga/components/MangaCardSkeleton';
 import type { Manga } from '../types/manga';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+import { API_BASE } from '../config/api';
 
 // Helper to map AniList response to our Manga interface format
 const mapAnilistToManga = (item: any): Manga => ({

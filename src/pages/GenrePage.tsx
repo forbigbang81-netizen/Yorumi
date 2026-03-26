@@ -6,8 +6,7 @@ import Pagination from '../components/ui/Pagination';
 import AnimeCardSkeleton from '../features/anime/components/AnimeCardSkeleton';
 import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+import { API_BASE } from '../config/api';
 
 // Helper to map AniList response to our Anime interface format
 const mapAnilistToAnime = (item: any): Anime => ({

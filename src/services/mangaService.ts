@@ -1,7 +1,7 @@
 // API Service for Manga operations - Using AniList
 import type { Manga } from '../types/manga';
 import axios from 'axios';
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+import { API_BASE } from '../config/api';
 const apiClient = axios.create({
     baseURL: API_BASE,
     timeout: 15000,

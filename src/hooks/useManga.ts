@@ -3,9 +3,9 @@ import type { Manga, MangaChapter, MangaPage } from '../types/manga';
 import { mangaService } from '../services/mangaService';
 import { token_set_ratio } from 'fuzzball';
 import { storage } from '../utils/storage';
+import { API_BASE } from '../config/api';
 
 export type MangaViewMode = 'default' | 'popular_manhwa' | 'all_time_popular' | 'top_100';
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export function useManga() {
     const [topManga, setTopManga] = useState<Manga[]>([]);
@@ -790,4 +790,3 @@ export function useManga() {
         changeViewAllPage,
     };
 }
-
