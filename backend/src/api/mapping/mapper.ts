@@ -7,6 +7,8 @@ type RedisLike = {
     get<T>(key: string): Promise<T | null>;
     set(key: string, value: unknown, options?: Record<string, unknown>): Promise<unknown>;
     del(key: string): Promise<unknown>;
+    hget<T>(key: string, field: string): Promise<T | null>;
+    hset(key: string, value: Record<string, unknown>): Promise<unknown>;
 };
 
 const hasRedisConfig = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
@@ -24,6 +26,12 @@ const redis: RedisLike = hasRedisConfig
             return null;
         },
         async del() {
+            return null;
+        },
+        async hget<T>() {
+            return null;
+        },
+        async hset() {
             return null;
         },
     };
