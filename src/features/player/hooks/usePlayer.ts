@@ -203,10 +203,17 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
             markEpisodeComplete(episodeNumber);
         }
+        saveProgress(selectedAnime, currentEpisode, {
+            positionSeconds: Math.max(0, Math.floor(startAtOverrideSeconds ?? resumeAtSeconds ?? 0)),
+            durationSeconds: Math.max(0, Math.floor(lastDurationSecondRef.current || 0))
+        });
+        lastSavedProgressRef.current = {
+            at: Date.now(),
+            second: Math.max(0, Math.floor(startAtOverrideSeconds ?? resumeAtSeconds ?? 0))
+        };
         lastPlaybackSecondRef.current = null;
         lastDurationSecondRef.current = 0;
-        lastSavedProgressRef.current = { at: 0, second: -1 };
-    }, [selectedAnime, currentEpisode]);
+    }, [selectedAnime, currentEpisode, saveProgress, startAtOverrideSeconds, resumeAtSeconds]);
 
     // Prewarm adjacent episode streams to make next/prev nearly instant.
     useEffect(() => {
