@@ -14,6 +14,13 @@ import { getDisplayTitle } from '../utils/titleLanguage';
 export default function WatchPage() {
     const { id, title } = useParams<{ title: string; id: string }>();
     const { language } = useTitleLanguage();
+    const extractAnimePaheSession = (value: unknown): string => {
+        const raw = String(value || '').trim();
+        const normalized = raw.startsWith('s:') ? raw.slice(2) : raw;
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)
+            ? normalized
+            : '';
+    };
 
     useEffect(() => {
         document.documentElement.classList.add('watch-safe-mode');
@@ -55,7 +62,14 @@ export default function WatchPage() {
         navigate
     } = usePlayer(id, title);
 
-    const animeMatch = !!(anime && id && (String(anime.id) === String(id) || String(anime.mal_id) === String(id)));
+    const routeSession = extractAnimePaheSession(id);
+    const animeMatch = !!(
+        anime && id && (
+            String(anime.id) === String(id) ||
+            String(anime.mal_id) === String(id) ||
+            (!!routeSession && extractAnimePaheSession((anime as any)?.scraperId) === routeSession)
+        )
+    );
     const isPageLoading = !anime || !animeMatch;
 
     if (error) {

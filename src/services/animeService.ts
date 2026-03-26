@@ -204,6 +204,15 @@ const setCache = (key: string, data: any) => {
     writePersistedCache(key, data, timestamp);
 };
 
+const clearCacheEntry = (key: string) => {
+    cache.delete(key);
+    try {
+        localStorage.removeItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
+    } catch {
+        // Ignore storage errors.
+    }
+};
+
 const getCachedStream = (key: string) => {
     if (streamCache.has(key)) {
         const entry = streamCache.get(key)!;
@@ -696,6 +705,10 @@ export const animeService = {
         } catch {
             // no-op
         }
+    },
+
+    invalidateAnimeDetailsFast(id: number | string) {
+        clearCacheEntry(`anime-details-fast:${id}`);
     },
 
     // Get stream links from scraper

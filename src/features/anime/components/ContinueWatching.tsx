@@ -31,6 +31,11 @@ export default function ContinueWatching({
     onBack
 }: ContinueWatchingProps) {
     if (items.length === 0) return null;
+    const isAnimePaheSessionRoute = (value: unknown) => {
+        const raw = String(value || '').trim();
+        const normalized = raw.startsWith('s:') ? raw.slice(2) : raw;
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized);
+    };
 
     const formatClock = (seconds: number) => {
         const safe = Math.max(0, Math.floor(seconds || 0));
@@ -89,7 +94,7 @@ export default function ContinueWatching({
                             key={item.animeId}
                             className="relative group cursor-pointer"
                             onClick={() => {
-                                const isHybrid = item.animeId.toString().startsWith('s:');
+                                const isHybrid = isAnimePaheSessionRoute(item.animeId);
                                 onWatchClick({
                                     mal_id: isHybrid ? 0 : parseInt(item.animeId),
                                     scraperId: isHybrid ? item.animeId : undefined,
@@ -139,7 +144,7 @@ export default function ContinueWatching({
                     key={item.animeId}
                     className="relative group h-full flex-[0_0_240px] sm:flex-[0_0_280px] md:flex-[0_0_320px]"
                     onClick={() => {
-                        const isHybrid = item.animeId.toString().startsWith('s:');
+                        const isHybrid = isAnimePaheSessionRoute(item.animeId);
                         onWatchClick({
                             mal_id: isHybrid ? 0 : parseInt(item.animeId),
                             scraperId: isHybrid ? item.animeId : undefined,

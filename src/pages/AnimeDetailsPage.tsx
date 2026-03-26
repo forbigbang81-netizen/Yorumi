@@ -110,11 +110,16 @@ export default function AnimeDetailsPage() {
         } else if (id) {
             // Deep link / Refresh - fetch using ID
             if (id.startsWith('s:')) {
+                const scraperSession = id.substring(2).trim();
+                if (!isAnimePaheSession(scraperSession)) {
+                    navigate('/', { replace: true });
+                    return;
+                }
                 // Scraper ID
                 animeHook.handleAnimeClick({
                     mal_id: 0,
                     id: 0,
-                    scraperId: id.substring(2),
+                    scraperId: scraperSession,
                     title: '', // Title unknown on deep link, might fail identification if not mapped
                     images: { jpg: { image_url: '', large_image_url: '' } } // Placeholder
                 } as Anime);

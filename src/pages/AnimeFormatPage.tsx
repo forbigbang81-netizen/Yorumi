@@ -22,6 +22,8 @@ export default function AnimeFormatPage() {
     const format = location.pathname.split('/').pop() || '';
     const navigate = useNavigate();
     const { prefetchEpisodes } = useAnime();
+    const isAnimePaheSession = (value: unknown) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
     const config = FORMAT_CONFIG[format];
 
@@ -74,7 +76,7 @@ export default function AnimeFormatPage() {
     const handleWatchClick = (item: Anime) => {
         const title = slugify(item.title || item.title_english || 'anime');
         const rawScraperId = String(item.scraperId || '').trim();
-        const id = rawScraperId
+        const id = rawScraperId && isAnimePaheSession(rawScraperId)
             ? (rawScraperId.startsWith('s:') ? rawScraperId : `s:${rawScraperId}`)
             : (item.mal_id || item.id);
         if (!id) return;

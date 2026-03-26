@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { anilistService } from './anilist.service';
 import { HiAnimeScraper } from '../scraper/hianime.service';
+import { AnimePaheScraper } from '../../scraper/animepahe';
 import { redis } from '../mapping/mapper';
 import { mappingService } from '../mapping/mapping.service';
 import { scraperService } from '../scraper/scraper.service';
@@ -10,6 +11,8 @@ const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v1';
 const HOME_FAST_TTL_SECONDS = 120;
 let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
 let homeFastRefreshPromise: Promise<any> | null = null;
+const isAnimePaheSession = (value: unknown) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
 const getFreshHomeFastFromMemory = () => {
     if (!homeFastMemoryCache) return null;
@@ -404,8 +407,12 @@ router.get('/anime/:id/fast', async (req, res) => {
 
         if (id.startsWith('s:')) {
             resolvedSession = id.substring(2).trim() || null;
+            if (!isAnimePaheSession(resolvedSession)) {
+                res.status(400).json({ error: 'Only AnimePahe scraper sessions are supported' });
+                return;
+            }
             const scraperDetails = resolvedSession
-                ? await new HiAnimeScraper().getAnimeInfo(resolvedSession)
+                ? await new AnimePaheScraper().getAnimeInfo(resolvedSession)
                 : null;
 
             if (scraperDetails?.title) {
@@ -431,8 +438,8 @@ router.get('/anime/:id/fast', async (req, res) => {
                     coverImage: { large: scraperDetails.poster },
                     description: scraperDetails.description,
                     status: scraperDetails.status,
-                    episodes: scraperDetails.stats?.episodes?.sub || null,
-                    format: 'TV',
+                    episodes: scraperDetails.episodes || null,
+                    format: scraperDetails.type || 'TV',
                     genres: [],
                     averageScore: 0,
                     scraperId: resolvedSession,
@@ -549,8 +556,10 @@ router.get('/anime/:id', async (req, res) => {
         // Hybrid Logic for Scraper IDs (e.g. s:one-piece-100)
         if (id.startsWith('s:')) {
             const scraperId = id.substring(2);
-            // 1. Fetch scraper info
-            const scraperDetails = await new HiAnimeScraper().getAnimeInfo(scraperId);
+            if (!isAnimePaheSession(scraperId)) {
+                return res.status(400).json({ error: 'Only AnimePahe scraper sessions are supported' });
+            }
+            const scraperDetails = await new AnimePaheScraper().getAnimeInfo(scraperId);
             if (!scraperDetails) {
                 return res.status(404).json({ error: 'Anime not found on scraper' });
             }
@@ -581,10 +590,11 @@ router.get('/anime/:id', async (req, res) => {
                 coverImage: { large: scraperDetails.poster },
                 description: scraperDetails.description,
                 status: scraperDetails.status,
-                episodes: scraperDetails.stats?.episodes?.sub || null,
-                format: 'TV',
+                episodes: scraperDetails.episodes || null,
+                format: scraperDetails.type || 'TV',
                 genres: [],
-                averageScore: 0
+                averageScore: 0,
+                scraperId: scraperId
             });
         }
 

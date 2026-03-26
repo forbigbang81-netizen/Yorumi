@@ -14,6 +14,8 @@ export default function SearchPage() {
     const navigate = useNavigate();
     const query = searchParams.get('q') || '';
     const type = (searchParams.get('type') as 'anime' | 'manga') || 'anime';
+    const isAnimePaheSession = (value: unknown) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
     // Derived state for UI
     const alphabets = ['All', '#', '0-9', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')];
@@ -101,7 +103,7 @@ export default function SearchPage() {
                                 key={item.id || item.scraperId || item.mal_id}
                                 anime={item}
                                 onClick={() => {
-                                    if (item.scraperId) {
+                                    if (item.scraperId && isAnimePaheSession(item.scraperId)) {
                                         navigate(`/anime/details/s:${item.scraperId}`, { state: { anime: item } });
                                     } else {
                                         navigate(`/anime/details/${item.mal_id}`, { state: { anime: item } });

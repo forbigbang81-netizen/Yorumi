@@ -40,6 +40,8 @@ function App() {
   const searchCacheRef = useRef(new Map<string, { data: any[]; timestamp: number }>());
   const SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
   const debouncedSearchQuery = useDebounce(searchQuery, 280);
+  const isAnimePaheSession = (value: unknown) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
   // Derive active tab from URL or Query Params (to persist state on Search Page)
   const queryParams = new URLSearchParams(location.search);
@@ -82,7 +84,7 @@ function App() {
             date: item.aired?.string ? item.aired.string : item.year,
             type: item.type, // e.g., TV
             duration: item.duration || null,
-            url: item.scraperId ? `/anime/details/s:${item.scraperId}` : `/anime/details/${item.id}`
+            url: item.scraperId && isAnimePaheSession(item.scraperId) ? `/anime/details/s:${item.scraperId}` : `/anime/details/${item.id}`
           }));
           if (requestId !== searchRequestIdRef.current) return;
           setSearchResults(mapped);

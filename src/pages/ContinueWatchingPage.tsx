@@ -7,6 +7,8 @@ import type { Anime } from '../types/anime';
 export default function ContinueWatchingPage() {
     const navigate = useNavigate();
     const { continueWatchingList, removeFromHistory } = useContinueWatching();
+    const isAnimePaheSession = (value: unknown) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
     return (
         <div className="min-h-screen bg-[#07090d] pt-24">
@@ -19,7 +21,7 @@ export default function ContinueWatchingPage() {
                     onWatchClick={(anime: Anime, episodeNumber: number, startSeconds?: number) => {
                         const title = slugify(anime.title || 'anime');
                         const rawScraperId = String(anime.scraperId || '').trim();
-                        const targetId = rawScraperId
+                        const targetId = rawScraperId && isAnimePaheSession(rawScraperId)
                             ? (rawScraperId.startsWith('s:') ? rawScraperId : `s:${rawScraperId}`)
                             : anime.mal_id;
                         if (!targetId) return;

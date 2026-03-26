@@ -41,6 +41,16 @@ export interface StreamLink {
     isHls: boolean;
 }
 
+export interface AnimeInfo {
+    title: string;
+    poster?: string;
+    description?: string;
+    status?: string;
+    type?: string;
+    episodes?: number | null;
+    year?: number | null;
+}
+
 export class AnimePaheScraper {
     private browser: Browser | null = null;
     private readonly requestHeaders = {
@@ -151,6 +161,99 @@ export class AnimePaheScraper {
             return [];
         } finally {
             await page.close();
+        }
+    }
+
+    private parseAnimeInfoFromHtml(html: string): AnimeInfo | null {
+        const $ = cheerio.load(String(html || ''));
+        const rawTitle =
+            $('div.title-wrapper h1').first().text().trim() ||
+            $('h1').first().text().trim() ||
+            $('meta[property="og:title"]').attr('content')?.trim() ||
+            $('title').text().replace(/\s*-\s*AnimePahe.*$/i, '').trim();
+        const title =
+            rawTitle && rawTitle.length % 2 === 0 && rawTitle.slice(0, rawTitle.length / 2) === rawTitle.slice(rawTitle.length / 2)
+                ? rawTitle.slice(0, rawTitle.length / 2).trim()
+                : rawTitle;
+
+        if (!title) return null;
+
+        const description =
+            $('meta[property="og:description"]').attr('content')?.trim() ||
+            $('.anime-synopsis').first().text().trim() ||
+            $('div.anime-synopsis').first().text().trim() ||
+            undefined;
+
+        const poster =
+            $('meta[property="og:image"]').attr('content')?.trim() ||
+            $('img').filter((_, el) => String($(el).attr('src') || '').includes('/posters/')).first().attr('src')?.trim() ||
+            undefined;
+
+        const statsText = $('body').text();
+        const episodesMatch = statsText.match(/Episodes:\s*(\d+)/i);
+        const yearMatch = statsText.match(/Season:\s*[A-Za-z]+\s+(\d{4})/i) || statsText.match(/Aired:\s*.*?(\d{4})/i);
+        const statusMatch = statsText.match(/Status:\s*([A-Za-z ]+)/i);
+        const typeMatch = statsText.match(/Type:\s*([A-Za-z]+)/i);
+
+        return {
+            title,
+            poster,
+            description,
+            status: statusMatch?.[1]?.trim(),
+            type: typeMatch?.[1]?.trim(),
+            episodes: episodesMatch?.[1] ? Number(episodesMatch[1]) : null,
+            year: yearMatch?.[1] ? Number(yearMatch[1]) : null,
+        };
+    }
+
+    async getAnimeInfo(session: string): Promise<AnimeInfo | null> {
+        const animeUrl = `${BASE_URL}/anime/${session}`;
+
+        try {
+            const response = await axios.get(animeUrl, {
+                headers: {
+                    ...this.requestHeaders,
+                    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                },
+                timeout: 15000,
+                responseType: 'text',
+            });
+
+            const html = String(response.data || '');
+            return this.parseAnimeInfoFromHtml(html);
+        } catch (error) {
+            const browser = await this.getBrowser();
+            const page = await browser.newPage();
+            await page.setUserAgent(this.requestHeaders['User-Agent']);
+
+            try {
+                await page.setRequestInterception(true);
+                page.on('request', (req) => {
+                    const resourceType = req.resourceType();
+                    if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                        req.abort();
+                    } else {
+                        req.continue();
+                    }
+                });
+
+                await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                try {
+                    await page.waitForFunction(
+                        () => !/checking your browser/i.test(document.title) && !/ddos-guard/i.test(document.body.innerText),
+                        { timeout: 12000 }
+                    );
+                } catch {
+                    await new Promise((resolve) => setTimeout(resolve, 8000));
+                }
+                const html = await page.content();
+                return this.parseAnimeInfoFromHtml(html);
+            } catch (fallbackError) {
+                console.error('Error getting AnimePahe info:', fallbackError);
+                return null;
+            } finally {
+                await page.close();
+            }
         }
     }
 
