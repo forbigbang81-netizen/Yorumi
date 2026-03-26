@@ -96,6 +96,8 @@ export default function AnimeDetailsPage() {
     const navigate = useNavigate();
     const location = useLocation();
     const animeHook = useAnime();
+    const isAnimePaheSession = (value: unknown) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
     // We need to sync the URL ID with the hook's selectedAnime
     useEffect(() => {
@@ -133,7 +135,13 @@ export default function AnimeDetailsPage() {
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
 
     // Derived state for button, but useWatchList is reactive so we can just use isInWatchList(id)
-    const animeId = selectedAnime ? (selectedAnime.scraperId || selectedAnime.id || selectedAnime.mal_id).toString() : '';
+    const animeId = selectedAnime
+        ? (
+            isAnimePaheSession(selectedAnime.scraperId)
+                ? selectedAnime.scraperId
+                : (selectedAnime.id || selectedAnime.mal_id)
+        )?.toString() || ''
+        : '';
     const inList = isInWatchList(animeId);
     const inFavorites = isFavorite(animeId);
 

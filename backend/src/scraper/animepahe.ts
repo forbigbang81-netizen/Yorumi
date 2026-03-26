@@ -2,6 +2,7 @@
 import { Browser, Page } from 'puppeteer-core';
 import { getBrowserInstance } from '../utils/browser';
 import axios from 'axios';
+import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://animepahe.si';
 const API_URL = 'https://animepahe.si/api';
@@ -154,6 +155,11 @@ export class AnimePaheScraper {
     }
 
     async getEpisodes(animeSessionId: string, pageNum: number = 1): Promise<{ episodes: Episode[], lastPage: number }> {
+        const htmlFirst = await this.getEpisodesFromHtml(null as any, animeSessionId);
+        if (htmlFirst.episodes.length > 0) {
+            return htmlFirst;
+        }
+
         const apiUrl = `${API_URL}?m=release&id=${animeSessionId}&sort=episode_asc&page=${pageNum}`;
 
         // Fast path: direct API call via axios (no browser spin-up)
@@ -213,8 +219,8 @@ export class AnimePaheScraper {
             try {
                 response = JSON.parse(responseText);
             } catch (e) {
-                console.error("Failed to parse episodes JSON:", responseText);
-                return { episodes: [], lastPage: 1 };
+                console.warn("Failed to parse episodes JSON, falling back to HTML page scrape");
+                return await this.getEpisodesFromHtml(page, animeSessionId);
             }
 
             if (response && response.data) {
@@ -237,6 +243,61 @@ export class AnimePaheScraper {
             return { episodes: [], lastPage: 1 };
         } catch (error) {
             console.error('Error getting episodes:', error);
+            return { episodes: [], lastPage: 1 };
+        } finally {
+            await page.close();
+        }
+    }
+
+    private async getEpisodesFromHtml(_page: Page | null, animeSessionId: string): Promise<{ episodes: Episode[], lastPage: number }> {
+        const animeUrl = `${BASE_URL}/anime/${animeSessionId}`;
+        const browser = await this.getBrowser();
+        const page = await browser.newPage();
+        await page.setUserAgent(this.requestHeaders['User-Agent']);
+        try {
+            await page.setRequestInterception(true);
+            page.on('request', (req) => {
+                const resourceType = req.resourceType();
+                if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                    req.abort();
+                } else {
+                    req.continue();
+                }
+            });
+
+            await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await new Promise((resolve) => setTimeout(resolve, 10000));
+            const html = await page.content();
+            const $ = cheerio.load(html);
+            const episodes: Episode[] = [];
+
+            $('a.play').each((_, element) => {
+                const href = String($(element).attr('href') || '').trim();
+                if (!href.startsWith('/play/')) return;
+
+                const title = $(element).text().trim().replace(/^Watch\s*-\s*/i, '').replace(/\s+Online$/i, '').trim();
+                const parts = href.split('/').filter(Boolean);
+                const episodeSession = parts[parts.length - 1];
+                const animeSession = parts[parts.length - 2];
+                if (!episodeSession || !animeSession) return;
+
+                const epMatch = title.match(/(\d+(?:\.\d+)?)/);
+                const episodeNumber = epMatch ? Number(epMatch[1]) : NaN;
+                if (!Number.isFinite(episodeNumber)) return;
+
+                episodes.push({
+                    id: episodeSession,
+                    session: episodeSession,
+                    episodeNumber,
+                    url: href,
+                    title: `Episode ${episodeNumber}`,
+                });
+            });
+
+            episodes.sort((a, b) => a.episodeNumber - b.episodeNumber);
+            return { episodes, lastPage: 1 };
+        } catch (error) {
+            console.error('Error getting AnimePahe episodes from HTML:', error);
             return { episodes: [], lastPage: 1 };
         } finally {
             await page.close();

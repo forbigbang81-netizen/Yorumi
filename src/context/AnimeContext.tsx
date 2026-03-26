@@ -131,13 +131,15 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (!raw) return '';
         return raw.startsWith('s:') ? raw.slice(2) : raw;
     };
+    const isAnimePaheSession = (value: unknown) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizeScraperId(value));
     const getAnimeCacheKey = (target: Anime): string | null => {
         const mal = Number(target?.mal_id);
         if (Number.isFinite(mal) && mal > 0) return `mal:${mal}`;
         const aid = Number(target?.id);
         if (Number.isFinite(aid) && aid > 0) return `anilist:${aid}`;
         const sid = normalizeScraperId(target?.scraperId);
-        if (sid) return `scraper:${sid}`;
+        if (sid && isAnimePaheSession(sid)) return `scraper:${sid}`;
         return null;
     };
     const normalizeEpisodeNumber = (value: unknown, fallbackIndex: number): string => {
@@ -522,9 +524,6 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 const aid = Number(anime?.id);
                 return Number.isFinite(aid) && aid > 0 ? aid : null;
             })();
-        const isLegacyAnimePaheSession = (value: string) =>
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-
         // Strict normalize for exact-ish comparisons.
         const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
         // Loose normalize for cross-source title variants (e.g. with/without "Season 3", "Part 1").
@@ -743,7 +742,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         };
 
         // Fast path: when scraperId is already known, avoid extra mapping/search calls.
-        if (anime.scraperId) {
+        if (anime.scraperId && isAnimePaheSession(anime.scraperId)) {
             session = normalizeScraperId(anime.scraperId);
             if (cacheKey) {
                 scraperSessionCache.current.set(cacheKey, session);
@@ -753,15 +752,8 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         if (!session && cacheKey && scraperSessionCache.current.has(cacheKey)) {
             const cachedSession = scraperSessionCache.current.get(cacheKey)!;
-            if (!isLegacyAnimePaheSession(cachedSession)) {
-                session = cachedSession;
-                sessionFromCache = true;
-            } else {
-                scraperSessionCache.current.delete(cacheKey);
-                if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
-                    animeService.clearAnimeMapping(mappingKey).catch(() => undefined);
-                }
-            }
+            session = cachedSession;
+            sessionFromCache = true;
         } else if (!session) {
             // 0. Try to get from Firebase Mapping Cache
             if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
@@ -1033,7 +1025,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         try {
             let detailsId: string | number | undefined = anime.id || anime.mal_id;
-            if (anime.scraperId && (!detailsId || detailsId === 0)) {
+            if (anime.scraperId && isAnimePaheSession(anime.scraperId) && (!detailsId || detailsId === 0)) {
                 const normalizedScraperId = normalizeScraperId(anime.scraperId);
                 if (!normalizedScraperId) throw new Error('Could not identify scraper ID');
                 detailsId = `s:${normalizedScraperId}`;
@@ -1189,7 +1181,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     const prefetchEpisodes = (anime: Anime) => {
-        const detailsId = anime.scraperId
+        const detailsId = isAnimePaheSession(anime.scraperId)
             ? `s:${normalizeScraperId(anime.scraperId)}`
             : (anime.id || anime.mal_id);
         if (detailsId) {

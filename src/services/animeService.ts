@@ -217,9 +217,6 @@ const getCachedStream = (key: string) => {
 
 // Track in-flight requests to prevent duplicates
 const inFlightRequests = new Map<string, Promise<any>>();
-const isLegacyAnimePaheSession = (value: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-
 export const animeService = {
     async getHomeFastData() {
         const cacheKey = 'home-fast-data-v1';
@@ -651,13 +648,7 @@ export const animeService = {
     async getAnimeMapping(malId: string | number) {
         const key = String(malId);
         const cached = mappingCache.get(key);
-        if (cached) {
-            if (isLegacyAnimePaheSession(cached)) {
-                mappingCache.delete(key);
-                return null;
-            }
-            return cached;
-        }
+        if (cached) return cached;
 
         const docRef = doc(db, "anime_mappings", key);
         try {
@@ -669,12 +660,6 @@ export const animeService = {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 if (data.session) {
-                    if (isLegacyAnimePaheSession(data.session)) {
-                        mappingCache.delete(key);
-                        // Cleanup stale AnimePahe UUID mapping.
-                        deleteDoc(docRef).catch(() => undefined);
-                        return null;
-                    }
                     mappingCache.set(key, data.session);
                     return data.session;
                 }
@@ -687,7 +672,7 @@ export const animeService = {
 
     // Save mapping
     async saveAnimeMapping(malId: string | number, session: string) {
-        if (!session || isLegacyAnimePaheSession(session)) return;
+        if (!session) return;
         const key = String(malId);
         mappingCache.set(key, session);
         const docRef = doc(db, "anime_mappings", key);

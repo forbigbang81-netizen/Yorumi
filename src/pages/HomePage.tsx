@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useAnime } from '../hooks/useAnime';
-import { animeService } from '../services/animeService';
 import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
 
@@ -19,13 +18,15 @@ export default function HomePage() {
 
     useEffect(() => {
         anime.fetchHomeData();
-        animeService.prefetchTopAnimeFormats();
     }, []);
 
     // Navigation Handlers
+    const isAnimePaheSession = (value: unknown) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+
     const getWatchRouteId = (item: Anime): string | number | undefined => {
         const rawScraperId = String(item.scraperId || '').trim();
-        if (rawScraperId) {
+        if (rawScraperId && isAnimePaheSession(rawScraperId)) {
             return rawScraperId.startsWith('s:') ? rawScraperId : `s:${rawScraperId}`;
         }
         return item.mal_id || item.id;
