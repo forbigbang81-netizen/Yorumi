@@ -425,6 +425,9 @@ router.get('/search/manga', async (req, res) => {
 router.get('/anime/:id/fast', async (req, res) => {
     try {
         const { id } = req.params;
+        if (id.startsWith('s:')) {
+            res.set('Cache-Control', 'no-store');
+        }
         let animeDetails: any = null;
         let resolvedSession: string | null = null;
         let rankedCandidates: Array<{ candidate: any; score: number }> = [];
@@ -542,6 +545,9 @@ router.get('/anime/:id/fast', async (req, res) => {
 router.get('/anime/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        if (id.startsWith('s:')) {
+            res.set('Cache-Control', 'no-store');
+        }
 
         // Hybrid Logic for Scraper IDs (e.g. s:one-piece-100)
         if (id.startsWith('s:')) {
@@ -561,7 +567,7 @@ router.get('/anime/:id', async (req, res) => {
 
             if (anilistMatch) {
                 // 3. Get full AniList details
-                const anilistDetails = await anilistService.getMediaDetails(anilistMatch.id);
+                const anilistDetails = await anilistService.getAnimeById(anilistMatch.id);
                 if (anilistDetails) {
                     // 4. Return merged result (AniList metadata + Scraper ID hint)
                     return res.json({
