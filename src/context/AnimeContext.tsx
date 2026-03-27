@@ -186,6 +186,12 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (!Array.isArray(input)) return [];
         const seen = new Set<string>();
         const normalized: Episode[] = [];
+        const parseSortableEpisodeNumber = (value: string): number => {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed)) return parsed;
+            const match = String(value).match(/(\d+(?:\.\d+)?)/);
+            return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+        };
 
         input.forEach((item: any, index) => {
             const rawSession =
@@ -218,7 +224,11 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             seen.add(session);
         });
 
-        return normalized;
+        return normalized.sort((a, b) => {
+            const episodeDiff = parseSortableEpisodeNumber(a.episodeNumber) - parseSortableEpisodeNumber(b.episodeNumber);
+            if (episodeDiff !== 0) return episodeDiff;
+            return a.session.localeCompare(b.session);
+        });
     };
     const HOME_CACHE_PREFIX = 'yorumi_home_cache_v2';
     const readHomeCache = <T,>(key: string, ttlMs: number): T | null => {

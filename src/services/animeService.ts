@@ -155,7 +155,7 @@ const STREAM_CACHE_TTL = 20 * 60 * 1000; // 20 minutes
 const mappingCache = new Map<string, string>();
 const scraperSearchCache = new Map<string, { data: any[]; timestamp: number }>();
 const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
-const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v2';
+const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v3';
 
 const readPersistedCache = (key: string, ttl: number) => {
     try {
@@ -449,7 +449,7 @@ export const animeService = {
 
     // Get anime details from AniList
     async getAnimeDetails(id: number | string) {
-        const cacheKey = `anime-details:${id}`;
+        const cacheKey = `anime-details:v2:${id}`;
         const cached = getCached(cacheKey);
         if (cached) return cached;
         if (inFlightRequests.has(cacheKey)) {
@@ -476,7 +476,7 @@ export const animeService = {
     },
 
     async getAnimeDetailsFast(id: number | string) {
-        const cacheKey = `anime-details-fast:${id}`;
+        const cacheKey = `anime-details-fast:v4:${id}`;
         const cached = getCached(cacheKey);
         if (cached) {
             const cachedEpisodes = Array.isArray((cached as any)?.episodes) ? (cached as any).episodes : [];
@@ -580,14 +580,14 @@ export const animeService = {
 
     // Get episodes from scraper. Backend/Redis is the primary cache layer.
     async getEpisodes(session: string) {
-        const cacheKey = `episodes:${session}`;
+        const cacheKey = `episodes:v4:${session}`;
         const cached = getCached(cacheKey);
         if (cached) return cached;
         if (inFlightRequests.has(cacheKey)) {
             return inFlightRequests.get(cacheKey);
         }
 
-        const CACHE_COLLECTION = "anime_episodes";
+        const CACHE_COLLECTION = "anime_episodes_v4";
         const docRef = doc(db, CACHE_COLLECTION, session);
 
         const readFirebaseEpisodes = async (timeoutMs: number): Promise<{ episodes: any[] } | null> => {
@@ -711,7 +711,7 @@ export const animeService = {
     },
 
     invalidateAnimeDetailsFast(id: number | string) {
-        clearCacheEntry(`anime-details-fast:${id}`);
+        clearCacheEntry(`anime-details-fast:v4:${id}`);
     },
 
     // Get stream links from scraper

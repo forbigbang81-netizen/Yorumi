@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Episode } from '../../../../types/anime';
 
 interface DetailsEpisodeGridProps {
@@ -10,20 +10,30 @@ interface DetailsEpisodeGridProps {
 export default function DetailsEpisodeGrid({ episodes, watchedEpisodes, onEpisodeClick }: DetailsEpisodeGridProps) {
     const ITEMS_PER_PAGE = 30;
     const [page, setPage] = useState(1);
-    const totalPages = Math.ceil(episodes.length / ITEMS_PER_PAGE);
-
-    const currentEpisodes = episodes.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
     if (episodes.length === 0) {
         return <div className="text-gray-500 text-center py-4">No episodes found.</div>;
     }
 
+    const totalPages = Math.ceil(episodes.length / ITEMS_PER_PAGE);
+    const visibleEpisodes = episodes.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+
+    useEffect(() => {
+        setPage(1);
+    }, [episodes.length, episodes[0]?.session, episodes[episodes.length - 1]?.session]);
+
+    useEffect(() => {
+        if (page > totalPages) {
+            setPage(totalPages || 1);
+        }
+    }, [page, totalPages]);
+
     return (
         <div className="py-6 border-t border-white/10 mt-6">
-            <h3 className="text-xl font-bold text-white mb-4">Episodes</h3>
+            <h3 className="text-xl font-bold text-white mb-4">Episodes ({episodes.length})</h3>
             <div className="mt-6">
                 <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
-                    {currentEpisodes.map((ep) => {
+                    {visibleEpisodes.map((ep) => {
                         const cleanTitle = ep.title && ep.title.trim().toLowerCase() !== 'untitled' ? ep.title : null;
                         const displayTitle = cleanTitle || `Episode ${ep.episodeNumber}`;
                         const isWatched = watchedEpisodes.has(parseFloat(ep.episodeNumber));
@@ -38,23 +48,37 @@ export default function DetailsEpisodeGrid({ episodes, watchedEpisodes, onEpisod
                             >
                                 <span className="text-sm font-bold">{ep.episodeNumber}</span>
                             </button>
-                        );
-                    })}
+                            );
+                        })}
                 </div>
-
                 {totalPages > 1 && (
                     <div className="flex flex-col items-center gap-4 mt-6">
                         <div className="flex flex-wrap justify-center gap-2">
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                            <button
+                                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                                disabled={page === 1}
+                                className="min-w-10 rounded-md bg-white/10 px-3 py-1 text-sm text-gray-300 transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                Prev
+                            </button>
+                            {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
                                 <button
-                                    key={p}
-                                    onClick={() => setPage(p)}
-                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors flex-shrink-0
-                                        ${page === p ? 'bg-yorumi-500 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'}`}
+                                    key={pageNumber}
+                                    onClick={() => setPage(pageNumber)}
+                                    className={`min-w-8 rounded-full px-2 py-1 text-sm transition-colors ${
+                                        page === pageNumber ? 'bg-yorumi-500 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                                    }`}
                                 >
-                                    {p}
+                                    {pageNumber}
                                 </button>
                             ))}
+                            <button
+                                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                                disabled={page === totalPages}
+                                className="min-w-10 rounded-md bg-white/10 px-3 py-1 text-sm text-gray-300 transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                Next
+                            </button>
                         </div>
                     </div>
                 )}

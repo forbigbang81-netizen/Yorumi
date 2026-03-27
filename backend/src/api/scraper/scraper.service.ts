@@ -109,11 +109,28 @@ export class ScraperService {
     }
 
     async getEpisodes(session: string) {
-        return this.getOrLoad(`episodes:v4:${session}`, 15 * 60 * 1000, async () => {
-            const fast = await this.fastScraper.getEpisodes(session);
-            if (Array.isArray(fast.episodes)) return fast;
-            return { episodes: [], lastPage: 1 };
-        });
+        const isCompleteEpisodePayload = (value: any) => {
+            const episodes = Array.isArray(value?.episodes) ? value.episodes : [];
+            const lastPage = Number(value?.lastPage || 1);
+            const minimumExpectedEpisodes = lastPage <= 1 ? 1 : ((Math.floor(lastPage) - 1) * 30) + 1;
+            return episodes.length >= minimumExpectedEpisodes;
+        };
+
+        return this.getOrLoad(
+            `episodes:v7:${session}`,
+            15 * 60 * 1000,
+            async () => {
+                const fast = await this.fastScraper.getEpisodes(session);
+                if (Array.isArray(fast.episodes) && fast.episodes.length > 0) {
+                    return fast;
+                }
+                return { episodes: [], lastPage: 1 };
+            },
+            {
+                shouldCache: isCompleteEpisodePayload,
+                allowCached: isCompleteEpisodePayload,
+            }
+        );
     }
 
     async getStreams(animeSession: string, epSession: string) {

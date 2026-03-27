@@ -1,24 +1,31 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Anime, Episode } from '../../types/anime';
 import AnimeCard from '../../features/anime/components/AnimeCard';
 import { useTitleLanguage } from '../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../utils/titleLanguage';
 
-// Episode Grid Component with Pagination (30 per page)
-// Episode List Component with Pagination (20 per page)
 const EpisodeList = ({ episodes, onEpisodeClick }: { episodes: Episode[], onEpisodeClick: (ep: Episode) => void }) => {
-    // 30 eps per page as requested
     const ITEMS_PER_PAGE = 30;
     const [page, setPage] = useState(1);
     const totalPages = Math.ceil(episodes.length / ITEMS_PER_PAGE);
+    const visibleEpisodes = episodes.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
-    const currentEpisodes = episodes.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+    useEffect(() => {
+        setPage(1);
+    }, [episodes.length, episodes[0]?.session, episodes[episodes.length - 1]?.session]);
+
+    useEffect(() => {
+        if (page > totalPages) {
+            setPage(totalPages || 1);
+        }
+    }, [page, totalPages]);
 
     return (
         <div className="mt-6">
+            <div className="mb-4 text-sm text-gray-400">Showing {episodes.length} episodes</div>
             {/* Grid Layout - Dense "Boxes" */}
             <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-[repeat(auto-fill,minmax(40px,1fr))] gap-2">
-                {currentEpisodes.map((ep) => {
+                {visibleEpisodes.map((ep) => {
                     return (
                         <button
                             key={ep.session || ep.episodeNumber}
@@ -31,23 +38,34 @@ const EpisodeList = ({ episodes, onEpisodeClick }: { episodes: Episode[], onEpis
                     );
                 })}
             </div>
-
-            {/* Pagination */}
             {totalPages > 1 && (
                 <div className="flex flex-col items-center gap-4 mt-6">
                     <div className="flex flex-wrap justify-center gap-2">
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                        <button
+                            onClick={() => setPage((current) => Math.max(1, current - 1))}
+                            disabled={page === 1}
+                            className="min-w-10 rounded-md bg-white/10 px-3 py-1 text-sm text-gray-300 transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            Prev
+                        </button>
+                        {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
                             <button
-                                key={p}
-                                onClick={() => setPage(p)}
-                                className={`
-                                    w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors flex-shrink-0
-                                    ${page === p ? 'bg-yorumi-500 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'}
-                                `}
+                                key={pageNumber}
+                                onClick={() => setPage(pageNumber)}
+                                className={`min-w-8 rounded-full px-2 py-1 text-sm transition-colors ${
+                                    page === pageNumber ? 'bg-yorumi-500 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                                }`}
                             >
-                                {p}
+                                {pageNumber}
                             </button>
                         ))}
+                        <button
+                            onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                            disabled={page === totalPages}
+                            className="min-w-10 rounded-md bg-white/10 px-3 py-1 text-sm text-gray-300 transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            Next
+                        </button>
                     </div>
                 </div>
             )}
