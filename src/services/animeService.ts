@@ -4,6 +4,7 @@ import axios from "axios";
 import type { Anime } from "../types/anime";
 import { db } from "./firebase";
 import { API_BASE } from "../config/api";
+import { getDisplayImageUrl } from "../utils/image";
 
 const apiClient = axios.create({
     baseURL: API_BASE,
@@ -89,7 +90,7 @@ const mapScraperToAnime = (item: any) => {
     const score = typeof item.score === 'number' ? item.score : parseFloat(item.score || '0');
     const year = typeof item.year === 'number' ? item.year : parseInt(item.year || '', 10);
     const episodes = typeof item.episodes === 'number' ? item.episodes : parseInt(item.episodes || '', 10);
-    const image = item.poster || item.image || '';
+    const image = getDisplayImageUrl(item.poster || item.image || '');
     return {
         mal_id: 0,
         id: 0,
@@ -120,9 +121,10 @@ const mapScraperToAnime = (item: any) => {
 const mapTopTenItemToAnime = (item: any, index: number): Anime => {
     const anime = mapAnilistToAnime(item.anilist || {}) as Anime;
     if (item.poster) {
-        anime.images.jpg.image_url = item.poster;
-        anime.images.jpg.large_image_url = item.poster;
-        anime.anilist_cover_image = item.poster;
+        const posterUrl = getDisplayImageUrl(item.poster);
+        anime.images.jpg.image_url = posterUrl;
+        anime.images.jpg.large_image_url = posterUrl;
+        anime.anilist_cover_image = posterUrl;
     }
     if (!item.anilist || !item.anilist.id) {
         const fallbackId = parseInt(item.dataId || '', 10) || 0;
@@ -249,9 +251,10 @@ export const animeService = {
                         const anime = mapAnilistToAnime(item.anilist || {}) as Anime;
                         if (item.banner) anime.anilist_banner_image = item.banner;
                         if (item.poster) {
-                            anime.images.jpg.image_url = item.poster;
-                            anime.images.jpg.large_image_url = item.poster;
-                            anime.anilist_cover_image = item.poster;
+                            const posterUrl = getDisplayImageUrl(item.poster);
+                            anime.images.jpg.image_url = posterUrl;
+                            anime.images.jpg.large_image_url = posterUrl;
+                            anime.anilist_cover_image = posterUrl;
                         }
                         if (item.scraperId) anime.scraperId = item.scraperId;
                         return anime;
@@ -861,9 +864,10 @@ export const animeService = {
                     anime.anilist_banner_image = item.banner;
                 }
                 if (item.poster) {
-                    anime.images.jpg.large_image_url = item.poster;
-                    // Also update coverImage reference if used
-                    anime.anilist_cover_image = item.poster;
+                    const posterUrl = getDisplayImageUrl(item.poster);
+                    anime.images.jpg.image_url = posterUrl;
+                    anime.images.jpg.large_image_url = posterUrl;
+                    anime.anilist_cover_image = posterUrl;
                 }
                 return anime;
             });

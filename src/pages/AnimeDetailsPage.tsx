@@ -134,7 +134,7 @@ export default function AnimeDetailsPage() {
         }
     }, [id, location.state, navigate]);
 
-    const { selectedAnime, episodes, epLoading, detailsLoading, error, watchedEpisodes, markEpisodeComplete } = animeHook;
+    const { selectedAnime, episodes, epLoading, episodesResolved, detailsLoading, error, watchedEpisodes, markEpisodeComplete } = animeHook;
     const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
     const { isFavorite, addFavorite, removeFavorite } = useFavoriteAnime();
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
@@ -206,7 +206,7 @@ export default function AnimeDetailsPage() {
     }
 
     const isUnreleased = selectedAnime.status === 'NOT_YET_RELEASED';
-    const isEpisodesResolving = epLoading || detailsLoading;
+    const isEpisodesResolving = !episodesResolved || epLoading || detailsLoading;
     const expectedEpisodeCount = Number(selectedAnime.episodes || 0);
     const episodeSkeletonCount = Math.min(
         20,

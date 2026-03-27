@@ -22,6 +22,7 @@ interface AnimeContextType {
     episodes: Episode[];
     scraperSession: string | null;
     epLoading: boolean;
+    episodesResolved: boolean;
     detailsLoading: boolean;
     loading: boolean;
     spotlightLoading: boolean;
@@ -113,6 +114,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const [episodes, setEpisodes] = useState<Episode[]>([]);
     const [scraperSession, setScraperSession] = useState<string | null>(null);
     const [epLoading, setEpLoading] = useState(false);
+    const [episodesResolved, setEpisodesResolved] = useState(false);
     const [detailsLoading, setDetailsLoading] = useState(false);
     const [episodeSearchQuery, setEpisodeSearchQuery] = useState('');
 
@@ -878,6 +880,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 setEpisodes(episodesCache.current.get(session)!);
                 setScraperSession(session);
                 setEpLoading(false);
+                setEpisodesResolved(true);
                 return;
             }
         }
@@ -889,11 +892,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (session) setScraperSession(session);
             if (eps.length > 0) setEpisodes(eps);
             setEpLoading(false);
+            setEpisodesResolved(true);
             return;
         }
 
         if (isStale()) return;
         setEpLoading(true);
+        setEpisodesResolved(false);
         if (options?.resetState !== false) {
             setEpisodes([]);
             setScraperSession(null);
@@ -914,6 +919,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         } finally {
             if (isStale()) return;
             setEpLoading(false);
+            setEpisodesResolved(true);
         }
     };
 
@@ -972,6 +978,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         setError(null);
         setDetailsLoading(true);
         setEpLoading(true);
+        setEpisodesResolved(false);
 
         let currentAnime = anime;
 
@@ -979,9 +986,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             setSelectedAnime(currentAnime);
         }
 
-        // Start episode resolution immediately using current card data so
-        // episodes can appear without waiting for full details API.
-        preloadEpisodes(anime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);
+        if (anime.scraperId && isAnimePaheSession(anime.scraperId)) {
+            preloadEpisodes(anime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);
+        }
 
         try {
             let detailsId: string | number | undefined = anime.id || anime.mal_id;
@@ -1055,6 +1062,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                         episodesCache.current.set(fastBudgetResult.scraperSession, nextEpisodes);
                     }
                     setEpLoading(false);
+                    setEpisodesResolved(true);
                     episodesApplied = true;
                 }
             }
@@ -1077,6 +1085,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                         episodesCache.current.set(fast.scraperSession, nextEpisodes);
                     }
                     setEpLoading(false);
+                    setEpisodesResolved(true);
                 }
             }).catch(() => undefined);
         } catch (err) {
@@ -1086,6 +1095,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             setDetailsLoading(false);
             if (!anime.images) {
                 setEpLoading(false);
+                setEpisodesResolved(true);
             } else {
                 preloadEpisodes(currentAnime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);
             }
@@ -1134,13 +1144,15 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     const prefetchEpisodes = (anime: Anime) => {
-        const detailsId = isAnimePaheSession(anime.scraperId)
-            ? `s:${normalizeScraperId(anime.scraperId)}`
-            : (anime.id || anime.mal_id);
-        if (detailsId) {
-            animeService.getAnimeDetails(detailsId).catch(() => undefined);
+        if (anime.scraperId && isAnimePaheSession(anime.scraperId)) {
+            resolveAndCacheEpisodes(anime).catch(console.error);
+            return;
         }
-        resolveAndCacheEpisodes(anime).catch(console.error);
+
+        const detailsId = anime.id || anime.mal_id;
+        if (detailsId) {
+            animeService.getAnimeDetailsFast(detailsId).catch(() => undefined);
+        }
     };
 
     const prefetchPage = (page: number) => {
@@ -1193,7 +1205,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     return (
         <AnimeContext.Provider value={{
             topAnime, spotlightAnime, trendingAnime, popularSeason, popularMonth, topTenToday, topTenWeek, topTenMonth, selectedAnime,
-            showAnimeDetails, showWatchModal, episodes, scraperSession, epLoading,
+            showAnimeDetails, showWatchModal, episodes, scraperSession, epLoading, episodesResolved,
             detailsLoading, loading, spotlightLoading, trendingLoading, popularSeasonLoading, popularMonthLoading, topTenLoading, currentPage, lastVisiblePage,
             error, episodeSearchQuery, viewAllAnime, viewAllLoading, viewAllPagination,
             viewMode, setEpisodeSearchQuery, handleAnimeClick, startWatching,

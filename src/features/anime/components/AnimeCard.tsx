@@ -2,6 +2,7 @@ import React from 'react';
 import type { Anime } from '../../../types/anime';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
+import { getDisplayImageUrl } from '../../../utils/image';
 
 interface AnimeCardProps {
     anime: Anime;
@@ -24,10 +25,10 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
     const isUnreleased = anime.status === 'NOT_YET_RELEASED';
     const episodeCount = isUnreleased ? null : (anime.latestEpisode || anime.episodes);
     const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
+    const posterUrl = getDisplayImageUrl(anime.images.jpg.large_image_url || anime.images.jpg.image_url);
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         if (disableTilt) {
-            onMouseEnter?.(anime);
             return;
         }
         if (!cardRef.current) return;
@@ -48,7 +49,6 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
             opacity: 1
         });
 
-        onMouseEnter?.(anime);
     };
 
     const handleMouseLeave = () => {
@@ -69,6 +69,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
             onClick={() => onClick(anime)}
             onMouseEnter={(e) => {
                 setIsHovered(true);
+                onMouseEnter?.(anime);
                 handleMouseMove(e);
             }}
             onMouseLeave={handleMouseLeave}
@@ -97,7 +98,7 @@ const AnimeCard: React.FC<AnimeCardProps> = ({ anime, onClick, onWatchClick, onM
                 />
 
                 <img
-                    src={anime.images.jpg.large_image_url || anime.images.jpg.image_url}
+                    src={posterUrl}
                     alt={displayTitle}
                     className="w-full h-full object-cover"
                     loading="lazy"

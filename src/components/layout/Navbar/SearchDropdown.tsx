@@ -1,5 +1,6 @@
 
 import { ChevronRight } from 'lucide-react';
+import { getDisplayImageUrl } from '../../../utils/image';
 
 interface SearchResultItem {
     id: number | string;
@@ -57,7 +58,7 @@ export default function SearchDropdown({
                                 {/* Image */}
                                 <div className="w-12 h-16 shrink-0 rounded overflow-hidden relative">
                                     <img
-                                        src={item.image}
+                                        src={getDisplayImageUrl(item.image)}
                                         alt={item.title}
                                         className="w-full h-full object-cover"
                                     />
