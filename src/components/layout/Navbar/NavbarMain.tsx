@@ -9,6 +9,7 @@ import NavToggle from './NavToggle';
 import TitleLanguageToggle from './TitleLanguageToggle';
 import UserMenu from './UserMenu';
 import RandomButton from './RandomButton';
+import NotificationsBell from './NotificationsBell';
 
 interface NavbarProps {
     activeTab: 'anime' | 'manga';
@@ -262,6 +263,8 @@ export default function Navbar({
                             <Search className="w-5 h-5" />
                         )}
                     </button>
+
+                    <NotificationsBell visible={Boolean(user)} theme={activeTab} />
 
                     <UserMenu
                         user={user}

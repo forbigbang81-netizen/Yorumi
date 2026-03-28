@@ -65,7 +65,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     })();
     
     // Watch time persistence
-    const accumulatedSecondsRef = useRef(0);
+    const watchSessionStartedAtRef = useRef<number | null>(null);
     const lastPlaybackSecondRef = useRef<number | null>(null);
     const lastDurationSecondRef = useRef(0);
     const lastSavedProgressRef = useRef<{ at: number; second: number }>({ at: 0, second: -1 });
@@ -102,7 +102,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         setEpisodesResolved(false);
         setIsPlayerReady(false);
         setStartAtOverrideSeconds(null);
-        accumulatedSecondsRef.current = 0;
+        watchSessionStartedAtRef.current = null;
         lastPlaybackSecondRef.current = null;
         lastDurationSecondRef.current = 0;
         lastSavedProgressRef.current = { at: 0, second: -1 };
@@ -243,7 +243,12 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     }, [currentEpisode?.session, episodes, prefetchStream, scraperSession]);
 
     const flushWatchTime = useCallback(() => {
-        const seconds = Math.floor(accumulatedSecondsRef.current);
+        if (!selectedAnime) return;
+
+        const startedAt = watchSessionStartedAtRef.current;
+        if (!startedAt) return;
+
+        const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
         if (seconds <= 0 || !selectedAnime) return;
 
         const primaryAnimeId = String(selectedAnime.mal_id || '');
@@ -252,8 +257,19 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
             .filter((id, index, arr) => id && arr.indexOf(id) === index);
 
         targetAnimeIds.forEach((id) => storage.addAnimeWatchTime(id, seconds));
-        accumulatedSecondsRef.current -= seconds;
+        watchSessionStartedAtRef.current = null;
     }, [selectedAnime?.mal_id, selectedAnime?.id]);
+
+    useEffect(() => {
+        if (!isPlayerReady || !selectedAnime || !currentEpisode) {
+            flushWatchTime();
+            return;
+        }
+
+        if (!watchSessionStartedAtRef.current) {
+            watchSessionStartedAtRef.current = Date.now();
+        }
+    }, [isPlayerReady, selectedAnime, currentEpisode?.session, flushWatchTime]);
 
     const persistLatestProgress = useCallback(() => {
         if (!selectedAnime || !currentEpisode) return;
@@ -301,18 +317,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         const currentSecond = Number.isFinite(progress.currentTime) ? Math.max(0, Math.floor(progress.currentTime)) : 0;
         const durationSeconds = Number.isFinite(progress.duration) ? Math.max(0, Math.floor(progress.duration)) : 0;
         lastDurationSecondRef.current = durationSeconds;
-
-        if (lastPlaybackSecondRef.current !== null) {
-            const delta = currentSecond - lastPlaybackSecondRef.current;
-            if (delta > 0 && delta <= 15) {
-                accumulatedSecondsRef.current += delta;
-            }
-        }
         lastPlaybackSecondRef.current = currentSecond;
-
-        if (accumulatedSecondsRef.current >= 15 || progress.ended) {
-            flushWatchTime();
-        }
 
         const now = Date.now();
         const shouldSave = progress.ended || (
@@ -326,7 +331,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
             durationSeconds
         });
         lastSavedProgressRef.current = { at: now, second: currentSecond };
-    }, [selectedAnime, currentEpisode, isPlayerReady, flushWatchTime, saveProgress]);
+    }, [selectedAnime, currentEpisode, isPlayerReady, saveProgress]);
 
     const handleStreamError = useCallback(() => {
         const url = String(currentStream?.url || '');
