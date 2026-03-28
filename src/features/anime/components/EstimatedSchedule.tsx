@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import { animeService } from '../../../services/animeService';
 
@@ -19,10 +19,62 @@ interface EstimatedScheduleProps {
     onAnimeClick?: (animeId: number) => void;
 }
 
+const SCHEDULE_CACHE_PREFIX = 'yorumi_schedule_cache_v1';
+const SCHEDULE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const getDayRange = (offset: number) => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() + offset);
+
+    const startTime = Math.floor(start.getTime() / 1000);
+    const endTime = startTime + 86400;
+    const dayKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+
+    return { startTime, endTime, dayKey };
+};
+
+const readScheduleCache = (dayKey: string): ScheduleItem[] | null => {
+    try {
+        const raw = localStorage.getItem(`${SCHEDULE_CACHE_PREFIX}:${dayKey}`);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw) as { timestamp: number; data: ScheduleItem[] };
+        if (!parsed || typeof parsed.timestamp !== 'number' || !Array.isArray(parsed.data)) {
+            return null;
+        }
+
+        if (Date.now() - parsed.timestamp > SCHEDULE_CACHE_TTL_MS) {
+            return null;
+        }
+
+        return parsed.data;
+    } catch {
+        return null;
+    }
+};
+
+const writeScheduleCache = (dayKey: string, data: ScheduleItem[]) => {
+    try {
+        localStorage.setItem(
+            `${SCHEDULE_CACHE_PREFIX}:${dayKey}`,
+            JSON.stringify({ timestamp: Date.now(), data })
+        );
+    } catch {
+        // Ignore storage quota issues.
+    }
+};
+
 export default function EstimatedSchedule({ onAnimeClick }: EstimatedScheduleProps) {
-    const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
-    const [loading, setLoading] = useState(true);
     const [selectedDayOffset, setSelectedDayOffset] = useState(0);
+    const [schedule, setSchedule] = useState<ScheduleItem[]>(() => {
+        const { dayKey } = getDayRange(0);
+        return readScheduleCache(dayKey) ?? [];
+    });
+    const [loading, setLoading] = useState(() => {
+        const { dayKey } = getDayRange(0);
+        return !readScheduleCache(dayKey);
+    });
     const [showAll, setShowAll] = useState(false);
 
     // Get days of the week starting from today
@@ -47,17 +99,28 @@ export default function EstimatedSchedule({ onAnimeClick }: EstimatedSchedulePro
 
     useEffect(() => {
         const fetchSchedule = async () => {
-            setLoading(true);
+            const { startTime, endTime, dayKey } = getDayRange(selectedDayOffset);
+            const cachedSchedule = readScheduleCache(dayKey);
+
+            if (cachedSchedule) {
+                setSchedule(cachedSchedule);
+                setLoading(false);
+            } else {
+                setLoading(true);
+                setSchedule([]);
+            }
+
             try {
-                const now = new Date();
-                now.setHours(0, 0, 0, 0);
-                now.setDate(now.getDate() + selectedDayOffset);
+                const waitForSkeleton = cachedSchedule
+                    ? Promise.resolve()
+                    : new Promise(resolve => setTimeout(resolve, 300));
+                const [data] = await Promise.all([
+                    animeService.getAiringSchedule(startTime, endTime),
+                    waitForSkeleton
+                ]);
 
-                const startTime = Math.floor(now.getTime() / 1000);
-                const endTime = startTime + 86400; // 24 hours
-
-                const data = await animeService.getAiringSchedule(startTime, endTime);
                 setSchedule(data);
+                writeScheduleCache(dayKey, data);
             } catch (error) {
                 console.error('Failed to fetch schedule:', error);
             } finally {
@@ -66,6 +129,10 @@ export default function EstimatedSchedule({ onAnimeClick }: EstimatedSchedulePro
         };
 
         fetchSchedule();
+    }, [selectedDayOffset]);
+
+    useEffect(() => {
+        setShowAll(false);
     }, [selectedDayOffset]);
 
     const formatTime = (timestamp: number) => {

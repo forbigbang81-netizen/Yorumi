@@ -81,15 +81,44 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const { continueWatchingList, saveProgress, removeFromHistory } = useContinueWatching();
     const { user } = useAuth();
 
-    // Data State
+    // Cache reader (defined early so useState initializers can use it)
+    const HOME_CACHE_PREFIX = 'yorumi_home_cache_v2';
+    const readHomeCache = <T,>(key: string, ttlMs: number): T | null => {
+        try {
+            const raw = localStorage.getItem(`${HOME_CACHE_PREFIX}:${key}`);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw) as { timestamp: number; data: T };
+            if (!parsed || typeof parsed.timestamp !== 'number') return null;
+            if (Date.now() - parsed.timestamp > ttlMs) return null;
+            return parsed.data;
+        } catch {
+            return null;
+        }
+    };
+
+    // TTL constants for cache hydration
+    const HOME_TTL_TOPTEN = 10 * 60 * 1000;
+    const HOME_TTL_SPOTLIGHT = 12 * 60 * 60 * 1000;
+    const HOME_TTL_TRENDING = 10 * 60 * 1000;
+    const HOME_TTL_SEASON = 10 * 60 * 1000;
+    const HOME_TTL_MONTH = 10 * 60 * 1000;
+
+    // Synchronous cache hydration for instant first render
+    const cachedTopTenInit = readHomeCache<{ day: Anime[]; week: Anime[]; month: Anime[] }>('top-ten', HOME_TTL_TOPTEN);
+    const cachedSpotlightInit = readHomeCache<Anime[]>('spotlight', HOME_TTL_SPOTLIGHT);
+    const cachedTrendingInit = readHomeCache<Anime[]>('trending', HOME_TTL_TRENDING);
+    const cachedSeasonInit = readHomeCache<Anime[]>('popular-season', HOME_TTL_SEASON);
+    const cachedMonthInit = readHomeCache<Anime[]>('popular-month', HOME_TTL_MONTH);
+
+    // Data State — pre-filled from cache when available
     const [topAnime, setTopAnime] = useState<Anime[]>([]);
-    const [spotlightAnime, setSpotlightAnime] = useState<Anime[]>([]);
-    const [trendingAnime, setTrendingAnime] = useState<Anime[]>([]);
-    const [popularSeason, setPopularSeason] = useState<Anime[]>([]);
-    const [popularMonth, setPopularMonth] = useState<Anime[]>([]);
-    const [topTenToday, setTopTenToday] = useState<Anime[]>([]);
-    const [topTenWeek, setTopTenWeek] = useState<Anime[]>([]);
-    const [topTenMonth, setTopTenMonth] = useState<Anime[]>([]);
+    const [spotlightAnime, setSpotlightAnime] = useState<Anime[]>(cachedSpotlightInit ?? []);
+    const [trendingAnime, setTrendingAnime] = useState<Anime[]>(cachedTrendingInit ?? []);
+    const [popularSeason, setPopularSeason] = useState<Anime[]>(cachedSeasonInit ?? []);
+    const [popularMonth, setPopularMonth] = useState<Anime[]>(cachedMonthInit ?? []);
+    const [topTenToday, setTopTenToday] = useState<Anime[]>(cachedTopTenInit?.day ?? []);
+    const [topTenWeek, setTopTenWeek] = useState<Anime[]>(cachedTopTenInit?.week ?? []);
+    const [topTenMonth, setTopTenMonth] = useState<Anime[]>(cachedTopTenInit?.month ?? []);
     const [selectedAnime, setSelectedAnime] = useState<Anime | null>(null);
     const [watchedEpisodes, setWatchedEpisodes] = useState<Set<number>>(new Set());
 
@@ -97,13 +126,15 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const [showAnimeDetails, setShowAnimeDetails] = useState(false);
     const [showWatchModal, setShowWatchModal] = useState(false);
 
-    // Loading States
+    // Loading States — false when cache provided data
     const [loading, setLoading] = useState(true);
-    const [spotlightLoading, setSpotlightLoading] = useState(true);
-    const [trendingLoading, setTrendingLoading] = useState(true);
-    const [popularSeasonLoading, setPopularSeasonLoading] = useState(true);
-    const [popularMonthLoading, setPopularMonthLoading] = useState(true);
-    const [topTenLoading, setTopTenLoading] = useState(true);
+    const [spotlightLoading, setSpotlightLoading] = useState(!cachedSpotlightInit?.length);
+    const [trendingLoading, setTrendingLoading] = useState(!cachedTrendingInit?.length);
+    const [popularSeasonLoading, setPopularSeasonLoading] = useState(!cachedSeasonInit?.length);
+    const [popularMonthLoading, setPopularMonthLoading] = useState(!cachedMonthInit?.length);
+    const [topTenLoading, setTopTenLoading] = useState(
+        !(cachedTopTenInit?.day?.length && cachedTopTenInit?.week?.length && cachedTopTenInit?.month?.length)
+    );
     const [error, setError] = useState<string | null>(null);
 
     // Pagination
@@ -230,19 +261,6 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             return a.session.localeCompare(b.session);
         });
     };
-    const HOME_CACHE_PREFIX = 'yorumi_home_cache_v2';
-    const readHomeCache = <T,>(key: string, ttlMs: number): T | null => {
-        try {
-            const raw = localStorage.getItem(`${HOME_CACHE_PREFIX}:${key}`);
-            if (!raw) return null;
-            const parsed = JSON.parse(raw) as { timestamp: number; data: T };
-            if (!parsed || typeof parsed.timestamp !== 'number') return null;
-            if (Date.now() - parsed.timestamp > ttlMs) return null;
-            return parsed.data;
-        } catch {
-            return null;
-        }
-    };
     const writeHomeCache = (key: string, data: unknown) => {
         try {
             localStorage.setItem(
@@ -252,6 +270,70 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         } catch {
             // Ignore localStorage quota errors.
         }
+    };
+
+    // SessionStorage-backed episode cache (survives in-app navigation)
+    const EPISODE_CACHE_PREFIX = 'yorumi_ep_cache';
+    const readEpisodeSessionCache = (animeKey: string): { session: string; episodes: Episode[] } | null => {
+        try {
+            const raw = sessionStorage.getItem(`${EPISODE_CACHE_PREFIX}:${animeKey}`);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed?.session || !Array.isArray(parsed?.episodes) || parsed.episodes.length === 0) return null;
+            // Expire after 30 minutes
+            if (typeof parsed.timestamp === 'number' && Date.now() - parsed.timestamp > 30 * 60 * 1000) return null;
+            return { session: parsed.session, episodes: parsed.episodes };
+        } catch {
+            return null;
+        }
+    };
+    const writeEpisodeSessionCache = (animeKey: string, session: string, episodes: Episode[]) => {
+        try {
+            sessionStorage.setItem(
+                `${EPISODE_CACHE_PREFIX}:${animeKey}`,
+                JSON.stringify({ session, episodes, timestamp: Date.now() })
+            );
+        } catch {
+            // Ignore sessionStorage quota errors
+        }
+    };
+
+    const hydrateFastDetails = (fastData: any, fallbackAnime: Anime): Anime => {
+        const hydratedAnime = (fastData?.data ? { ...fallbackAnime, ...fastData.data } : { ...fallbackAnime }) as Anime;
+        const fastSession = String(fastData?.scraperSession || '').trim();
+        if (fastSession) {
+            hydratedAnime.scraperId = fastSession;
+        }
+        return hydratedAnime;
+    };
+
+    const applyHydratedEpisodes = (targetAnime: Anime, fastData: any) => {
+        if (!Array.isArray(fastData?.episodes) || fastData.episodes.length === 0) return false;
+
+        const normalizedFastEpisodes = normalizeEpisodesList(fastData.episodes);
+        const expectedEpisodes = Number(targetAnime.episodes || 0);
+        const nextEpisodes = (expectedEpisodes > 0 && normalizedFastEpisodes.length > expectedEpisodes)
+            ? normalizedFastEpisodes.slice(0, expectedEpisodes)
+            : normalizedFastEpisodes;
+
+        if (nextEpisodes.length === 0) return false;
+
+        setEpisodes(nextEpisodes);
+        if (fastData?.scraperSession) {
+            const session = String(fastData.scraperSession).trim();
+            if (session) {
+                setScraperSession(session);
+                episodesCache.current.set(session, nextEpisodes);
+                const resolvedKey = getAnimeCacheKey(targetAnime);
+                if (resolvedKey) {
+                    scraperSessionCache.current.set(resolvedKey, session);
+                    writeEpisodeSessionCache(resolvedKey, session, nextEpisodes);
+                }
+            }
+        }
+        setEpLoading(false);
+        setEpisodesResolved(true);
+        return true;
     };
 
     // Caches
@@ -867,6 +949,8 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
                     if (newEpisodes.length > 0) {
                         episodesCache.current.set(session, newEpisodes);
+                        // Persist to sessionStorage for instant back-navigation
+                        if (cacheKey) writeEpisodeSessionCache(cacheKey, session, newEpisodes);
                         return { session, eps: newEpisodes };
                     }
                 } catch (e) {
@@ -889,6 +973,21 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 if (isStale()) return;
                 setEpisodes(episodesCache.current.get(session)!);
                 setScraperSession(session);
+                setEpLoading(false);
+                setEpisodesResolved(true);
+                return;
+            }
+        }
+
+        // Fallback: check sessionStorage for episodes cached during this browser session
+        if (cacheKey) {
+            const sessionCached = readEpisodeSessionCache(cacheKey);
+            if (sessionCached) {
+                if (isStale()) return;
+                scraperSessionCache.current.set(cacheKey, sessionCached.session);
+                episodesCache.current.set(sessionCached.session, sessionCached.episodes);
+                setEpisodes(sessionCached.episodes);
+                setScraperSession(sessionCached.session);
                 setEpLoading(false);
                 setEpisodesResolved(true);
                 return;
@@ -981,27 +1080,43 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const handleAnimeClick = async (anime: Anime) => {
         const requestId = ++detailsRequestIdRef.current;
         const isStaleRequest = () => requestId !== detailsRequestIdRef.current;
-        setSelectedAnime(null);
-        setEpisodes([]);
-        setScraperSession(null);
-        setWatchedEpisodes(new Set());
-        setError(null);
-        setDetailsLoading(true);
-        setEpLoading(true);
-        setEpisodesResolved(false);
-
         let currentAnime = anime;
 
-        if (anime.images) {
-            setSelectedAnime(currentAnime);
+        let detailsId: string | number | undefined = anime.id || anime.mal_id;
+        if (anime.scraperId && isAnimePaheSession(anime.scraperId) && (!detailsId || detailsId === 0)) {
+            const normalizedScraperId = normalizeScraperId(anime.scraperId);
+            if (normalizedScraperId) {
+                detailsId = `s:${normalizedScraperId}`;
+            }
         }
+
+        const cachedDetails = detailsId ? animeService.peekAnimeDetailsCache(detailsId) : null;
+        const cachedFast = detailsId ? animeService.peekAnimeDetailsFastCache(detailsId) : null;
+        const hydratedAnime = hydrateFastDetails(cachedFast, (cachedDetails?.data || anime) as Anime);
+
+        if (hydratedAnime.images || cachedDetails?.data || cachedFast?.data) {
+            setSelectedAnime(hydratedAnime);
+        } else {
+            setSelectedAnime(null);
+        }
+
+        if (!applyHydratedEpisodes(hydratedAnime, cachedFast)) {
+            setEpisodes([]);
+            setScraperSession(null);
+            setEpLoading(true);
+            setEpisodesResolved(false);
+        }
+
+        setWatchedEpisodes(new Set());
+        setError(null);
+        setDetailsLoading(!(cachedDetails?.data || cachedFast?.data || anime.images));
 
         if (anime.scraperId && isAnimePaheSession(anime.scraperId)) {
             preloadEpisodes(anime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);
         }
 
         try {
-            let detailsId: string | number | undefined = anime.id || anime.mal_id;
+            detailsId = anime.id || anime.mal_id;
             if (anime.scraperId && isAnimePaheSession(anime.scraperId) && (!detailsId || detailsId === 0)) {
                 const normalizedScraperId = normalizeScraperId(anime.scraperId);
                 if (!normalizedScraperId) throw new Error('Could not identify scraper ID');
@@ -1010,6 +1125,20 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (!detailsId) throw new Error('Could not identify anime ID');
 
             const fastPromise = animeService.getAnimeDetailsFast(detailsId).catch(() => null);
+            const cachedFastResult = cachedFast
+                ? Promise.resolve(cachedFast)
+                : Promise.race<any>([
+                    fastPromise,
+                    new Promise((resolve) => window.setTimeout(() => resolve(null), 80)),
+                ]);
+
+            const initialFastResult = await cachedFastResult;
+            let episodesApplied = false;
+            if (initialFastResult && !isStaleRequest()) {
+                currentAnime = hydrateFastDetails(initialFastResult, currentAnime);
+                setSelectedAnime(currentAnime);
+                episodesApplied = applyHydratedEpisodes(currentAnime, initialFastResult);
+            }
 
             const detailsData = await animeService.getAnimeDetails(detailsId);
             if (isStaleRequest()) return;
@@ -1042,61 +1171,15 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (isStaleRequest()) return;
             setDetailsLoading(false);
 
-            const fastBudgetResult = await Promise.race<any>([
-                fastPromise,
-                new Promise((resolve) => window.setTimeout(() => resolve(null), 250)),
-            ]);
-
-            let episodesApplied = false;
-            if (fastBudgetResult && !isStaleRequest()) {
-                if (fastBudgetResult?.data && !detailsData?.data) {
-                    currentAnime = fastBudgetResult.data;
-                    setSelectedAnime(currentAnime);
-                }
-                if (fastBudgetResult?.scraperSession) {
-                    currentAnime.scraperId = fastBudgetResult.scraperSession;
-                    setScraperSession(fastBudgetResult.scraperSession);
-                    const resolvedKey = getAnimeCacheKey(currentAnime);
-                    if (resolvedKey) scraperSessionCache.current.set(resolvedKey, fastBudgetResult.scraperSession);
-                    const initialKey = getAnimeCacheKey(anime);
-                    if (initialKey) scraperSessionCache.current.set(initialKey, fastBudgetResult.scraperSession);
-                }
-                if (Array.isArray(fastBudgetResult?.episodes) && fastBudgetResult.episodes.length > 0) {
-                    const normalizedFastEpisodes = normalizeEpisodesList(fastBudgetResult.episodes);
-                    const expectedEpisodes = Number(currentAnime.episodes || 0);
-                    const nextEpisodes = (expectedEpisodes > 0 && normalizedFastEpisodes.length > expectedEpisodes)
-                        ? normalizedFastEpisodes.slice(0, expectedEpisodes)
-                        : normalizedFastEpisodes;
-                    setEpisodes(nextEpisodes);
-                    if (fastBudgetResult.scraperSession) {
-                        episodesCache.current.set(fastBudgetResult.scraperSession, nextEpisodes);
-                    }
-                    setEpLoading(false);
-                    setEpisodesResolved(true);
-                    episodesApplied = true;
-                }
-            }
-
             if (!episodesApplied && !isStaleRequest()) {
                 preloadEpisodes(currentAnime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);
             }
 
             fastPromise.then((fast) => {
                 if (!fast || isStaleRequest()) return;
-                if (Array.isArray(fast.episodes) && fast.episodes.length > 0) {
-                    const normalizedFastEpisodes = normalizeEpisodesList(fast.episodes);
-                    const expectedEpisodes = Number(currentAnime.episodes || 0);
-                    const nextEpisodes = (expectedEpisodes > 0 && normalizedFastEpisodes.length > expectedEpisodes)
-                        ? normalizedFastEpisodes.slice(0, expectedEpisodes)
-                        : normalizedFastEpisodes;
-                    setEpisodes(nextEpisodes);
-                    if (fast.scraperSession) {
-                        setScraperSession(fast.scraperSession);
-                        episodesCache.current.set(fast.scraperSession, nextEpisodes);
-                    }
-                    setEpLoading(false);
-                    setEpisodesResolved(true);
-                }
+                currentAnime = hydrateFastDetails(fast, currentAnime);
+                setSelectedAnime(currentAnime);
+                applyHydratedEpisodes(currentAnime, fast);
             }).catch(() => undefined);
         } catch (err) {
             if (isStaleRequest()) return;

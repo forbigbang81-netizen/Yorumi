@@ -80,7 +80,25 @@ export default function VideoPlayer({
             });
             hls.on(Hls.Events.ERROR, (_event, data) => {
                 if (data?.fatal) {
-                    onError?.();
+                    switch (data.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            // Attempt to recover from transient network drops
+                            console.warn('[VideoPlayer] HLS network error, attempting recovery…');
+                            hls.startLoad();
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            // Attempt to recover from media decode errors
+                            console.warn('[VideoPlayer] HLS media error, attempting recovery…');
+                            hls.recoverMediaError();
+                            break;
+                        default:
+                            // Truly unrecoverable — destroy and surface the error
+                            console.error('[VideoPlayer] HLS fatal error, cannot recover:', data);
+                            hls.destroy();
+                            hlsRef.current = null;
+                            onError?.();
+                            break;
+                    }
                 }
             });
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -236,6 +254,7 @@ export default function VideoPlayer({
                             key={streamUrl}
                             src={streamUrl}
                             className="w-full h-full border-0 bg-black"
+                            loading="eager"
                             allowFullScreen
                             allow="autoplay"
                             referrerPolicy="no-referrer"

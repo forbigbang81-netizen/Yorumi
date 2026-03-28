@@ -110,6 +110,10 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     }, [animeId]);
 
     useEffect(() => {
+        autoLoadAttemptKeyRef.current = '';
+    }, [scraperSession]);
+
+    useEffect(() => {
         const currentId = String(animeId || '');
         const currentSession = extractAnimePaheSession(currentId);
         const animeMatch = selectedAnime &&
@@ -165,6 +169,8 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
                 (!!currentSession && extractAnimePaheSession(selectedAnime.scraperId) === currentSession)
             );
 
+        if (!scraperSession) return;
+
         if (episodes.length > 0 && !currentStream && !streamLoading && animeMatch) {
             let targetEp: Episode | undefined;
 
@@ -194,7 +200,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
                 loadStream(targetEp);
             }
         }
-    }, [episodes, epNumParam, currentStream, streamLoading, selectedAnime?.id, selectedAnime?.mal_id, animeId]);
+    }, [episodes, epNumParam, currentStream, streamLoading, selectedAnime?.id, selectedAnime?.mal_id, animeId, scraperSession]);
 
     // Episode-change bookkeeping.
     useEffect(() => {

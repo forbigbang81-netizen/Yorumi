@@ -32,7 +32,7 @@ export default function AnimeFormatPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [lastPage, setLastPage] = useState(1);
 
-    const fetchData = useCallback(async (page: number, isNewFormat = false) => {
+    const fetchData = useCallback(async (page: number) => {
         if (!config) return;
 
         // Instant paint from cache for faster navigation.
@@ -41,7 +41,7 @@ export default function AnimeFormatPage() {
             setAnimeList(cached.data);
             setLastPage(cached?.pagination?.last_visible_page ?? 1);
             setIsLoading(false);
-        } else if (isNewFormat) {
+        } else {
             setIsLoading(true);
         }
 
@@ -49,21 +49,41 @@ export default function AnimeFormatPage() {
             const result = await animeService.getTopAnime(page, config.anilistFormat);
             setAnimeList(result?.data ?? []);
             setLastPage(result?.pagination?.last_visible_page ?? 1);
+
+            const nextPage = page + 1;
+            if ((result?.pagination?.last_visible_page ?? 1) >= nextPage) {
+                animeService.getTopAnime(nextPage, config.anilistFormat).catch(() => undefined);
+            }
         } catch (e) {
             console.error('AnimeFormatPage fetch error:', e);
         } finally {
             setIsLoading(false);
         }
-    }, [format]);
+    }, [config]);
 
     useEffect(() => {
         setCurrentPage(1);
-        fetchData(1, true);
+        fetchData(1);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [format, fetchData]);
 
+    useEffect(() => {
+        if (!config) return;
+
+        const nextPage = currentPage + 1;
+        if (nextPage <= lastPage) {
+            animeService.getTopAnime(nextPage, config.anilistFormat).catch(() => undefined);
+        }
+    }, [config, currentPage, lastPage]);
+
     const handlePageChange = (page: number) => {
+        if (page === currentPage) return;
+
+        const cached = animeService.peekTopAnime(page, config.anilistFormat);
         setCurrentPage(page);
+        if (!cached?.data?.length) {
+            setIsLoading(true);
+        }
         fetchData(page);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };

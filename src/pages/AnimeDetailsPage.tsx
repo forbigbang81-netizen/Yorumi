@@ -206,7 +206,10 @@ export default function AnimeDetailsPage() {
     }
 
     const isUnreleased = selectedAnime.status === 'NOT_YET_RELEASED';
-    const isEpisodesResolving = !episodesResolved || epLoading || detailsLoading;
+    const hasEpisodes = episodes.length > 0;
+    const hasCharacters = Boolean(selectedAnime.characters?.edges?.length);
+    const hasTrailers = Boolean(selectedAnime.trailer);
+    const isEpisodesResolving = !hasEpisodes && (!episodesResolved || epLoading);
     const expectedEpisodeCount = Number(selectedAnime.episodes || 0);
     const episodeSkeletonCount = Math.min(
         20,
@@ -310,14 +313,14 @@ export default function AnimeDetailsPage() {
                             )}
 
                             {/* Characters Section */}
-                            {(detailsLoading) ? (
+                            {detailsLoading && !hasCharacters ? (
                                 <CharactersSkeleton />
                             ) : (
                                 <DetailsCharacters characters={selectedAnime.characters} />
                             )}
 
                             {/* Trailers Section */}
-                            {(detailsLoading) ? (
+                            {detailsLoading && !hasTrailers ? (
                                 <TrailersSkeleton />
                             ) : (
                                 <DetailsTrailers trailer={selectedAnime.trailer} />

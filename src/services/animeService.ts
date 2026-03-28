@@ -147,15 +147,29 @@ const mapTopTenItemToAnime = (item: any, index: number): Anime => {
     return anime;
 };
 
+const hasAvailableEpisodes = (anime: Anime) => {
+    const latestEpisode = Number(anime.latestEpisode || 0);
+    const totalEpisodes = Number(anime.episodes || 0);
+    return latestEpisode > 0 || totalEpisodes > 0;
+};
+
+const isReleasedTrendingAnime = (anime: Anime) => {
+    const status = String(anime.status || '').toUpperCase();
+    if (status === 'NOT_YET_RELEASED') return false;
+    return hasAvailableEpisodes(anime);
+};
+
 // Simple in-memory cache
 const cache = new Map<string, { data: any, timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const DETAIL_CACHE_TTL = 15 * 60 * 1000; // 15 minutes for anime details + episodes
 const streamCache = new Map<string, { data: any, timestamp: number }>();
 const STREAM_CACHE_TTL = 20 * 60 * 1000; // 20 minutes
 const mappingCache = new Map<string, string>();
 const scraperSearchCache = new Map<string, { data: any[]; timestamp: number }>();
 const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
 const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v3';
+const PERSISTED_STREAM_CACHE_PREFIX = 'yorumi_stream_cache_v1';
 
 const readPersistedCache = (key: string, ttl: number) => {
     try {
@@ -184,15 +198,16 @@ const writePersistedCache = (key: string, data: any, timestamp: number) => {
     }
 };
 
-const getCached = (key: string) => {
+const getCached = (key: string, customTtl?: number) => {
     if (cache.has(key)) {
         const entry = cache.get(key)!;
-        if (Date.now() - entry.timestamp < CACHE_TTL) {
+        const ttl = customTtl ?? CACHE_TTL;
+        if (Date.now() - entry.timestamp < ttl) {
             return entry.data;
         }
         cache.delete(key);
     }
-    const persisted = readPersistedCache(key, CACHE_TTL);
+    const persisted = readPersistedCache(key, customTtl ?? CACHE_TTL);
     if (persisted) {
         cache.set(key, { data: persisted, timestamp: Date.now() });
         return persisted;
@@ -200,7 +215,7 @@ const getCached = (key: string) => {
     return null;
 };
 
-const setCache = (key: string, data: any) => {
+const setCache = (key: string, data: any, _customTtl?: number) => {
     const timestamp = Date.now();
     cache.set(key, { data, timestamp });
     writePersistedCache(key, data, timestamp);
@@ -223,15 +238,53 @@ const getCachedStream = (key: string) => {
         }
         streamCache.delete(key);
     }
+    try {
+        const raw = sessionStorage.getItem(`${PERSISTED_STREAM_CACHE_PREFIX}:${key}`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { data: any; timestamp: number };
+        if (!parsed || typeof parsed.timestamp !== 'number') return null;
+        if (Date.now() - parsed.timestamp >= STREAM_CACHE_TTL) {
+            sessionStorage.removeItem(`${PERSISTED_STREAM_CACHE_PREFIX}:${key}`);
+            return null;
+        }
+        streamCache.set(key, { data: parsed.data, timestamp: parsed.timestamp });
+        return parsed.data;
+    } catch {
+        return null;
+    }
     return null;
 };
+
+const setCachedStream = (key: string, data: any) => {
+    const timestamp = Date.now();
+    streamCache.set(key, { data, timestamp });
+    try {
+        sessionStorage.setItem(
+            `${PERSISTED_STREAM_CACHE_PREFIX}:${key}`,
+            JSON.stringify({ data, timestamp })
+        );
+    } catch {
+        // Ignore storage quota issues.
+    }
+};
+
+const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v2:${id}`;
+const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v4:${id}`;
 
 // Track in-flight requests to prevent duplicates
 const inFlightRequests = new Map<string, Promise<any>>();
 export const animeService = {
+    peekAnimeDetailsCache(id: number | string) {
+        return getCached(getAnimeDetailsCacheKey(id), DETAIL_CACHE_TTL);
+    },
+
+    peekAnimeDetailsFastCache(id: number | string) {
+        return getCached(getAnimeDetailsFastCacheKey(id), DETAIL_CACHE_TTL);
+    },
+
     async getHomeFastData() {
         const cacheKey = 'home-fast-data-v1';
-        const cached = getCached(cacheKey);
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
         if (inFlightRequests.has(cacheKey)) {
@@ -263,7 +316,7 @@ export const animeService = {
 
                 const result = {
                     spotlightAnime,
-                    trendingAnime: payload?.trending?.media?.map(mapAnilistToAnime) || [],
+                    trendingAnime: (payload?.trending?.media?.map(mapAnilistToAnime) || []).filter(isReleasedTrendingAnime),
                     popularSeason: payload?.seasonal?.media?.map(mapAnilistToAnime) || [],
                     popularMonth: payload?.monthly?.media?.map(mapAnilistToAnime) || [],
                     topAnime: payload?.topAnime?.media?.map(mapAnilistToAnime) || [],
@@ -277,7 +330,7 @@ export const animeService = {
                     topTenMonth: Array.isArray(payload?.topTen?.month) ? payload.topTen.month.map(mapTopTenItemToAnime) : [],
                 };
 
-                setCache(cacheKey, result);
+                setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 return result;
             } finally {
                 inFlightRequests.delete(cacheKey);
@@ -301,7 +354,7 @@ export const animeService = {
     // Fetch top anime from AniList (Deduplicated)
     async getTopAnime(page: number = 1, format?: string) {
         const cacheKey = `top-anime-${page}-${format ?? 'all'}`;
-        const cached = getCached(cacheKey);
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
         // Check for in-flight request
@@ -318,7 +371,7 @@ export const animeService = {
                 }
                 const data = await res.json();
                 const result = {
-                    data: data.media?.map(mapAnilistToAnime) || [],
+                    data: (data.media?.map(mapAnilistToAnime) || []).filter(isReleasedTrendingAnime),
                     pagination: {
                         last_visible_page: data.pageInfo?.lastPage || 1,
                         current_page: data.pageInfo?.currentPage || 1,
@@ -327,7 +380,7 @@ export const animeService = {
                 };
 
                 if (result.data.length > 0) {
-                    setCache(cacheKey, result);
+                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;
             } finally {
@@ -449,8 +502,8 @@ export const animeService = {
 
     // Get anime details from AniList
     async getAnimeDetails(id: number | string) {
-        const cacheKey = `anime-details:v2:${id}`;
-        const cached = getCached(cacheKey);
+        const cacheKey = getAnimeDetailsCacheKey(id);
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
         if (inFlightRequests.has(cacheKey)) {
             return inFlightRequests.get(cacheKey);
@@ -463,7 +516,7 @@ export const animeService = {
                 if (!data || data.error) return { data: null };
                 const result = { data: mapAnilistToAnime(data) };
                 if (result.data) {
-                    setCache(cacheKey, result);
+                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;
             } finally {
@@ -476,8 +529,8 @@ export const animeService = {
     },
 
     async getAnimeDetailsFast(id: number | string) {
-        const cacheKey = `anime-details-fast:v4:${id}`;
-        const cached = getCached(cacheKey);
+        const cacheKey = getAnimeDetailsFastCacheKey(id);
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) {
             const cachedEpisodes = Array.isArray((cached as any)?.episodes) ? (cached as any).episodes : [];
             const cachedSession = String((cached as any)?.scraperSession || '').trim();
@@ -506,7 +559,7 @@ export const animeService = {
                     scraperSession: payload?.scraperSession ? String(payload.scraperSession) : null,
                 };
                 if (result.episodes.length > 0 || result.scraperSession) {
-                    setCache(cacheKey, result);
+                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;
             } finally {
@@ -540,7 +593,7 @@ export const animeService = {
     // Get popular this season from AniList (Deduplicated)
     async getPopularThisSeason(page: number = 1, limit: number = 10) {
         const cacheKey = `popular-season-${page}-${limit}`;
-        const cached = getCached(cacheKey);
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
         if (inFlightRequests.has(cacheKey)) {
@@ -565,7 +618,7 @@ export const animeService = {
                 };
 
                 if (result.data.length > 0) {
-                    setCache(cacheKey, result);
+                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;
             } finally {
@@ -581,7 +634,7 @@ export const animeService = {
     // Get episodes from scraper. Backend/Redis is the primary cache layer.
     async getEpisodes(session: string) {
         const cacheKey = `episodes:v4:${session}`;
-        const cached = getCached(cacheKey);
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
         if (inFlightRequests.has(cacheKey)) {
             return inFlightRequests.get(cacheKey);
@@ -612,7 +665,7 @@ export const animeService = {
             });
 
             if (data?.episodes && Array.isArray(data.episodes) && data.episodes.length > 0) {
-                setCache(cacheKey, data);
+                setCache(cacheKey, data, DETAIL_CACHE_TTL);
                 // Persist cache asynchronously; don't block the UI.
                 setDoc(docRef, {
                     episodes: data.episodes,
@@ -632,7 +685,7 @@ export const animeService = {
                 // Keep backend request running in background to refresh cache.
                 const quickFirebase = await readFirebaseEpisodes(350);
                 if (quickFirebase) {
-                    setCache(cacheKey, quickFirebase);
+                    setCache(cacheKey, quickFirebase, DETAIL_CACHE_TTL);
                     backendPromise.catch(() => undefined);
                     return quickFirebase;
                 }
@@ -642,7 +695,7 @@ export const animeService = {
                 // Fallback to Firebase cache if backend request fails.
                 const fallback = await readFirebaseEpisodes(1200);
                 if (fallback) {
-                    setCache(cacheKey, fallback);
+                    setCache(cacheKey, fallback, DETAIL_CACHE_TTL);
                     return fallback;
                 }
 
@@ -745,7 +798,7 @@ export const animeService = {
                     }))
                     : data;
                 if (Array.isArray(normalized) && normalized.length > 0) {
-                    streamCache.set(cacheKey, { data: normalized, timestamp: Date.now() });
+                    setCachedStream(cacheKey, normalized);
                 }
                 return normalized;
             } finally {
@@ -760,7 +813,7 @@ export const animeService = {
     // Get popular this month from AniList (Deduplicated)
     async getPopularThisMonth(page: number = 1, limit: number = 10) {
         const cacheKey = `popular-month-${page}-${limit}`;
-        const cached = getCached(cacheKey);
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
         if (inFlightRequests.has(cacheKey)) {
@@ -785,7 +838,7 @@ export const animeService = {
                 };
 
                 if (result.data.length > 0) {
-                    setCache(cacheKey, result);
+                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;
             } finally {
@@ -800,7 +853,7 @@ export const animeService = {
     // Get AniWatch Top 10 (Today/Week/Month)
     async getAniwatchTopTen(range: 'day' | 'week' | 'month') {
         const cacheKey = `aniwatch-top10-${range}`;
-        const cached = getCached(cacheKey);
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
         if (inFlightRequests.has(cacheKey)) {
@@ -820,7 +873,7 @@ export const animeService = {
 
                 const result = { data };
                 if (data.length > 0) {
-                    setCache(cacheKey, result);
+                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;
             } finally {
@@ -892,7 +945,7 @@ export const animeService = {
     // Get trending anime from AniList (Deduplicated)
     async getTrendingAnime(page: number = 1, limit: number = 10) {
         const cacheKey = `trending-${page}-${limit}`;
-        const cached = getCached(cacheKey);
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
         if (inFlightRequests.has(cacheKey)) {
@@ -918,7 +971,7 @@ export const animeService = {
                 };
 
                 if (result.data.length > 0) {
-                    setCache(cacheKey, result);
+                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;
             } finally {

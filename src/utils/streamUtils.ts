@@ -22,14 +22,19 @@ export const getStreamData = async (
     const data = await animeService.getStreams(scraperSession, episode.session);
 
     if (data && data.length > 0) {
-        // Prefer HLS sources first to keep playback path aligned with near-anime.
-        const preferred = data.some((s: StreamLink) => s.isHls)
-            ? data.filter((s: StreamLink) => s.isHls)
-            : data;
+        const scoreStream = (stream: StreamLink) => {
+            const quality = parseInt(String(stream.quality || '0'), 10) || 0;
+            const url = String(stream.url || '');
+            const directUrl = String(stream.directUrl || '');
+            const hasDirectUrl = Boolean(directUrl);
+            const isHls = Boolean(stream.isHls) || url.includes('.m3u8') || directUrl.includes('.m3u8');
+            const isIframeLike = /vidsrc|vidstream|megacloud|embed/i.test(url) && !hasDirectUrl && !isHls;
+            return (isHls ? 1_000_000 : 0) + (hasDirectUrl ? 100_000 : 0) + (isIframeLike ? -10_000 : 0) + quality;
+        };
 
         const qualityMap = new Map<string, StreamLink>();
-        const sortedData = [...preferred].sort(
-            (a: StreamLink, b: StreamLink) => (parseInt(b.quality) || 0) - (parseInt(a.quality) || 0)
+        const sortedData = [...data].sort(
+            (a: StreamLink, b: StreamLink) => scoreStream(b) - scoreStream(a)
         );
 
         sortedData.forEach((s: StreamLink) => {

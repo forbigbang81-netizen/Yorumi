@@ -25,6 +25,21 @@ export function useStreams(scraperSession: string | null) {
         if (lower.includes('vidsrc') || lower.includes('vidstream')) return 'vidsrc';
         return '';
     };
+    const scoreStream = useCallback((stream: StreamLink, preferredProvider?: 'vidsrc' | 'megacloud') => {
+        const quality = parseInt(String(stream.quality || '0'), 10) || 0;
+        const provider = normalizeProvider(stream.provider || stream.server || stream.url);
+        const url = String(stream.url || '');
+        const directUrl = String(stream.directUrl || '');
+        const hasDirectUrl = Boolean(directUrl);
+        const isHls = Boolean(stream.isHls) || url.includes('.m3u8') || directUrl.includes('.m3u8');
+        const isIframeLike = /vidsrc|vidstream|megacloud|embed/i.test(url) && !hasDirectUrl && !isHls;
+
+        return (isHls ? 1_000_000 : 0)
+            + (hasDirectUrl ? 100_000 : 0)
+            + (provider && provider === preferredProvider ? 1_000 : 0)
+            + (isIframeLike ? -10_000 : 0)
+            + quality;
+    }, []);
 
     const ensureStreamData = useCallback((episode: Episode): Promise<StreamLink[]> => {
         if (!scraperSession) return Promise.resolve([]);
@@ -76,8 +91,8 @@ export function useStreams(scraperSession: string | null) {
         const providerFiltered = next.filter((s) => normalizeProvider(s.provider || s.server || s.url) === provider);
         if (providerFiltered.length > 0) next = providerFiltered;
 
-        return [...next].sort((a, b) => (parseInt(b.quality) || 0) - (parseInt(a.quality) || 0));
-    }, []);
+        return [...next].sort((a, b) => scoreStream(b, provider) - scoreStream(a, provider));
+    }, [scoreStream]);
 
     const pickBestProvider = useCallback(
         (raw: StreamLink[], audio: 'sub' | 'dub', preferred: 'vidsrc' | 'megacloud') => {
@@ -89,8 +104,8 @@ export function useStreams(scraperSession: string | null) {
                 const p = pool.filter((s) => normalizeProvider(s.provider || s.server || s.url) === provider);
                 if (p.length === 0) return -1;
                 const hasHls = p.some((s) => Boolean(s.isHls) || String(s.url || '').includes('.m3u8'));
-                const maxQuality = p.reduce((mx, s) => Math.max(mx, parseInt(String(s.quality || '0'), 10) || 0), 0);
-                return (hasHls ? 100000 : 0) + maxQuality + (provider === preferred ? 5 : 0);
+                const maxScore = p.reduce((mx, s) => Math.max(mx, scoreStream(s, provider)), 0);
+                return maxScore + (hasHls ? 100000 : 0) + (provider === preferred ? 5 : 0);
             };
 
             const ranked = providers
@@ -99,7 +114,7 @@ export function useStreams(scraperSession: string | null) {
 
             return ranked[0]?.score >= 0 ? ranked[0].provider : preferred;
         },
-        []
+        [scoreStream]
     );
 
     useEffect(() => {
