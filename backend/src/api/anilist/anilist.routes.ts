@@ -428,6 +428,20 @@ router.get('/anime/:id/fast', async (req, res) => {
         if (id.startsWith('s:')) {
             res.set('Cache-Control', 'no-store');
         }
+
+        // Fast path: serve composed response from Redis (skip for scraper IDs)
+        const composedCacheKey = `fast-composed:v2:${id}`;
+        if (!id.startsWith('s:')) {
+            try {
+                const composedCached = await redis.get<any>(composedCacheKey).catch(() => null);
+                if (composedCached && Array.isArray(composedCached.episodes) && composedCached.episodes.length > 0) {
+                    res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+                    res.json(composedCached);
+                    return;
+                }
+            } catch { /* fall through */ }
+        }
+
         let animeDetails: any = null;
         let resolvedSession: string | null = null;
         let rankedCandidates: Array<{ candidate: any; score: number }> = [];
@@ -529,12 +543,19 @@ router.get('/anime/:id/fast', async (req, res) => {
             }
         }
 
-        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
-        res.json({
+        const result = {
             anime: animeDetails,
             scraperSession: resolvedSession,
             episodes,
-        });
+        };
+
+        // Cache composed response in Redis for 3 minutes
+        if (!id.startsWith('s:') && episodes.length > 0) {
+            redis.set(composedCacheKey, result, { ex: 180 }).catch(() => undefined);
+        }
+
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+        res.json(result);
     } catch (error) {
         console.error('Error in anime fast route:', error);
         res.status(500).json({ error: 'Failed to fetch fast anime details' });
