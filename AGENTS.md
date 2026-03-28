@@ -8,14 +8,13 @@ This file defines how coding agents should work in this repo so execution stays 
 - Prefer root-cause fixes over local patches.
 
 ## Project Context
-- Stack: React 19 + TypeScript + Vite (frontend), Electron wrapper, Express + TypeScript backend scraper API.
+- Stack: React 19 + TypeScript + Vite (frontend), Express + TypeScript backend scraper API.
 - Frontend source: `src/`
 - Backend source: `backend/src/`
-- Electron runtime: `electron/`
-- Build outputs: `dist/`, `dist-electron/`, `backend/dist/` (do not hand-edit)
+- Build outputs: `dist/`, `backend/dist/` (do not hand-edit)
 
 ## Default Workflow
-1. Understand scope and impacted layer (`src`, `backend/src`, `electron`).
+1. Understand scope and impacted layer (`src`, `backend/src`).
 2. Inspect existing patterns in nearby files before editing.
 3. Make the smallest coherent change.
 4. Run the most relevant validation commands.
@@ -48,10 +47,6 @@ Run only what is relevant to changed areas, but always run at least one verifica
 - Backend/API/scraper changes:
   - `npm run dev --prefix backend` (smoke start)
   - `npm run build --prefix backend`
-- Electron/main-process changes:
-  - `npm run electron:dev` (smoke launch path)
-  - `npm run electron:build` (only when packaging behavior changes)
-
 If a command cannot run (time/tooling/env), state that explicitly and provide the next best verification evidence.
 
 ## Change Heuristics

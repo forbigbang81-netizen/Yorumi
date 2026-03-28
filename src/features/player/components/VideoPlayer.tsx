@@ -265,11 +265,9 @@ export default function VideoPlayer({
                     </div>
                 </div>
             ) : !hasPlayableSource ? (
-                <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 relative z-10">
-                    <p className="text-lg font-semibold text-white">No playable source from scraper</p>
-                    <p className="mt-2 text-sm text-gray-500 text-center max-w-md px-6">
-                        This episode only exposed a dead embed or no direct media source.
-                    </p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">
+                    <LoadingSpinner />
+                    <p className="mt-4 text-gray-400 animate-pulse">Trying another source...</p>
                 </div>
             ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">

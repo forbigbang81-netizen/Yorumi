@@ -1,176 +1,50 @@
 import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import scraperRoutes from './api/scraper/scraper.routes';
-import mangaScraperRoutes from './api/scraper/mangascraper.routes';
-import anilistRoutes from './api/anilist/anilist.routes';
-import hianimeRoutes from './api/scraper/hianime.routes';
+import app from './app';
 import { HiAnimeScraper } from './api/scraper/hianime.service';
-import logoRoutes from './api/logo/logo.routes';
-import imageRoutes from './api/image/image.routes';
-
-const app = express();
-const port = process.env.PORT || 3001;
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Routes
-app.use('/api/anilist', anilistRoutes);
-app.use('/api/scraper', scraperRoutes);
-app.use('/api/manga', mangaScraperRoutes);
-app.use('/api/hianime', hianimeRoutes);
-app.use('/api/logo', logoRoutes);
-app.use('/api/image', imageRoutes);
-
-import userRoutes from './api/user/user.routes';
-app.use('/api/user', userRoutes);
-
-import { mappingService } from './api/mapping/mapping.service';
-import { getAniListId } from './api/mapping/mapper';
-
-// Mapping Routes
-app.get('/api/mapping/:id', async (req, res) => {
-    const mapping = await mappingService.getMapping(req.params.id);
-    if (mapping) {
-        res.json(mapping);
-    } else {
-        res.status(404).json({ message: 'Mapping not found' });
-    }
-});
-
-app.post('/api/mapping', async (req, res) => {
-    const { anilistId, scraperId, title } = req.body;
-    if (!anilistId || !scraperId) {
-        return res.status(400).json({ message: 'Missing anilistId or scraperId' });
-    }
-    const success = await mappingService.saveMapping(anilistId, scraperId, title);
-    if (success) {
-        res.json({ success: true });
-    } else {
-        res.status(500).json({ message: 'Failed to save mapping' });
-    }
-});
-
-app.delete('/api/mapping/:id', async (req, res) => {
-    const success = await mappingService.deleteMapping(req.params.id);
-    if (success) {
-        res.json({ success: true, deleted: req.params.id });
-    } else {
-        res.status(500).json({ message: 'Failed to delete mapping' });
-    }
-});
-
-app.post('/api/mapping/identify', async (req, res) => {
-    const { slug, title } = req.body;
-    if (!slug || !title) {
-        return res.status(400).json({ message: 'Missing slug or title' });
-    }
-    const anilistId = await getAniListId(slug, title);
-    if (anilistId) {
-        res.json({ anilistId });
-    } else {
-        res.status(404).json({ message: 'AniList ID not found' });
-    }
-});
-
-// Serve avatars
-import path from 'path';
-import fs from 'fs';
-
-const avatarsDir = path.join(__dirname, '../avatars');
-app.use('/avatars', express.static(avatarsDir));
-
-// Helper to get all files recursively
-const getFilesRecursively = (dir: string): string[] => {
-    let results: string[] = [];
-    const list = fs.readdirSync(dir);
-    list.forEach((file) => {
-        const filePath = path.join(dir, file);
-        const stat = fs.statSync(filePath);
-        if (stat && stat.isDirectory()) {
-            results = results.concat(getFilesRecursively(filePath));
-        } else {
-            // Only add image files
-            if (/\.(png|jpg|jpeg|gif|webp)$/i.test(file)) {
-                results.push(path.relative(avatarsDir, filePath).replace(/\\/g, '/'));
-            }
-        }
-    });
-    return results;
-};
-
-app.get('/api/avatars/random', (req, res) => {
-    try {
-        const files = getFilesRecursively(avatarsDir);
-        if (files.length === 0) {
-            return res.status(404).json({ message: 'No avatars found' });
-        }
-        const randomFile = files[Math.floor(Math.random() * files.length)];
-        const protocol = req.protocol;
-        const host = req.get('host');
-        const fullUrl = `${protocol}://${host}/avatars/${randomFile}`;
-        res.json({ url: fullUrl });
-    } catch (error) {
-        console.error('Error getting random avatar:', error);
-        res.status(500).json({ message: 'Failed to get random avatar' });
-    }
-});
-
-
-app.get('/', (req, res) => {
-    res.send('Yorumi Backend is running');
-});
-
 import { warmSpotlightCache } from './api/scraper/manga.service';
 import { warmupAnimeDatabase } from './api/logo/fanart.service';
 import { startScraperWarmer } from './api/scraper/scraper-warmer';
 
+const port = process.env.PORT || 3001;
 const shouldRunStandaloneServer = !process.env.VERCEL;
 
 if (shouldRunStandaloneServer) {
     const startServer = async () => {
-        console.log('🚀 Starting Yorumi Backend Server...');
+        console.log('Starting Yorumi Backend Server...');
 
-        // Pre-warm caches with timeout protection
         const hianimeScraper = new HiAnimeScraper();
 
         try {
-            console.log('🔥 Warming anime spotlight cache...');
+            console.log('Warming anime spotlight cache...');
             await Promise.race([
                 hianimeScraper.getEnrichedSpotlight(),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Cache warming timeout')), 10000)
                 )
             ]);
-            console.log('✅ Spotlight cache warmed successfully');
+            console.log('Spotlight cache warmed successfully');
         } catch (error) {
-            console.warn('⚠️ Spotlight cache warming failed or timed out:', error);
-            console.warn('⚠️ Server will continue, cache will be populated on first request');
+            console.warn('Spotlight cache warming failed or timed out:', error);
+            console.warn('Server will continue, cache will be populated on first request');
         }
 
-        // Warm other caches
         try {
             await warmSpotlightCache();
             await warmupAnimeDatabase();
         } catch (error) {
-            console.warn('⚠️ Other cache warming failed:', error);
+            console.warn('Other cache warming failed:', error);
         }
 
-        // Start listening
         app.listen(port, () => {
-            console.log(`✅ Server is running on http://localhost:${port}`);
+            console.log(`Server is running on http://localhost:${port}`);
         });
 
-        // Keep most requested stream keys warm for faster playback starts.
         startScraperWarmer();
 
-        // Schedule periodic spotlight refresh every 12 hours
         setInterval(() => {
-            console.log('⏰ Running scheduled spotlight refresh...');
+            console.log('Running scheduled spotlight refresh...');
             hianimeScraper.getEnrichedSpotlight()
-                .catch(err => console.error('❌ Scheduled spotlight refresh failed:', err));
+                .catch(err => console.error('Scheduled spotlight refresh failed:', err));
         }, 12 * 60 * 60 * 1000);
     };
 
@@ -178,4 +52,3 @@ if (shouldRunStandaloneServer) {
 }
 
 export default app;
-

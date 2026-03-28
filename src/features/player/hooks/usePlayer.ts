@@ -71,6 +71,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     const lastSavedProgressRef = useRef<{ at: number; second: number }>({ at: 0, second: -1 });
     const streamErrorRetryRef = useRef<{ url: string; at: number }>({ url: '', at: 0 });
     const autoLoadAttemptKeyRef = useRef<string>('');
+    const emptySourceRetryRef = useRef<{ key: string; count: number }>({ key: '', count: 0 });
     const extractAnimePaheSession = (value: unknown): string => {
         const raw = String(value || '').trim();
         const normalized = raw.startsWith('s:') ? raw.slice(2) : raw;
@@ -107,11 +108,16 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         lastDurationSecondRef.current = 0;
         lastSavedProgressRef.current = { at: 0, second: -1 };
         autoLoadAttemptKeyRef.current = '';
+        emptySourceRetryRef.current = { key: '', count: 0 };
     }, [animeId]);
 
     useEffect(() => {
         autoLoadAttemptKeyRef.current = '';
     }, [scraperSession]);
+
+    useEffect(() => {
+        emptySourceRetryRef.current = { key: '', count: 0 };
+    }, [currentEpisode?.session]);
 
     useEffect(() => {
         const currentId = String(animeId || '');
@@ -241,6 +247,29 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
             adjacent.map((ep) => ep.session)
         );
     }, [currentEpisode?.session, episodes, prefetchStream, scraperSession]);
+
+    useEffect(() => {
+        if (!currentEpisode || currentStream || streamLoading) return;
+
+        const retryKey = `${String(animeId || '')}:${String(currentEpisode.session || currentEpisode.episodeNumber || '')}`;
+        if (emptySourceRetryRef.current.key !== retryKey) {
+            emptySourceRetryRef.current = { key: retryKey, count: 0 };
+        }
+        if (emptySourceRetryRef.current.count >= 3) {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            emptySourceRetryRef.current = {
+                key: retryKey,
+                count: emptySourceRetryRef.current.count + 1
+            };
+            setIsPlayerReady(false);
+            loadStream(currentEpisode);
+        }, 600);
+
+        return () => window.clearTimeout(timer);
+    }, [animeId, currentEpisode, currentStream, streamLoading, loadStream]);
 
     const flushWatchTime = useCallback(() => {
         if (!selectedAnime) return;

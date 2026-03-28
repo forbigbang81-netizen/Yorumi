@@ -1,5 +1,7 @@
-// Vercel Serverless Function Entry Point
-// This file delegates to the backend Express app
-import app from '../backend/src/index.js';
+import app from '../backend/src/app';
+
+export const config = {
+    runtime: 'nodejs',
+};
 
 export default app;

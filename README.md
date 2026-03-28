@@ -11,7 +11,6 @@
 
   <img src="https://img.shields.io/badge/REACT-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
   <img src="https://img.shields.io/badge/TYPESCRIPT-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/ELECTRON-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron" />
   <img src="https://img.shields.io/badge/EXPRESS.JS-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express" />
   <img src="https://img.shields.io/badge/REDIS-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis" />
   <img src="https://img.shields.io/badge/FIREBASE-FFCA28?style=for-the-badge&logo=firebase&logoColor=white" alt="Firebase" />
@@ -20,7 +19,7 @@
 
 <br>
 
-> A modern, feature-rich desktop and web platform for streaming anime and reading manga with a premium UI/UX experience.
+> A modern, feature-rich web platform for streaming anime and reading manga with a premium UI/UX experience.
 
 <br>
 
@@ -52,9 +51,8 @@
 - **🎨 Premium UI/UX**: 
     - Glassmorphic design system using **Tailwind CSS**.
     - Smooth animations with **Framer Motion** (implied via UI quality).
-    - Responsive layout for Desktop (Electron) and Web.
+    - Responsive layout for desktop and mobile web.
 - **☁️ Cloud Sync**: **Firebase** integration for syncing user progress, bookmarks, and settings across devices.
-- **🖥️ Cross-Platform**: Built with **Electron** to run natively on Windows, macOS, and Linux.
 
 ## 📸 Screenshots
 
@@ -109,11 +107,11 @@
 
 ## 🏗️ Architecture
 
-Yorumi allows for a hybrid architecture, running as a standalone Electron application or a traditional Client-Server web app.
+Yorumi uses a client-server web architecture.
 
 ```mermaid
 graph TD
-    User[End User] --> Client[Electron / Web Client]
+    User[End User] --> Client[Web Client]
     
     subgraph Frontend [Frontend Layer]
         Client
@@ -147,7 +145,7 @@ graph TD
 
 ### 🛠️ Tech Stack
 
-#### **Frontend (Electron / Web)**
+#### **Frontend (Web)**
 - **Core**: React 19, TypeScript
 - **Build Tool**: Vite (Rolldown)
 - **Styling**: Tailwind CSS, PostCSS
@@ -155,7 +153,6 @@ graph TD
 - **Routing**: React Router v7
 - **Video**: HLS.js
 - **Icons**: Lucide React
-- **Electron**: Electron 28 (Main/Renderer process IPC)
 
 #### **Backend (API & Scraper)**
 - **Runtime**: Node.js
@@ -176,7 +173,7 @@ graph TD
 #### **DevOps & Tools**
 - **Linting**: ESLint, Prettier
 - **Package Manager**: npm
-- **Bundler**: Electron Builder
+- **Bundler**: Vite (Rolldown)
 
 ## 🚀 Getting Started
 
@@ -193,7 +190,7 @@ graph TD
     cd yorumi
     ```
 
-2.  **Install Root Dependencies (Frontend + Electron)**
+2.  **Install Root Dependencies**
     ```bash
     npm install
     ```
@@ -222,14 +219,8 @@ To run the application as a standard web app (Client + Server):
     ```
     *Client runs on `http://localhost:5173`*
 
-### Running Locally (Electron Mode)
 
-To launch the full desktop experience:
 
-```bash
-npm run electron:dev
-```
-*This concurrently starts the Vite dev server, Backend API, and Electron wrapper.*
 
 ## 📁 Project Structure
 
@@ -240,7 +231,6 @@ yorumi/
 │   │   ├── api/             # REST API Controllers (AniList, Manga, etc.)
 │   │   ├── scraper/         # Scraping Logic (AnimePahe, MangaKatana)
 │   │   └── index.ts         # Server Entry Point
-├── electron/                # Electron Main Process Code
 ├── src/                     # React Frontend Code
 │   ├── components/          # Reusable UI Components
 │   ├── features/            # Feature-based Modules (Anime, Manga, Player)
