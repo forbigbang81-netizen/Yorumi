@@ -46,6 +46,8 @@ export default function WatchPage() {
         streamLoading,
         isExpanded,
         isAutoQuality,
+        selectedAudio,
+        availableAudios,
         showQualityMenu,
         selectedStreamIndex,
         toggleExpand,
@@ -56,6 +58,7 @@ export default function WatchPage() {
         setShowQualityMenu,
         handleQualityChange,
         setAutoQuality,
+        setSelectedAudio,
         setIsPlayerReady,
         handlePlaybackProgress,
         handleStreamError,
@@ -176,6 +179,9 @@ export default function WatchPage() {
                         isAutoQuality={isAutoQuality}
                         selectedStreamIndex={selectedStreamIndex}
                         streams={streams}
+                        selectedAudio={selectedAudio}
+                        availableAudios={availableAudios}
+                        currentEpisodeNumber={epNum}
                         showQualityMenu={showQualityMenu}
                         onPrev={handlePrevEp}
                         onNext={handleNextEp}
@@ -184,6 +190,7 @@ export default function WatchPage() {
                         setShowQualityMenu={setShowQualityMenu}
                         onQualityChange={handleQualityChange}
                         onSetAutoQuality={setAutoQuality}
+                        onAudioChange={setSelectedAudio}
                     />
                 </div>
 

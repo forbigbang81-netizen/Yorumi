@@ -18,7 +18,12 @@ export function useStreams(scraperSession: string | null) {
 
     const currentStream = streams[selectedStreamIndex] || null;
 
-    const normalizeAudio = (value: string) => (String(value || '').toLowerCase() === 'dub' ? 'dub' : 'sub');
+    const normalizeAudio = (value: string) => {
+        const lower = String(value || '').trim().toLowerCase();
+        if (!lower) return 'sub';
+        if (/(^|\b)(dub|eng|english)(\b|$)/.test(lower)) return 'dub';
+        return 'sub';
+    };
     const normalizeProvider = (value: string) => {
         const lower = String(value || '').toLowerCase();
         if (lower.includes('mega')) return 'megacloud';
@@ -91,7 +96,17 @@ export function useStreams(scraperSession: string | null) {
         const providerFiltered = next.filter((s) => normalizeProvider(s.provider || s.server || s.url) === provider);
         if (providerFiltered.length > 0) next = providerFiltered;
 
-        return [...next].sort((a, b) => scoreStream(b, provider) - scoreStream(a, provider));
+        const sorted = [...next].sort((a, b) => scoreStream(b, provider) - scoreStream(a, provider));
+        const dedupedByQuality = new Map<string, StreamLink>();
+
+        sorted.forEach((stream) => {
+            const qualityKey = getMappedQuality(String(stream.quality || '0'));
+            if (!dedupedByQuality.has(qualityKey)) {
+                dedupedByQuality.set(qualityKey, stream);
+            }
+        });
+
+        return Array.from(dedupedByQuality.values());
     }, [scoreStream]);
 
     const pickBestProvider = useCallback(
