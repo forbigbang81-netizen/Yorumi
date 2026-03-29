@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 
 export interface WatchProgress {
@@ -62,6 +62,7 @@ const STORAGE_KEYS = {
     EPISODE_HISTORY: 'yorumi_episode_history',
     CHAPTER_HISTORY: 'yorumi_chapter_history',
     ANIME_WATCH_TIME: 'yorumi_anime_watch_time',
+    ANIME_WATCH_TIME_TOTAL: 'yorumi_anime_watch_time_total',
     ANIME_GENRE_CACHE: 'yorumi_anime_genre_cache',
     MANGA_GENRE_CACHE: 'yorumi_manga_genre_cache'
 };
@@ -271,6 +272,48 @@ export const storage = {
         return data[animeId] || 0;
     },
 
+    addAnimeWatchTimeTotal: (seconds: number) => {
+        try {
+            if (!Number.isFinite(seconds) || seconds <= 0) return;
+
+            const normalized = Math.floor(seconds);
+            const current = storage.getAnimeWatchTimeTotalSeconds();
+            setScopedItem(STORAGE_KEYS.ANIME_WATCH_TIME_TOTAL, JSON.stringify(current + normalized));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to add anime total watch time:', error);
+        }
+    },
+
+    getAnimeWatchTimeTotalSeconds: (): number => {
+        try {
+            const data = getScopedItem(STORAGE_KEYS.ANIME_WATCH_TIME_TOTAL);
+            if (data) {
+                const parsed = Number(JSON.parse(data));
+                if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+            }
+
+            // Backfill from legacy per-anime map when no dedicated total exists yet.
+            return Object.values(storage.getAnimeWatchTime()).reduce((sum, seconds) => {
+                const safeSeconds = Number(seconds) || 0;
+                return sum + Math.max(0, safeSeconds);
+            }, 0);
+        } catch (error) {
+            console.error('Failed to get anime total watch time:', error);
+            return 0;
+        }
+    },
+
+    setAnimeWatchTimeTotalSeconds: (seconds: number) => {
+        try {
+            const normalized = Math.max(0, Math.floor(Number(seconds) || 0));
+            setScopedItem(STORAGE_KEYS.ANIME_WATCH_TIME_TOTAL, JSON.stringify(normalized));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to set anime total watch time:', error);
+        }
+    },
+
     // Genre caches
     getAnimeGenreCache: (): Record<string, string[]> => {
         try {
@@ -475,6 +518,14 @@ export const syncStorage = {
                     didUpdateLocal = true;
                 }
 
+                // Merge total watch time from backend authoritative counter.
+                if (typeof data.animeWatchTimeTotalSeconds === 'number') {
+                    const localTotal = storage.getAnimeWatchTimeTotalSeconds();
+                    const mergedTotal = Math.max(localTotal, Math.floor(data.animeWatchTimeTotalSeconds));
+                    storage.setAnimeWatchTimeTotalSeconds(mergedTotal);
+                    didUpdateLocal = true;
+                }
+
                 // Merge Anime Genre Cache
                 if (data.animeGenreCache) {
                     const local = storage.getAnimeGenreCache();
@@ -558,6 +609,21 @@ const originalAddAnimeWatchTime = storage.addAnimeWatchTime;
 storage.addAnimeWatchTime = (animeId, seconds) => {
     originalAddAnimeWatchTime(animeId, seconds);
     if (auth.currentUser) syncStorage.pushToCloud();
+};
+
+const originalAddAnimeWatchTimeTotal = storage.addAnimeWatchTimeTotal;
+storage.addAnimeWatchTimeTotal = (seconds) => {
+    originalAddAnimeWatchTimeTotal(seconds);
+
+    const userRef = getUserRef();
+    const normalized = Math.floor(Number(seconds) || 0);
+    if (!userRef || normalized <= 0) return;
+
+    setDoc(userRef, {
+        animeWatchTimeTotalSeconds: increment(normalized)
+    }, { merge: true }).catch((error) => {
+        console.error('Failed to sync anime total watch time to cloud:', error);
+    });
 };
 
 const originalSetAnimeGenreCache = storage.setAnimeGenreCache;

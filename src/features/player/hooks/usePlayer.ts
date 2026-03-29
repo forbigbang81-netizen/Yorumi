@@ -280,12 +280,11 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
         if (seconds <= 0 || !selectedAnime) return;
 
-        const primaryAnimeId = String(selectedAnime.mal_id || '');
-        const secondaryAnimeId = String(selectedAnime.id || '');
-        const targetAnimeIds = [primaryAnimeId, secondaryAnimeId]
-            .filter((id, index, arr) => id && arr.indexOf(id) === index);
-
-        targetAnimeIds.forEach((id) => storage.addAnimeWatchTime(id, seconds));
+        const primaryAnimeId = String(selectedAnime.mal_id || selectedAnime.id || '');
+        if (primaryAnimeId) {
+            storage.addAnimeWatchTime(primaryAnimeId, seconds);
+        }
+        storage.addAnimeWatchTimeTotal(seconds);
         watchSessionStartedAtRef.current = null;
     }, [selectedAnime?.mal_id, selectedAnime?.id]);
 

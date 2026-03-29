@@ -1139,7 +1139,34 @@ const AnimeStatsOverview = () => {
 
         return merged;
     }, [user?.uid, statsTick]);
-    const animeWatchTime = storage.getAnimeWatchTime();
+    const animeWatchTime = React.useMemo(() => {
+        const merged: Record<string, number> = {};
+
+        const mergeParsedWatchTime = (parsed: Record<string, unknown>) => {
+            Object.entries(parsed || {}).forEach(([id, seconds]) => {
+                const safeSeconds = Number(seconds) || 0;
+                if (safeSeconds <= 0) return;
+                merged[id] = Math.max(merged[id] || 0, safeSeconds);
+            });
+        };
+
+        const mergeWatchTimeFromStorage = (raw: string | null) => {
+            if (!raw) return;
+            try {
+                mergeParsedWatchTime(JSON.parse(raw) as Record<string, unknown>);
+            } catch {
+                // Ignore malformed watch-time payloads.
+            }
+        };
+
+        // Current scoped getter
+        mergeParsedWatchTime(storage.getAnimeWatchTime() as unknown as Record<string, unknown>);
+        // Explicit scoped and legacy unscoped keys for resilience during auth-race transitions.
+        if (user?.uid) mergeWatchTimeFromStorage(localStorage.getItem(`yorumi_anime_watch_time_${user.uid}`));
+        mergeWatchTimeFromStorage(localStorage.getItem('yorumi_anime_watch_time'));
+
+        return merged;
+    }, [user?.uid, statsTick]);
     const parseEpisodeNumber = (value: unknown): number => {
         if (typeof value === 'number' && Number.isFinite(value)) return value;
         const raw = String(value ?? '').trim();
@@ -1220,14 +1247,43 @@ const AnimeStatsOverview = () => {
         Object.keys(animeWatchTime || {}).length > 0;
     const valueClassName = hasAccountAnimeHistory ? 'text-[#3cb6ff]' : 'text-gray-400';
 
-    const totalWatchSeconds = Array.from(animeGroups.values()).reduce((sum, ids) => {
-        // Use max per deduped anime group to avoid double counting mirrored ID records.
-        let groupSeconds = 0;
-        ids.forEach((id) => {
-            groupSeconds = Math.max(groupSeconds, animeWatchTime[id] || 0);
-        });
-        return sum + groupSeconds;
-    }, 0);
+    const totalWatchSeconds = React.useMemo(() => {
+        const totals: number[] = [];
+
+        const pushParsedTotal = (value: unknown) => {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed) && parsed >= 0) {
+                totals.push(Math.floor(parsed));
+            }
+        };
+
+        const pushTotalFromStorage = (raw: string | null) => {
+            if (!raw) return;
+            try {
+                pushParsedTotal(JSON.parse(raw));
+            } catch {
+                // Ignore malformed total-watch-time payloads.
+            }
+        };
+
+        pushParsedTotal(storage.getAnimeWatchTimeTotalSeconds());
+        if (user?.uid) pushTotalFromStorage(localStorage.getItem(`yorumi_anime_watch_time_total_${user.uid}`));
+        pushTotalFromStorage(localStorage.getItem('yorumi_anime_watch_time_total'));
+
+        const mergedDedicatedTotal = totals.length > 0 ? Math.max(...totals) : 0;
+        if (mergedDedicatedTotal > 0) {
+            return mergedDedicatedTotal;
+        }
+
+        return Array.from(animeGroups.values()).reduce((sum, ids) => {
+            // Legacy fallback: use max per deduped anime group to avoid double counting mirrored ID records.
+            let groupSeconds = 0;
+            ids.forEach((id) => {
+                groupSeconds = Math.max(groupSeconds, animeWatchTime[id] || 0);
+            });
+            return sum + groupSeconds;
+        }, 0);
+    }, [user?.uid, statsTick, animeGroups, animeWatchTime]);
     const totalHours = Math.round((totalWatchSeconds / 3600) * 10) / 10;
     const fmt = new Intl.NumberFormat('en-US');
     const hoursFmt = new Intl.NumberFormat('en-US', {
