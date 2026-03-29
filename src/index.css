@@ -119,6 +119,23 @@ body.watch-safe-mode * {
   will-change: auto !important;
 }
 
+html.watch-safe-mode .watch-page-backdrop,
+body.watch-safe-mode .watch-page-backdrop {
+  filter: blur(72px) !important;
+}
+
+html.watch-safe-mode .menu-backdrop-blur,
+body.watch-safe-mode .menu-backdrop-blur {
+  -webkit-backdrop-filter: blur(10px) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+html.watch-safe-mode .menu-panel-blur,
+body.watch-safe-mode .menu-panel-blur {
+  -webkit-backdrop-filter: blur(24px) !important;
+  backdrop-filter: blur(24px) !important;
+}
+
 html.watch-safe-mode nav,
 body.watch-safe-mode nav,
 html.watch-safe-mode header,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { mangaService } from '../../../services/mangaService';
+import type { Manga } from '../../../types/manga';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 
@@ -12,7 +13,7 @@ interface HotUpdate {
 }
 
 interface LatestMangaUpdatesProps {
-    onMangaClick?: (mangaId: string) => void;
+    onMangaClick?: (mangaId: string, autoRead?: boolean, manga?: Manga) => void;
 }
 
 export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesProps) {
@@ -122,7 +123,18 @@ export default function LatestMangaUpdates({ onMangaClick }: LatestMangaUpdatesP
                     <div
                         key={manga.id}
                         className="group flex gap-4 p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-white/5"
-                        onClick={() => onMangaClick?.(manga.id)}
+                        onClick={() => onMangaClick?.(manga.id, false, {
+                            mal_id: manga.id,
+                            id: manga.id,
+                            title: manga.title,
+                            title_english: manga.title,
+                            title_romaji: manga.title,
+                            images: { jpg: { large_image_url: manga.thumbnail, image_url: manga.thumbnail } },
+                            synopsis: '',
+                            chapters: 0,
+                            type: 'Manga',
+                            status: 'Unknown'
+                        })}
                     >
                         {/* Thumbnail */}
                         <div className="relative w-16 h-24 flex-shrink-0 rounded-md overflow-hidden shadow-sm">

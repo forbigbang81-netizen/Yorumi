@@ -39,12 +39,12 @@ export default function MangaPage() {
 
 
 
-    const handleSpotlightClick = (mangaId: string, autoRead?: boolean) => {
-        navigate(`/manga/details/${mangaId}`, { state: { autoRead } });
+    const handleSpotlightClick = (mangaId: string, autoRead?: boolean, mangaData?: Manga) => {
+        navigate(`/manga/details/${mangaId}`, { state: { autoRead, manga: mangaData } });
     };
 
     const handleMangaClick = (item: Manga) => {
-        navigate(`/manga/details/${item.id || item.mal_id}`);
+        navigate(`/manga/details/${item.id || item.mal_id}`, { state: { manga: item } });
     };
 
     // Get the title for View All based on viewMode

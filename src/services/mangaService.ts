@@ -6,12 +6,93 @@ const apiClient = axios.create({
     baseURL: API_BASE,
     timeout: 15000,
 });
+const responseCache = new Map<string, { data: any; timestamp: number }>();
 const chapterListCache = new Map<string, { data: any; timestamp: number }>();
 const chapterPagesCache = new Map<string, { data: any; timestamp: number }>();
 const chapterListInFlight = new Map<string, Promise<any>>();
 const chapterPagesInFlight = new Map<string, Promise<any>>();
+const inFlightRequests = new Map<string, Promise<any>>();
+const PERSISTED_CACHE_PREFIX = 'yorumi_manga_cache_v3';
+const SEARCH_CACHE_TTL = 5 * 60 * 1000;
+const DETAIL_CACHE_TTL = 15 * 60 * 1000;
+const LIST_CACHE_TTL = 10 * 60 * 1000;
+const SPOTLIGHT_CACHE_TTL = 10 * 60 * 1000;
 const CHAPTER_LIST_CACHE_TTL = 20 * 60 * 1000;
 const CHAPTER_PAGES_CACHE_TTL = 30 * 60 * 1000;
+
+const readPersistedCache = (key: string, ttl: number) => {
+    try {
+        const raw = localStorage.getItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { data: any; timestamp: number };
+        if (!parsed || typeof parsed.timestamp !== 'number') return null;
+        if (Date.now() - parsed.timestamp > ttl) {
+            localStorage.removeItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
+            return null;
+        }
+        return parsed.data;
+    } catch {
+        return null;
+    }
+};
+
+const writePersistedCache = (key: string, data: any, timestamp: number) => {
+    try {
+        localStorage.setItem(
+            `${PERSISTED_CACHE_PREFIX}:${key}`,
+            JSON.stringify({ data, timestamp })
+        );
+    } catch {
+        // Ignore storage errors.
+    }
+};
+
+const getCached = (key: string, ttl: number) => {
+    const cached = responseCache.get(key);
+    if (cached) {
+        if (Date.now() - cached.timestamp < ttl) {
+            return cached.data;
+        }
+        responseCache.delete(key);
+    }
+
+    const persisted = readPersistedCache(key, ttl);
+    if (persisted) {
+        responseCache.set(key, { data: persisted, timestamp: Date.now() });
+        return persisted;
+    }
+
+    return null;
+};
+
+const setCached = (key: string, data: any) => {
+    const timestamp = Date.now();
+    responseCache.set(key, { data, timestamp });
+    writePersistedCache(key, data, timestamp);
+};
+
+const fetchWithCache = async <T>(cacheKey: string, ttl: number, fetcher: () => Promise<T>): Promise<T> => {
+    const cached = getCached(cacheKey, ttl);
+    if (cached) {
+        return cached as T;
+    }
+
+    if (inFlightRequests.has(cacheKey)) {
+        return inFlightRequests.get(cacheKey)! as Promise<T>;
+    }
+
+    const request = fetcher()
+        .then((result) => {
+            setCached(cacheKey, result);
+            return result;
+        })
+        .finally(() => {
+            inFlightRequests.delete(cacheKey);
+        });
+
+    inFlightRequests.set(cacheKey, request);
+    return request;
+};
 
 interface AniListManga {
     id: number;
@@ -72,14 +153,31 @@ const mapAnilistToManga = (item: AniListManga) => ({
     relations: item.relations
 });
 
+const isMostlyLatin = (value: string | undefined) => {
+    const normalized = String(value || '').replace(/[\s\d\p{P}]/gu, '');
+    if (!normalized) return false;
+    const latinChars = (normalized.match(/\p{Script=Latin}/gu) || []).length;
+    return latinChars / normalized.length >= 0.6;
+};
+
+const pickScraperRomajiTitle = (scraperData: ScraperManga) =>
+    scraperData.altNames?.find((name) => isMostlyLatin(name) && name.trim() !== scraperData.title)?.trim()
+    || scraperData.title;
+
+const pickScraperNativeTitle = (scraperData: ScraperManga) =>
+    scraperData.altNames?.find((name) => name.trim() && !isMostlyLatin(name))?.trim()
+    || scraperData.altNames?.find((name) => name.trim() !== scraperData.title)?.trim()
+    || undefined;
+
 const mapScraperToManga = (scraperData: ScraperManga) => ({
     mal_id: scraperData.id,
     id: scraperData.id,
+    scraper_id: scraperData.id,
     title: scraperData.title || 'Unknown',
-    title_english: scraperData.altNames?.[0] || scraperData.title,
-    title_romaji: scraperData.title,
-    title_native: scraperData.altNames?.[scraperData.altNames?.length - 1],
-    title_japanese: scraperData.altNames?.[scraperData.altNames?.length - 1],
+    title_english: scraperData.title || 'Unknown',
+    title_romaji: pickScraperRomajiTitle(scraperData),
+    title_native: pickScraperNativeTitle(scraperData),
+    title_japanese: pickScraperNativeTitle(scraperData),
     images: {
         jpg: {
             image_url: scraperData.coverImage || '',
@@ -95,7 +193,8 @@ const mapScraperToManga = (scraperData: ScraperManga) => ({
     genres: scraperData.genres?.map((g: string) => ({ name: g, mal_id: 0 })) || [],
     authors: scraperData.author ? [{ name: scraperData.author, role: 'Story & Art', mal_id: 0 }] : [],
     published: { from: '', to: '', string: '' },
-    countryOfOrigin: 'JP'
+    countryOfOrigin: 'JP',
+    synonyms: scraperData.altNames || []
 });
 
 interface ScraperManga {
@@ -115,18 +214,60 @@ interface ScraperManga {
 }
 
 export const mangaService = {
+    peekUnifiedMangaDetails(id: string | number) {
+        return getCached(`manga-unified:${String(id)}`, DETAIL_CACHE_TTL) as Manga | null;
+    },
+
+    peekTopManga(page: number = 1) {
+        return getCached(`manga-top:${page}`, LIST_CACHE_TTL) as { data: Manga[]; pagination: any } | null;
+    },
+
+    peekPopularManga(page: number = 1) {
+        return getCached(`manga-popular:${page}`, LIST_CACHE_TTL) as { data: Manga[]; pagination: any } | null;
+    },
+
+    peekPopularManhwa(page: number = 1) {
+        return getCached(`manga-popular-manhwa:${page}`, LIST_CACHE_TTL) as { data: Manga[]; pagination: any } | null;
+    },
+
+    peekOneShotManga(page: number = 1) {
+        return getCached(`manga-one-shot:${page}`, LIST_CACHE_TTL) as { data: Manga[]; pagination: any } | null;
+    },
+
+    peekLatestMangaScraper(page: number = 1) {
+        return getCached(`manga-latest:${page}`, LIST_CACHE_TTL) as { data: Manga[]; pagination: any } | null;
+    },
+
+    peekNewMangaScraper(page: number = 1) {
+        return getCached(`manga-new:${page}`, LIST_CACHE_TTL) as { data: Manga[]; pagination: any } | null;
+    },
+
+    peekMangaDirectory(page: number = 1) {
+        return getCached(`manga-directory:${page}`, LIST_CACHE_TTL) as { data: Manga[]; pagination: any } | null;
+    },
+
+    peekHotUpdates() {
+        return getCached(`manga-hot-updates`, LIST_CACHE_TTL) as any[] | null;
+    },
+
+    peekEnrichedSpotlight() {
+        return getCached(`manga-spotlight`, SPOTLIGHT_CACHE_TTL) as { data: Manga[] } | null;
+    },
+
     // Fetch top manga from AniList (sorted by SCORE)
     async getTopManga(page: number = 1) {
-        const res = await fetch(`${API_BASE}/anilist/top/manga?page=${page}`);
-        const data = await res.json();
-        return {
-            data: data.media?.map(mapAnilistToManga) || [],
-            pagination: {
-                last_visible_page: data.pageInfo?.lastPage || 1,
-                current_page: data.pageInfo?.currentPage || 1,
-                has_next_page: data.pageInfo?.hasNextPage || false
-            }
-        };
+        return fetchWithCache(`manga-top:${page}`, LIST_CACHE_TTL, async () => {
+            const res = await fetch(`${API_BASE}/anilist/top/manga?page=${page}`);
+            const data = await res.json();
+            return {
+                data: data.media?.map(mapAnilistToManga) || [],
+                pagination: {
+                    last_visible_page: data.pageInfo?.lastPage || 1,
+                    current_page: data.pageInfo?.currentPage || 1,
+                    has_next_page: data.pageInfo?.hasNextPage || false
+                }
+            };
+        });
     },
 
     // Fetch trending manga from AniList (sorted by TRENDING)
@@ -145,30 +286,34 @@ export const mangaService = {
 
     // Fetch all-time popular manga from AniList (sorted by POPULARITY)
     async getPopularManga(page: number = 1) {
-        const res = await fetch(`${API_BASE}/anilist/popular/manga?page=${page}`);
-        const data = await res.json();
-        return {
-            data: data.media?.map(mapAnilistToManga) || [],
-            pagination: {
-                last_visible_page: data.pageInfo?.lastPage || 1,
-                current_page: data.pageInfo?.currentPage || 1,
-                has_next_page: data.pageInfo?.hasNextPage || false
-            }
-        };
+        return fetchWithCache(`manga-popular:${page}`, LIST_CACHE_TTL, async () => {
+            const res = await fetch(`${API_BASE}/anilist/popular/manga?page=${page}`);
+            const data = await res.json();
+            return {
+                data: data.media?.map(mapAnilistToManga) || [],
+                pagination: {
+                    last_visible_page: data.pageInfo?.lastPage || 1,
+                    current_page: data.pageInfo?.currentPage || 1,
+                    has_next_page: data.pageInfo?.hasNextPage || false
+                }
+            };
+        });
     },
 
     // Fetch popular manhwa from AniList
     async getPopularManhwa(page: number = 1) {
-        const res = await fetch(`${API_BASE}/anilist/top/manhwa?page=${page}`);
-        const data = await res.json();
-        return {
-            data: data.media?.map(mapAnilistToManga) || [],
-            pagination: {
-                last_visible_page: data.pageInfo?.lastPage || 1,
-                current_page: data.pageInfo?.currentPage || 1,
-                has_next_page: data.pageInfo?.hasNextPage || false
-            }
-        };
+        return fetchWithCache(`manga-popular-manhwa:${page}`, LIST_CACHE_TTL, async () => {
+            const res = await fetch(`${API_BASE}/anilist/top/manhwa?page=${page}`);
+            const data = await res.json();
+            return {
+                data: data.media?.map(mapAnilistToManga) || [],
+                pagination: {
+                    last_visible_page: data.pageInfo?.lastPage || 1,
+                    current_page: data.pageInfo?.currentPage || 1,
+                    has_next_page: data.pageInfo?.hasNextPage || false
+                }
+            };
+        });
     },
 
     // Search manga via AniList
@@ -200,25 +345,46 @@ export const mangaService = {
     },
 
     async getOneShotManga(page: number = 1) {
-        const res = await fetch(`${API_BASE}/anilist/top/one-shot?page=${page}`);
-        const data = await res.json();
-        return {
-            data: data.media?.map(mapAnilistToManga) || [],
-            pagination: {
-                last_visible_page: data.pageInfo?.lastPage || 1,
-                current_page: data.pageInfo?.currentPage || 1,
-                has_next_page: data.pageInfo?.hasNextPage || false
-            }
-        };
+        return fetchWithCache(`manga-one-shot:${page}`, LIST_CACHE_TTL, async () => {
+            const res = await fetch(`${API_BASE}/anilist/top/one-shot?page=${page}`);
+            const data = await res.json();
+            return {
+                data: data.media?.map(mapAnilistToManga) || [],
+                pagination: {
+                    last_visible_page: data.pageInfo?.lastPage || 1,
+                    current_page: data.pageInfo?.currentPage || 1,
+                    has_next_page: data.pageInfo?.hasNextPage || false
+                }
+            };
+        });
     },
 
     // Get manga details by ID
     async getMangaDetails(id: number | string) {
+        const cacheKey = `manga-details:${String(id)}`;
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
+        if (cached) return cached;
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey)!;
+        }
+
         try {
-            const res = await fetch(`${API_BASE}/anilist/manga/${id}`);
-            if (!res.ok) throw new Error('Failed to fetch details');
-            const data = await res.json();
-            return { data: mapAnilistToManga(data) };
+            const request = fetch(`${API_BASE}/anilist/manga/${id}`)
+                .then(async (res) => {
+                    if (!res.ok) throw new Error('Failed to fetch details');
+                    const data = await res.json();
+                    const result = { data: mapAnilistToManga(data) };
+                    if (result.data) {
+                        setCached(cacheKey, result);
+                    }
+                    return result;
+                })
+                .finally(() => {
+                    inFlightRequests.delete(cacheKey);
+                });
+
+            inFlightRequests.set(cacheKey, request);
+            return await request;
         } catch (e) {
             console.error('getMangaDetails failed:', e);
             return { data: null };
@@ -292,19 +458,41 @@ export const mangaService = {
 
     // Search manga on MangaKatana scraper with local pagination
     async searchMangaScraper(query: string, page: number = 1, limit: number = 18) {
-        const res = await fetch(`${API_BASE}/manga/search?q=${encodeURIComponent(query)}`);
-        const data = await res.json();
-        const items = Array.isArray(data) ? data : (data?.data || []);
-        
+        const normalizedQuery = query.trim().toLowerCase();
+        const cacheKey = `manga-search:${normalizedQuery}`;
+
+        let items = getCached(cacheKey, SEARCH_CACHE_TTL) as ScraperManga[] | null;
+        if (!items) {
+            if (inFlightRequests.has(cacheKey)) {
+                items = await inFlightRequests.get(cacheKey)!;
+            } else {
+                const request = fetch(`${API_BASE}/manga/search?q=${encodeURIComponent(query)}`)
+                    .then(async (res) => {
+                        const data = await res.json();
+                        return Array.isArray(data) ? data : (data?.data || []);
+                    })
+                    .finally(() => {
+                        inFlightRequests.delete(cacheKey);
+                });
+                inFlightRequests.set(cacheKey, request);
+                items = await request;
+                if (Array.isArray(items) && items.length > 0) {
+                    setCached(cacheKey, items);
+                }
+            }
+        }
+
         const safeLimit = Math.max(1, limit);
-        const total = items.length;
+        const resolvedItems = items || [];
+        const total = resolvedItems.length;
         const lastPage = Math.max(1, Math.ceil(total / safeLimit));
         const currentPage = Math.min(Math.max(page, 1), lastPage);
         const start = (currentPage - 1) * safeLimit;
         
-        const pageItems = items.slice(start, start + safeLimit).map((item: ScraperManga) => ({
+        const pageItems = resolvedItems.slice(start, start + safeLimit).map((item: ScraperManga) => ({
             mal_id: item.id,
             id: item.id,
+            scraper_id: item.id,
             title: item.title || 'Unknown',
             title_english: item.title,
             title_romaji: item.title,
@@ -339,55 +527,63 @@ export const mangaService = {
     },
 
     async getLatestMangaScraper(page: number = 1) {
-        const res = await fetch(`${API_BASE}/manga/latest?page=${page}`);
-        const data = await res.json();
-        const items = data.data || [];
-        const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
-        return {
-            data: items.map((item: ScraperManga) => ({ ...mapScraperToManga(item), latestChapter: item.latestChapter, id: item.id })),
-            pagination: {
-                last_visible_page: totalPages,
-                current_page: page,
-                has_next_page: page < totalPages
-            }
-        };
+        return fetchWithCache(`manga-latest:${page}`, LIST_CACHE_TTL, async () => {
+            const res = await fetch(`${API_BASE}/manga/latest?page=${page}`);
+            const data = await res.json();
+            const items = data.data || [];
+            const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
+            return {
+                data: items.map((item: ScraperManga) => ({ ...mapScraperToManga(item), latestChapter: item.latestChapter, id: item.id })),
+                pagination: {
+                    last_visible_page: totalPages,
+                    current_page: page,
+                    has_next_page: page < totalPages
+                }
+            };
+        });
     },
 
     async getNewMangaScraper(page: number = 1) {
-        const res = await fetch(`${API_BASE}/manga/new-manga?page=${page}`);
-        const data = await res.json();
-        const items = data.data || [];
-        const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
-        return {
-            data: items.map((item: ScraperManga) => ({ ...mapScraperToManga(item), latestChapter: item.latestChapter, id: item.id })),
-            pagination: {
-                last_visible_page: totalPages,
-                current_page: page,
-                has_next_page: page < totalPages
-            }
-        };
+        return fetchWithCache(`manga-new:${page}`, LIST_CACHE_TTL, async () => {
+            const res = await fetch(`${API_BASE}/manga/new-manga?page=${page}`);
+            const data = await res.json();
+            const items = data.data || [];
+            const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
+            return {
+                data: items.map((item: ScraperManga) => ({ ...mapScraperToManga(item), latestChapter: item.latestChapter, id: item.id })),
+                pagination: {
+                    last_visible_page: totalPages,
+                    current_page: page,
+                    has_next_page: page < totalPages
+                }
+            };
+        });
     },
 
     async getMangaDirectory(page: number = 1) {
-        const res = await fetch(`${API_BASE}/manga/directory?page=${page}`);
-        const data = await res.json();
-        const items = data.data || [];
-        const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
-        return {
-            data: items.map((item: ScraperManga) => ({ ...mapScraperToManga(item), latestChapter: item.latestChapter, id: item.id })),
-            pagination: {
-                last_visible_page: totalPages,
-                current_page: page,
-                has_next_page: page < totalPages
-            }
-        };
+        return fetchWithCache(`manga-directory:${page}`, LIST_CACHE_TTL, async () => {
+            const res = await fetch(`${API_BASE}/manga/directory?page=${page}`);
+            const data = await res.json();
+            const items = data.data || [];
+            const totalPages = data.pagination?.total_pages || (page + (items.length === 20 ? 1 : 0));
+            return {
+                data: items.map((item: ScraperManga) => ({ ...mapScraperToManga(item), latestChapter: item.latestChapter, id: item.id })),
+                pagination: {
+                    last_visible_page: totalPages,
+                    current_page: page,
+                    has_next_page: page < totalPages
+                }
+            };
+        });
     },
 
     async getHotUpdates() {
-        const response = await fetch(`${API_BASE}/manga/hot-updates`);
-        if (!response.ok) throw new Error('Failed to fetch hot updates');
-        const data = await response.json();
-        return data.data;
+        return fetchWithCache(`manga-hot-updates`, LIST_CACHE_TTL, async () => {
+            const response = await fetch(`${API_BASE}/manga/hot-updates`);
+            if (!response.ok) throw new Error('Failed to fetch hot updates');
+            const data = await response.json();
+            return data.data;
+        });
     },
 
     async prefetchChapters(urls: string[]) {
@@ -399,45 +595,46 @@ export const mangaService = {
     },
 
     async getEnrichedSpotlight() {
-        const res = await fetch(`${API_BASE}/manga/spotlight`);
-        const data = await res.json();
-        return {
-            data: data.data?.map(mapAnilistToManga) || []
-        };
+        return fetchWithCache(`manga-spotlight`, SPOTLIGHT_CACHE_TTL, async () => {
+            const res = await fetch(`${API_BASE}/manga/spotlight`);
+            const data = await res.json();
+            return {
+                data: data.data?.map(mapAnilistToManga) || []
+            };
+        });
     },
 
     // Get scraper details (fallback for string IDs)
     // Get scraper details (fallback for string IDs)
     async getScraperMangaDetails(id: string) {
+        const cacheKey = `manga-scraper-details:${id}`;
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
+        if (cached) return cached;
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey)!;
+        }
+
         try {
-            const res = await fetch(`${API_BASE}/manga/details/${encodeURIComponent(id)}`);
-            if (!res.ok) return null;
-            const json = await res.json();
-            const scraperData = json.data;
+            const request = fetch(`${API_BASE}/manga/details/${encodeURIComponent(id)}`)
+                .then(async (res) => {
+                    if (!res.ok) return null;
+                    const json = await res.json();
+                    const scraperData = json.data;
 
-            if (!scraperData) return null;
+                    if (!scraperData) return null;
 
-            // 1. Attempt to resolve to AniList for rich metadata - DISABLED to prevent mismatches
-            /*
-            try {
-                // Remove some common scraper noise from title if needed, or just use as is
-                const searchRes = await this.searchManga(scraperData.title);
-                const bestMatch = searchRes.data?.[0];
-
-                if (bestMatch) {
-                    const enrichedManga = { ...bestMatch };
-                    if (scraperData.id) {
-                        enrichedManga.scraper_id = scraperData.id;
+                    const mapped = mapScraperToManga(scraperData as any) as Manga;
+                    if (mapped) {
+                        setCached(cacheKey, mapped);
                     }
-                    return enrichedManga;
-                }
-            } catch (err) {
-                console.warn('Failed to resolve scraper manga to AniList:', err);
-            }
-            */
+                    return mapped;
+                })
+                .finally(() => {
+                    inFlightRequests.delete(cacheKey);
+                });
 
-            // 2. Fallback: Return mapped scraper data
-            return mapScraperToManga(scraperData as any) as Manga;
+            inFlightRequests.set(cacheKey, request);
+            return await request;
         } catch (error) {
             console.error('getScraperMangaDetails failed:', error);
             return null;
@@ -446,23 +643,42 @@ export const mangaService = {
 
     // Unified details endpoint (supports AniList numeric IDs and scraper IDs)
     async getUnifiedMangaDetails(id: string | number) {
-        const res = await fetch(`${API_BASE}/manga/details/${encodeURIComponent(String(id))}`);
-        if (!res.ok) throw new Error(`Failed to fetch unified manga details (${res.status})`);
-        const json = await res.json();
-        const data = json.data;
-        if (!data) return null;
-
-        // AniList-shaped payload
-        if (data.title && typeof data.title === 'object') {
-            return mapAnilistToManga(data);
+        const cacheKey = `manga-unified:${String(id)}`;
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
+        if (cached) return cached;
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey)!;
         }
 
-        // Scraper-shaped payload
-        if (typeof data.title === 'string') {
-            return mapScraperToManga(data);
-        }
+        const request = fetch(`${API_BASE}/manga/details/${encodeURIComponent(String(id))}`)
+            .then(async (res) => {
+                if (!res.ok) throw new Error(`Failed to fetch unified manga details (${res.status})`);
+                const json = await res.json();
+                const data = json.data;
+                if (!data) return null;
 
-        return null;
+                let mapped: Manga | null = null;
+
+                if (data.title && typeof data.title === 'object') {
+                    mapped = mapAnilistToManga(data) as Manga;
+                    if (typeof data.scraperId === 'string' && data.scraperId.trim()) {
+                        mapped.scraper_id = data.scraperId.trim();
+                    }
+                } else if (typeof data.title === 'string') {
+                    mapped = mapScraperToManga(data) as Manga;
+                }
+
+                if (mapped) {
+                    setCached(cacheKey, mapped);
+                }
+                return mapped;
+            })
+            .finally(() => {
+                inFlightRequests.delete(cacheKey);
+            });
+
+        inFlightRequests.set(cacheKey, request);
+        return request;
     },
 
     // Get random manga (Client-side pool for speed)

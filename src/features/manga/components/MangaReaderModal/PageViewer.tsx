@@ -86,7 +86,9 @@ export default function PageViewer({
                                     alt={`Page ${page.pageNumber}`}
                                     className="transition-all duration-200 block shadow-2xl"
                                     style={{ width: `${zoomLevel}%`, maxWidth: '100%' }}
-                                    loading="lazy"
+                                    loading={index < 2 ? 'eager' : 'lazy'}
+                                    decoding="async"
+                                    fetchPriority={index === 0 ? 'high' : 'auto'}
                                 />
                             ))}
 
@@ -127,6 +129,9 @@ export default function PageViewer({
                                 alt={`Page ${pageIndex + 1}`}
                                 className="max-h-full max-w-full object-contain shadow-2xl"
                                 style={{ transform: `scale(${zoomLevel / 100})` }}
+                                loading="eager"
+                                decoding="async"
+                                fetchPriority="high"
                             />
 
                             {/* Click Zone Overlays */}

@@ -56,13 +56,45 @@ const normalizeMangaId = (input: string): string => {
     return value;
 };
 
+const normalizeSearchText = (input: string): string =>
+    String(input || '')
+        .replace(/['\u2019]s\b/gi, '')
+        .replace(/['"\u2019\u2018`]/g, '')
+        .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+        .replace(/[-_]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const buildSearchQueries = (query: string): string[] => {
+    const original = String(query || '').trim();
+    const normalized = normalizeSearchText(original);
+    const keywordCandidates = normalized
+        .split(/\s+/)
+        .filter((word) => word.length >= 4)
+        .filter((word, index, array) => array.indexOf(word) === index);
+
+    const focusedKeywords = [
+        keywordCandidates[0],
+        keywordCandidates.find((word) => /san|chan|kun|sama/i.test(word)),
+        [...keywordCandidates].sort((a, b) => b.length - a.length)[0],
+    ].filter(Boolean) as string[];
+
+    return [...new Set([
+        original,
+        normalized,
+        ...focusedKeywords,
+    ].filter((value) => String(value || '').trim().length > 0))];
+};
+
 const parseMangaItemsFromList = ($: any): MangaSearchResult[] => {
     const results: MangaSearchResult[] = [];
-    $('#book_list > div.item').each((_: number, element: any) => {
+    $('#book_list .item, .item').each((_: number, element: any) => {
         const $el = $(element);
-        const linkEl = $el.find('div.text > h3 > a, .title a');
+        const linkEl = $el.find('h3.title a, div.text > h3 > a, .title a').first();
         const title = linkEl.text().trim();
         const url = linkEl.attr('href') || '';
+        if (!title || !url.includes('/manga/')) return;
+
         const imgEl = $el.find('.media .wrap_img img, div.cover img, img');
         const thumbnail = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
 
@@ -73,7 +105,7 @@ const parseMangaItemsFromList = ($: any): MangaSearchResult[] => {
         }
 
         const id = url.replace(`${BASE_URL}/manga/`, '').replace(/\/$/, '');
-        if (title && url) {
+        if (id && !results.some((item) => item.id === id)) {
             results.push({
                 id,
                 title,
@@ -139,13 +171,24 @@ export interface ChapterPage {
  * Uses Puppeteer to bypass bot protection
  */
 export async function searchManga(query: string): Promise<MangaSearchResult[]> {
-    const searchUrl = `${BASE_URL}/?search=${encodeURIComponent(query)}&search_by=book_name`;
+    const searchQueries = buildSearchQueries(query);
+    const searchModes = ['m_name', 'book_name'];
 
-    const response = await axiosInstance.get(searchUrl);
-    const $ = cheerio.load(response.data);
-    const quickResults = parseMangaItemsFromList($);
-    console.log(`[searchManga:http] Found ${quickResults.length} results for "${query}"`);
-    return quickResults;
+    for (const searchQuery of searchQueries) {
+        for (const mode of searchModes) {
+            const searchUrl = `${BASE_URL}/?search=${encodeURIComponent(searchQuery)}&search_by=${mode}`;
+            const response = await axiosInstance.get(searchUrl);
+            const $ = cheerio.load(response.data);
+            const quickResults = parseMangaItemsFromList($);
+            if (quickResults.length > 0) {
+                console.log(`[searchManga:http] Found ${quickResults.length} results for "${query}" via "${searchQuery}" (${mode})`);
+                return quickResults;
+            }
+        }
+    }
+
+    console.log(`[searchManga:http] Found 0 results for "${query}"`);
+    return [];
 }
 
 /**
@@ -197,8 +240,16 @@ export async function getMangaDetails(mangaId: string): Promise<MangaDetails> {
         const status = $('.value.status').text().trim();
         const genres = $('.genres > a').map((_, el) => $(el).text().trim()).get();
         const synopsis = $('.summary > p').text().trim();
-        const imgEl = $('div.media div.cover img, .media .wrap_img img, img');
-        const coverImage = toAbsoluteUrl(imgEl.attr('data-src') || imgEl.attr('src') || '');
+        const coverImage = toAbsoluteUrl(
+            $('meta[property="og:image"]').attr('content')
+            || $('.cover img').first().attr('data-src')
+            || $('.cover img').first().attr('src')
+            || $('div.media div.cover img').first().attr('data-src')
+            || $('div.media div.cover img').first().attr('src')
+            || $('.media .wrap_img img').first().attr('data-src')
+            || $('.media .wrap_img img').first().attr('src')
+            || ''
+        );
 
         return {
             id: normalizedId,

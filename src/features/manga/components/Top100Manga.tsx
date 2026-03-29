@@ -5,14 +5,15 @@ import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface Top100MangaProps {
-    onMangaClick: (mangaId: string) => void;
+    onMangaClick: (mangaId: string, autoRead?: boolean, manga?: Manga) => void;
     onViewAll?: () => void;
 }
 
 const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick, onViewAll }) => {
     const { language } = useTitleLanguage();
-    const [mangaList, setMangaList] = useState<Manga[]>([]);
-    const [loading, setLoading] = useState(true);
+    const cachedTop = mangaService.peekTopManga(1);
+    const [mangaList, setMangaList] = useState<Manga[]>(cachedTop?.data || []);
+    const [loading, setLoading] = useState(!(cachedTop?.data?.length));
 
     useEffect(() => {
         const fetchManga = async () => {
@@ -77,7 +78,7 @@ const Top100Manga: React.FC<Top100MangaProps> = ({ onMangaClick, onViewAll }) =>
                     <div
                         key={manga.id || manga.mal_id}
                         className="select-none cursor-pointer group relative"
-                        onClick={() => onMangaClick((manga.id || manga.mal_id).toString())}
+                        onClick={() => onMangaClick((manga.id || manga.mal_id).toString(), false, manga)}
                     >
                         {/* Image Container */}
                         <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 shadow-lg ring-0 outline-none group-hover:shadow-purple-500/20 transition-all duration-300">

@@ -33,11 +33,18 @@ export default function SearchPage() {
 
     // Sync URL query with Hook
     useEffect(() => {
-        if (query !== searchQuery) {
-            setSearchQuery(query);
-            executeSearch(query, 1, false);
+        const normalizedQuery = query.trim();
+        if (!normalizedQuery) {
+            setSearchQuery('');
+            return;
         }
-    }, [query]);
+
+        if (normalizedQuery !== searchQuery) {
+            setSearchQuery(normalizedQuery);
+        }
+
+        executeSearch(normalizedQuery, 1, false);
+    }, [query, type, isAZListQuery, executeSearch]);
     const accentColor = type === 'manga' ? 'text-yorumi-manga' : 'text-yorumi-accent';
     const activeBg = type === 'manga' ? 'bg-yorumi-manga' : 'bg-yorumi-accent';
 

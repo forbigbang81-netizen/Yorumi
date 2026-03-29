@@ -6,13 +6,19 @@ import MangaCard from '../features/manga/components/MangaCard';
 import MangaCardSkeleton from '../features/manga/components/MangaCardSkeleton';
 import Pagination from '../components/ui/Pagination';
 
-const FORMAT_CONFIG: Record<string, { label: string; fetchMethod: (page: number) => Promise<{ data: Manga[]; pagination: { last_visible_page: number; current_page: number; has_next_page: boolean } }>; provider: 'anilist' | 'mangakatana' }> = {
-    popular:    { label: 'Most Popular',    fetchMethod: (p) => mangaService.getPopularManga(p), provider: 'anilist' },
-    latest:     { label: 'Latest Updates',  fetchMethod: (p) => mangaService.getLatestMangaScraper(p), provider: 'mangakatana' },
-    directory:  { label: 'Manga Directory', fetchMethod: (p) => mangaService.getMangaDirectory(p), provider: 'mangakatana' },
-    new:        { label: 'New Manga',       fetchMethod: (p) => mangaService.getNewMangaScraper(p), provider: 'mangakatana' },
-    manhwa:     { label: 'Popular Manhwa', fetchMethod: (p) => mangaService.getPopularManhwa(p), provider: 'anilist' },
-    'one-shot': { label: 'One Shots',       fetchMethod: (p) => mangaService.getOneShotManga(p), provider: 'anilist' },
+type FormatResult = { data: Manga[]; pagination: { last_visible_page: number; current_page: number; has_next_page: boolean } };
+
+const FORMAT_CONFIG: Record<string, {
+    label: string;
+    fetchMethod: (page: number) => Promise<FormatResult>;
+    peekMethod: (page: number) => FormatResult | null;
+}> = {
+    popular:    { label: 'Most Popular',    fetchMethod: (p) => mangaService.getPopularManga(p),       peekMethod: (p) => mangaService.peekPopularManga(p) },
+    latest:     { label: 'Latest Updates',  fetchMethod: (p) => mangaService.getLatestMangaScraper(p), peekMethod: (p) => mangaService.peekLatestMangaScraper(p) },
+    directory:  { label: 'Manga Directory', fetchMethod: (p) => mangaService.getMangaDirectory(p),     peekMethod: (p) => mangaService.peekMangaDirectory(p) },
+    new:        { label: 'New Manga',       fetchMethod: (p) => mangaService.getNewMangaScraper(p),    peekMethod: (p) => mangaService.peekNewMangaScraper(p) },
+    manhwa:     { label: 'Popular Manhwa',  fetchMethod: (p) => mangaService.getPopularManhwa(p),      peekMethod: (p) => mangaService.peekPopularManhwa(p) },
+    'one-shot': { label: 'One Shots',       fetchMethod: (p) => mangaService.getOneShotManga(p),       peekMethod: (p) => mangaService.peekOneShotManga(p) },
 };
 
 export default function MangaFormatPage() {
@@ -27,34 +33,57 @@ export default function MangaFormatPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [lastPage, setLastPage] = useState(1);
 
-    const fetchData = useCallback(async (page: number, isNewFormat = false) => {
+    const fetchData = useCallback(async (page: number) => {
         if (!config) return;
-        
-        // Only show full-grid skeletons if transition is a major context switch (new format or initial mount)
-        if (isNewFormat) {
+
+        const cached = config.peekMethod(page);
+        if (cached?.data?.length) {
+            setMangaList(cached.data);
+            setLastPage(cached.pagination?.last_visible_page ?? 1);
+            setIsLoading(false);
+        } else {
             setIsLoading(true);
-            setMangaList([]); // Clear list on format change to trigger skeletons
         }
 
         try {
             const result = await config.fetchMethod(page);
             setMangaList(result?.data ?? []);
             setLastPage(result?.pagination?.last_visible_page ?? 1);
+
+            const nextPage = page + 1;
+            if ((result?.pagination?.last_visible_page ?? 1) >= nextPage) {
+                config.fetchMethod(nextPage).catch(() => undefined);
+            }
         } catch (e) {
             console.error('MangaFormatPage fetch error:', e);
         } finally {
             setIsLoading(false);
         }
-    }, [format]); // Depend on format instead of config object
+    }, [config]);
 
     useEffect(() => {
         setCurrentPage(1);
-        fetchData(1, true);
+        fetchData(1);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [format, fetchData]);
 
+    useEffect(() => {
+        if (!config) return;
+
+        const nextPage = currentPage + 1;
+        if (nextPage <= lastPage) {
+            config.fetchMethod(nextPage).catch(() => undefined);
+        }
+    }, [config, currentPage, lastPage]);
+
     const handlePageChange = (page: number) => {
+        if (page === currentPage) return;
+
+        const cached = config.peekMethod(page);
         setCurrentPage(page);
+        if (!cached?.data?.length) {
+            setIsLoading(true);
+        }
         fetchData(page);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };

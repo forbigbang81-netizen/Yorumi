@@ -747,8 +747,8 @@ const MangaReadListCarousel = () => {
                             <div key={item.id} className="flex-[0_0_165px] min-w-0">
                                 <MangaCard
                                     manga={mangaData}
-                                    onClick={() => navigate(`/manga/details/${item.id}`)}
-                                    onReadClick={() => navigate(`/manga/details/${item.id}`)}
+                                    onClick={() => navigate(`/manga/details/${item.id}`, { state: { manga: mangaData } })}
+                                    onReadClick={() => navigate(`/manga/details/${item.id}`, { state: { manga: mangaData } })}
                                     inList={true}
                                     onToggleList={() => removeFromReadList(item.id)}
                                     disableTilt

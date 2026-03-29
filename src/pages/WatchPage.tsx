@@ -31,6 +31,19 @@ export default function WatchPage() {
         };
     }, []);
 
+    const getBackdropImage = (value: unknown): string => {
+        const record = (value && typeof value === 'object') ? value as Record<string, any> : null;
+        return (
+            record?.anilist_banner_image ||
+            record?.bannerImage ||
+            record?.main_picture?.large ||
+            record?.main_picture?.medium ||
+            record?.images?.jpg?.large_image_url ||
+            record?.images?.jpg?.image_url ||
+            ''
+        );
+    };
+
     const {
         anime,
         episodes,
@@ -127,9 +140,19 @@ export default function WatchPage() {
     // Use any cast to avoid type errors with mismatched interface if needed
     const animeData: any = anime;
     const displayTitle = getDisplayTitle(animeData as Record<string, unknown>, language);
+    const backdropImage = getBackdropImage(animeData);
 
     return (
-        <div className="flex flex-col h-screen w-full bg-[#0a0a0a] text-white overflow-hidden pt-[60px]">
+        <div className="relative flex flex-col h-screen w-full bg-[#0a0a0a] text-white overflow-hidden pt-[60px]">
+            {backdropImage && (
+                <>
+                    <div
+                        className="absolute inset-0 z-0 scale-110 bg-cover bg-center opacity-30 blur-3xl watch-page-backdrop"
+                        style={{ backgroundImage: `url(${backdropImage})` }}
+                    />
+                    <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_35%),linear-gradient(180deg,rgba(3,3,5,0.4)_0%,rgba(3,3,5,0.82)_32%,rgba(3,3,5,0.96)_100%)]" />
+                </>
+            )}
             {/* 1. Header Row (Fixed) */}
             <header className="h-14 shrink-0 flex items-center px-6 border-b border-white/10 bg-black/40 backdrop-blur-md z-40">
                 <button
@@ -145,7 +168,7 @@ export default function WatchPage() {
             </header>
 
             {/* 2. Main Layout (3 Columns) */}
-            <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-y-auto md:overflow-hidden">
+            <div className="flex-1 flex flex-col md:flex-row min-h-0 relative z-10 overflow-y-auto md:overflow-hidden">
 
                 {/* COLUMN 1: Episode List (Left Sidebar) */}
                 <EpisodeList

@@ -1,5 +1,6 @@
 import * as mangakatana from '../../scraper/mangakatana'; 
 import { anilistService } from '../anilist/anilist.service';
+import { mappingService } from '../mapping/mapping.service';
 import { cacheGet, cacheSet } from '../../utils/redis-cache';
 import { createHash } from 'crypto';
 
@@ -12,21 +13,122 @@ const searchCache = new Map<string, { data: any[], timestamp: number }>();
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const CHAPTER_LIST_CACHE_KEY_PREFIX = 'manga:chapters:';
 const CHAPTER_PAGES_CACHE_KEY_PREFIX = 'manga:pages:';
+const SEARCH_CACHE_KEY_PREFIX = 'manga:search:';
 
 const hashKey = (input: string) => createHash('sha1').update(input).digest('hex');
+const MANGA_RESOLVE_CACHE_PREFIX = 'manga:resolve:';
+
+const normalizeTitle = (value: string) =>
+    String(value || '')
+        .toLowerCase()
+        .replace(/['\u2019]s\b/g, '')
+        .replace(/\s*\(.*?\)\s*/g, ' ')
+        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const getTitleCandidates = (media: any): string[] => {
+    const synonyms = Array.isArray(media?.synonyms) ? media.synonyms : [];
+    const primary = [media?.title?.english, media?.title?.romaji]
+        .map((value: unknown) => String(value || '').trim())
+        .filter(Boolean);
+    const latinSynonyms = synonyms
+        .map((value: unknown) => String(value || '').trim())
+        .filter((value: string) => Boolean(value))
+        .filter((value: string) => /[A-Za-z]/.test(value));
+    const secondary = [media?.title?.native, ...synonyms]
+        .map((value: unknown) => String(value || '').trim())
+        .filter(Boolean);
+
+    return [...new Set([...primary, ...latinSynonyms, ...secondary])];
+};
+
+const scoreSearchResult = (candidate: any, titleCandidates: string[]) => {
+    const candidateTitle = normalizeTitle(String(candidate?.title || ''));
+    if (!candidateTitle) return 0;
+
+    let bestScore = 0;
+    for (const title of titleCandidates) {
+        const normalized = normalizeTitle(title);
+        if (!normalized) continue;
+        if (candidateTitle === normalized) return 100;
+        if (candidateTitle.includes(normalized) || normalized.includes(candidateTitle)) {
+            bestScore = Math.max(bestScore, 90);
+            continue;
+        }
+
+        const candidateWords = new Set(candidateTitle.split(' ').filter(Boolean));
+        const titleWords = normalized.split(' ').filter(Boolean);
+        const overlap = titleWords.filter((word) => candidateWords.has(word)).length;
+        if (overlap > 0) {
+            const ratio = overlap / Math.max(titleWords.length, candidateWords.size || 1);
+            bestScore = Math.max(bestScore, Math.round(ratio * 100));
+        }
+    }
+
+    return bestScore;
+};
+
+async function resolveScraperIdFromAniList(anilistId: string, media: any): Promise<string | null> {
+    const mapping = await mappingService.getMapping(anilistId).catch(() => null);
+    if (mapping?.id) {
+        return mapping.id;
+    }
+
+    const titleCandidates = getTitleCandidates(media);
+    if (titleCandidates.length === 0) {
+        return null;
+    }
+
+    for (const title of titleCandidates.slice(0, 6)) {
+        const resolveCacheKey = `${MANGA_RESOLVE_CACHE_PREFIX}${normalizeTitle(title)}`;
+        const cached = await cacheGet<string>(resolveCacheKey).catch(() => null);
+        if (cached) {
+            await mappingService.saveMapping(anilistId, cached, title).catch(() => undefined);
+            return cached;
+        }
+
+        const searchResults = await searchManga(title);
+        if (!Array.isArray(searchResults) || searchResults.length === 0) {
+            continue;
+        }
+
+        const ranked = [...searchResults]
+            .map((item) => ({ item, score: scoreSearchResult(item, titleCandidates) }))
+            .sort((a, b) => b.score - a.score);
+
+        const best = ranked[0];
+        if (best && best.score >= 60) {
+            await cacheSet(resolveCacheKey, best.item.id, 7 * 24 * 60 * 60).catch(() => undefined);
+            await mappingService.saveMapping(anilistId, best.item.id, best.item.title || title).catch(() => undefined);
+            return best.item.id;
+        }
+    }
+
+    return null;
+}
 
 /**
  * Search manga (MangaKatana only) with caching
  */
 export async function searchManga(query: string) {
-    const cacheKey = query.toLowerCase().trim();
+    const normalizedQuery = query.toLowerCase().trim();
+    const cacheKey = normalizedQuery;
     const now = Date.now();
+    const redisKey = `${SEARCH_CACHE_KEY_PREFIX}${hashKey(normalizedQuery)}`;
 
     // Check cache first
     const cached = searchCache.get(cacheKey);
     if (cached && (now - cached.timestamp) < SEARCH_CACHE_TTL) {
         console.log(`Search cache hit for: "${query}"`);
         return cached.data;
+    }
+
+    const redisCached = await cacheGet<any[]>(redisKey).catch(() => null);
+    if (redisCached && redisCached.length > 0) {
+        console.log(`Search cache hit (redis) for: "${query}"`);
+        searchCache.set(cacheKey, { data: redisCached, timestamp: now });
+        return redisCached;
     }
 
     console.log(`Searching MangaKatana for: "${query}"`);
@@ -42,8 +144,13 @@ export async function searchManga(query: string) {
         source: 'mangakatana' as const
     }));
 
-    // Cache the results
-    searchCache.set(cacheKey, { data: results, timestamp: now });
+    // Cache successful results only so improved resolvers can recover from previous misses.
+    if (results.length > 0) {
+        searchCache.set(cacheKey, { data: results, timestamp: now });
+        cacheSet(redisKey, results, Math.ceil(SEARCH_CACHE_TTL / 1000)).catch((error) => {
+            console.warn(`[Cache] Redis write failed for search "${query}"`, error);
+        });
+    }
     console.log(`Cached ${results.length} results for: "${query}"`);
 
     return results;
@@ -60,47 +167,22 @@ export async function getMangaDetails(id: string) {
 
     if (isAniListId) {
         console.log(`[getMangaDetails] Treating "${id}" as AniList ID`);
-        const anilistData = await anilistService.getMediaDetails(parseInt(id));
+        const anilistData = await anilistService.getMangaById(parseInt(id, 10));
         if (!anilistData) throw new Error('AniList media not found');
 
-        // Resolve chapters from MangaKatana by title
-        let chapters: any[] = [];
+        let scraperId: string | null = null;
         try {
-            const title = anilistData.title.english || anilistData.title.romaji;
-            console.log(`[getMangaDetails] Searching chapters for "${title}"...`);
-            const searchResults = await mangakatana.searchManga(title);
-
-            // Simple fuzzy match: Find first result where title includes keyword?
-            // Or just take first result?
-            // Let's refine: filtering.
-            const match = searchResults.find(r =>
-                r.title.toLowerCase().includes(title.toLowerCase()) ||
-                title.toLowerCase().includes(r.title.toLowerCase())
-            );
-
-            if (match) {
-                console.log(`[getMangaDetails] Found match: ${match.title} (${match.id})`);
-                chapters = await mangakatana.getChapterList(match.id);
-            } else {
-                console.warn(`[getMangaDetails] No chapter match found for ${title}`);
+            scraperId = await resolveScraperIdFromAniList(id, anilistData);
+            if (scraperId) {
+                console.log(`[getMangaDetails] Resolved scraperId ${scraperId} for AniList ${id}`);
             }
         } catch (e) {
-            console.error('[getMangaDetails] Chapter resolution failed:', e);
+            console.error('[getMangaDetails] Scraper resolution failed:', e);
         }
 
-        // Map AniList data to MangaDetails format
         return {
-            id: id, // Keep original ID
-            title: anilistData.title.romaji || anilistData.title.english,
-            altNames: anilistData.synonyms || [],
-            author: anilistData.staff?.edges?.find((e: any) => e.role === 'Story & Art')?.node?.name?.full || '',
-            status: anilistData.status,
-            genres: anilistData.genres || [],
-            synopsis: anilistData.description || '',
-            coverImage: anilistData.coverImage?.extraLarge || anilistData.coverImage?.large,
-            url: anilistData.siteUrl,
-            source: 'anilist',
-            chapters: chapters.map(c => ({ ...c, id: `mk:${c.id}` })) // Namespace chapter IDs if needed
+            ...anilistData,
+            scraperId,
         };
     }
 
@@ -115,6 +197,12 @@ export async function getMangaDetails(id: string) {
  */
 export async function getChapterList(id: string) {
     let realId = id.startsWith('mk:') ? id.replace('mk:', '') : id;
+    if (/^\d+$/.test(realId)) {
+        const mapping = await mappingService.getMapping(realId).catch(() => null);
+        if (mapping?.id) {
+            realId = mapping.id.startsWith('mk:') ? mapping.id.replace('mk:', '') : mapping.id;
+        }
+    }
     if (realId.startsWith('http://') || realId.startsWith('https://') || realId.includes('/manga/')) {
         try {
             const maybeUrl = realId.startsWith('http') ? new URL(realId) : null;

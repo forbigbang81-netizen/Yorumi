@@ -228,13 +228,15 @@ export function useEpisodeNotifications() {
         });
     }, [notifications, user?.uid]);
 
-    const unreadCount = useMemo(
-        () => notifications.reduce((count, notification) => count + (readState[notification.id] ? 0 : 1), 0),
+    const unreadNotifications = useMemo(
+        () => notifications.filter((notification) => !readState[notification.id]),
         [notifications, readState]
     );
 
+    const unreadCount = unreadNotifications.length;
+
     return {
-        notifications,
+        notifications: unreadNotifications,
         unreadCount,
         isRead: (id: string) => Boolean(readState[id]),
         markAsRead,

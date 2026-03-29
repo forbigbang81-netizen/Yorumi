@@ -7,14 +7,15 @@ import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface AllTimePopularMangaProps {
-    onMangaClick: (mangaId: string) => void;
+    onMangaClick: (mangaId: string, autoRead?: boolean, manga?: Manga) => void;
     onViewAll?: () => void;
 }
 
 const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick, onViewAll }) => {
     const { language } = useTitleLanguage();
-    const [mangaList, setMangaList] = useState<Manga[]>([]);
-    const [loading, setLoading] = useState(true);
+    const cachedPopular = mangaService.peekPopularManga(1);
+    const [mangaList, setMangaList] = useState<Manga[]>(cachedPopular?.data || []);
+    const [loading, setLoading] = useState(!(cachedPopular?.data?.length));
     const [emblaRef, emblaApi] = useEmblaCarousel({
         align: 'center',
         containScroll: 'trimSnaps',
@@ -106,7 +107,7 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick,
                                 <div
                                     key={manga.id || manga.mal_id}
                                     className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px] select-none cursor-pointer group relative"
-                                    onClick={() => onMangaClick((manga.id || manga.mal_id).toString())}
+                                    onClick={() => onMangaClick((manga.id || manga.mal_id).toString(), false, manga)}
                                 >
                                     {/* Image Container */}
                                     <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-3 shadow-none ring-0 outline-none">
@@ -198,14 +199,14 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick,
                                             {/* Buttons - Read first, Detail second */}
                                             <div className="flex gap-2">
                                                 <button
-                                                    onClick={(e) => { e.stopPropagation(); onMangaClick((manga.id || manga.mal_id).toString()); }}
+                                                    onClick={(e) => { e.stopPropagation(); onMangaClick((manga.id || manga.mal_id).toString(), false, manga); }}
                                                     className="flex-1 flex items-center justify-center gap-1 bg-[#d886ff] hover:bg-[#c06ae0] text-black py-1.5 rounded text-[10px] font-bold transition-colors"
                                                 >
                                                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                                                     READ
                                                 </button>
                                                 <button
-                                                    onClick={(e) => { e.stopPropagation(); onMangaClick((manga.id || manga.mal_id).toString()); }}
+                                                    onClick={(e) => { e.stopPropagation(); onMangaClick((manga.id || manga.mal_id).toString(), false, manga); }}
                                                     className="flex-1 flex items-center justify-center gap-1 bg-white/10 hover:bg-white/20 text-white py-1.5 rounded text-[10px] font-medium transition-colors"
                                                 >
                                                     <span className="w-2 h-2 bg-white rounded-full"></span>

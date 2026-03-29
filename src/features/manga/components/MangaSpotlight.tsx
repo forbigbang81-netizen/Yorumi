@@ -8,7 +8,7 @@ import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface MangaSpotlightProps {
-    onMangaClick: (mangaId: string, autoRead?: boolean) => void;
+    onMangaClick: (mangaId: string, autoRead?: boolean, manga?: Manga) => void;
 }
 
 // 3D Tilt Component for Spotlight Cover
@@ -84,8 +84,9 @@ const SpotlightCover: React.FC<{ thumbnail: string; title: string }> = ({ thumbn
 
 const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
     const { language } = useTitleLanguage();
-    const [mangas, setMangas] = useState<Manga[]>([]);
-    const [loading, setLoading] = useState(true);
+    const cachedSpotlight = mangaService.peekEnrichedSpotlight();
+    const [mangas, setMangas] = useState<Manga[]>(cachedSpotlight?.data || []);
+    const [loading, setLoading] = useState(!(cachedSpotlight?.data?.length));
 
     // Embla Carousel hook with Autoplay
     const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -286,7 +287,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
 
                                         <div className="flex gap-4">
                                             <button
-                                                onClick={() => onMangaClick((manga.id || manga.mal_id).toString(), true)}
+                                                onClick={() => onMangaClick((manga.id || manga.mal_id).toString(), true, manga)}
                                                 className="bg-yorumi-manga text-white px-6 md:px-8 py-3 md:py-3.5 rounded-full font-bold hover:bg-white hover:text-yorumi-bg transition-all duration-300 transform hover:scale-105 flex items-center gap-3 shadow-[0_0_20px_rgba(192,132,252,0.3)] hover:shadow-[0_0_30px_rgba(192,132,252,0.6)] text-sm md:text-base"
                                             >
                                                 <div className="bg-yorumi-bg text-white rounded-full p-1.5 -ml-2">
@@ -295,7 +296,7 @@ const MangaSpotlight: React.FC<MangaSpotlightProps> = ({ onMangaClick }) => {
                                                 Read Now
                                             </button>
                                             <button
-                                                onClick={() => onMangaClick((manga.id || manga.mal_id).toString())}
+                                                onClick={() => onMangaClick((manga.id || manga.mal_id).toString(), false, manga)}
                                                 className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-6 md:px-8 py-3 md:py-3.5 rounded-full font-bold hover:bg-white/20 transition-all duration-300 flex items-center gap-2 text-sm md:text-base"
                                             >
                                                 Detail <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>

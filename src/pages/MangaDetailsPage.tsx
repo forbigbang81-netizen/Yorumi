@@ -6,10 +6,15 @@ import { useReadList } from '../hooks/useReadList';
 import { useFavoriteManga } from '../hooks/useFavoriteManga';
 import { slugify } from '../utils/slugify';
 import MangaCard from '../features/manga/components/MangaCard';
-import type { MangaChapter } from '../types/manga';
+import type { Manga, MangaChapter } from '../types/manga';
 import DetailsCharacters from '../features/anime/components/details/DetailsCharacters';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
+
+const normalizeMangaRouteId = (value: unknown) =>
+    String(value || '')
+        .trim()
+        .replace(/^mk:/i, '');
 
 // Chapter Grid for Details Page
 const ChapterList = ({
@@ -82,13 +87,13 @@ export default function MangaDetailsPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const location = useLocation();
+    const routeManga = (location.state as { manga?: Manga } | null)?.manga ?? null;
 
     // Use the useManga hook logic locally for this page
     const {
         selectedManga,
         mangaChapters,
         mangaChaptersLoading,
-        mangaLoading, // This tracks the details fetching
         fetchMangaDetails,
         loadMangaChapter,
         readChapters
@@ -106,7 +111,7 @@ export default function MangaDetailsPage() {
     // Scroll to top on mount
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'instant' });
-    }, []);
+    }, [id]);
 
     // Auto-open reader if navigated from "Continue Reading"
     useEffect(() => {
@@ -135,9 +140,9 @@ export default function MangaDetailsPage() {
     useEffect(() => {
         if (id) {
             console.log(`[MangaDetailsPage] Fetching details for ID: ${id}`);
-            fetchMangaDetails(id);
+            fetchMangaDetails(id, routeManga);
         }
-    }, [id, fetchMangaDetails]);
+    }, [id, routeManga, fetchMangaDetails]);
 
     console.log('[MangaDetailsPage] Rendered with ID:', id);
 
@@ -149,73 +154,67 @@ export default function MangaDetailsPage() {
         }
     };
 
+    const currentRouteId = normalizeMangaRouteId(id);
+    const selectedMatchesCurrentRoute = Boolean(selectedManga) && [
+        selectedManga?.scraper_id,
+        selectedManga?.id,
+        selectedManga?.mal_id
+    ].some((candidate) => normalizeMangaRouteId(candidate) === currentRouteId);
+    const routeMatchesCurrentRoute = Boolean(routeManga) && [
+        routeManga?.scraper_id,
+        routeManga?.id,
+        routeManga?.mal_id
+    ].some((candidate) => normalizeMangaRouteId(candidate) === currentRouteId);
+
+    const displayManga = selectedMatchesCurrentRoute
+        ? selectedManga
+        : routeMatchesCurrentRoute
+            ? routeManga
+            : selectedManga || routeManga;
+
+    if (!displayManga) {
+        return (
+            <div className="min-h-screen bg-[#0a0a0a] pb-20 animate-pulse">
+                <div className="relative h-[40vh] md:h-[50vh] w-full overflow-hidden bg-white/10" />
+                <div className="container mx-auto px-4 md:px-6 -mt-24 md:-mt-32 relative z-10">
+                    <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+                        <div className="flex-shrink-0 mx-auto md:mx-0 w-48 sm:w-64 md:w-72">
+                            <div className="rounded-xl aspect-[2/3] bg-white/10" />
+                        </div>
+                        <div className="flex-1 pt-4 md:pt-8 space-y-4">
+                            <div className="h-10 w-3/4 rounded bg-white/10" />
+                            <div className="h-6 w-1/2 rounded bg-white/10" />
+                            <div className="h-12 w-56 rounded-full bg-white/10" />
+                            <div className="h-6 w-40 rounded bg-white/10 mt-8" />
+                            <div className="space-y-2">
+                                <div className="h-4 w-full rounded bg-white/10" />
+                                <div className="h-4 w-5/6 rounded bg-white/10" />
+                                <div className="h-4 w-4/6 rounded bg-white/10" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     // Navigate to reader page with path-based URL
     const handleChapterClick = (chapter: MangaChapter) => {
-        if (!selectedManga) return;
-        const title = slugify(selectedManga.title || 'manga');
+        const title = slugify(displayManga.title || 'manga');
         const chapterMatch = chapter.title.match(/Chapter\s+(\d+)/i);
         const chapterNum = chapterMatch ? chapterMatch[1] : '1';
         navigate(`/manga/read/${title}/${id}/c${chapterNum}`);
     };
 
-    if (mangaLoading) {
-        return (
-            <div className="min-h-screen bg-[#0a0a0a] pb-20 animate-pulse">
-                <div className="relative h-[40vh] md:h-[50vh] w-full overflow-hidden bg-white/10" />
-                <div className="container mx-auto px-4 md:px-6 -mt-24 md:-mt-32 relative z-10">
-                    <div className="flex flex-col md:flex-row gap-6 md:gap-8">
-                        <div className="flex-shrink-0 mx-auto md:mx-0 w-48 sm:w-64 md:w-72">
-                            <div className="rounded-xl aspect-[2/3] bg-white/10" />
-                        </div>
-                        <div className="flex-1 pt-4 md:pt-8 space-y-4">
-                            <div className="h-10 w-3/4 rounded bg-white/10" />
-                            <div className="h-6 w-1/2 rounded bg-white/10" />
-                            <div className="h-12 w-56 rounded-full bg-white/10" />
-                            <div className="h-6 w-40 rounded bg-white/10 mt-8" />
-                            <div className="space-y-2">
-                                <div className="h-4 w-full rounded bg-white/10" />
-                                <div className="h-4 w-5/6 rounded bg-white/10" />
-                                <div className="h-4 w-4/6 rounded bg-white/10" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    if (!selectedManga) {
-        return (
-            <div className="min-h-screen bg-[#0a0a0a] pb-20 animate-pulse">
-                <div className="relative h-[40vh] md:h-[50vh] w-full overflow-hidden bg-white/10" />
-                <div className="container mx-auto px-4 md:px-6 -mt-24 md:-mt-32 relative z-10">
-                    <div className="flex flex-col md:flex-row gap-6 md:gap-8">
-                        <div className="flex-shrink-0 mx-auto md:mx-0 w-48 sm:w-64 md:w-72">
-                            <div className="rounded-xl aspect-[2/3] bg-white/10" />
-                        </div>
-                        <div className="flex-1 pt-4 md:pt-8 space-y-4">
-                            <div className="h-10 w-3/4 rounded bg-white/10" />
-                            <div className="h-6 w-1/2 rounded bg-white/10" />
-                            <div className="h-12 w-56 rounded-full bg-white/10" />
-                            <div className="h-6 w-40 rounded bg-white/10 mt-8" />
-                            <div className="space-y-2">
-                                <div className="h-4 w-full rounded bg-white/10" />
-                                <div className="h-4 w-5/6 rounded bg-white/10" />
-                                <div className="h-4 w-4/6 rounded bg-white/10" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
     // Determine banner
     // If we have no banner, use the large cover logic or a blur
-    const bannerImage = selectedManga.images.jpg.large_image_url;
-    const displayTitle = getDisplayTitle(selectedManga as unknown as Record<string, unknown>, language);
+    const bannerImage = displayManga.images.jpg.large_image_url;
+    const displayTitle = getDisplayTitle(displayManga as unknown as Record<string, unknown>, language);
+    const hasReadableChapters = mangaChapters.length > 0;
+    const metadataChapterCount = Number(displayManga.chapters || 0);
+    const hasResolvedChapterSource = Boolean(String(displayManga.scraper_id || '').trim()) || hasReadableChapters;
 
-    const mangaId = selectedManga.mal_id.toString();
+    const mangaId = displayManga.mal_id.toString();
     const inFavorites = isFavorite(mangaId);
 
     return (
@@ -248,7 +247,7 @@ export default function MangaDetailsPage() {
                     <div className="flex-shrink-0 mx-auto md:mx-0 w-48 sm:w-64 md:w-72 group">
                         <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/50 aspect-[2/3]">
                             <img
-                                src={selectedManga.images.jpg.large_image_url}
+                                src={displayManga.images.jpg.large_image_url}
                                 alt={displayTitle}
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                             />
@@ -264,28 +263,30 @@ export default function MangaDetailsPage() {
                         <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-sm">
                             <span className="bg-[#facc15] text-black px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1">
                                 <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
-                                {selectedManga.score}
+                                {displayManga.score}
                             </span>
 
                             {/* Origin / Type Badge */}
-                            <span className={`px-2.5 py-1 rounded text-xs font-bold ${selectedManga.countryOfOrigin === 'KR' ? 'bg-blue-500 text-white' :
-                                selectedManga.countryOfOrigin === 'CN' ? 'bg-red-500 text-white' :
+                            <span className={`px-2.5 py-1 rounded text-xs font-bold ${displayManga.countryOfOrigin === 'KR' ? 'bg-blue-500 text-white' :
+                                displayManga.countryOfOrigin === 'CN' ? 'bg-red-500 text-white' :
                                     'bg-white/10 text-gray-300'
                                 }`}>
-                                {selectedManga.countryOfOrigin === 'KR' ? 'Manhwa' :
-                                    selectedManga.countryOfOrigin === 'CN' ? 'Manhua' :
+                                {displayManga.countryOfOrigin === 'KR' ? 'Manhwa' :
+                                    displayManga.countryOfOrigin === 'CN' ? 'Manhua' :
                                         'Manga'}
                             </span>
 
                             {/* Status */}
                             <span className="px-2.5 py-1 bg-white/10 rounded text-gray-300 text-xs">
-                                {selectedManga.status}
+                                {displayManga.status}
                             </span>
 
                             {/* Chapter Count */}
-                            {(selectedManga.chapters || mangaChapters.length > 0) && (
+                            {(hasReadableChapters || metadataChapterCount > 0) && (
                                 <span className="bg-[#22c55e] text-white px-2.5 py-1 rounded text-xs font-bold">
-                                    {mangaChapters.length > 0 ? mangaChapters.length : selectedManga.chapters} Chapters
+                                    {hasReadableChapters
+                                        ? `${mangaChapters.length} Chapters`
+                                        : `${metadataChapterCount} Total`}
                                 </span>
                             )}
                         </div>
@@ -307,20 +308,20 @@ export default function MangaDetailsPage() {
                             </button>
                             <button
                                 onClick={() => {
-                                    if (!selectedManga) return;
+                                    if (!displayManga) return;
                                     if (isInReadList(mangaId)) {
                                         removeFromReadList(mangaId);
                                     } else {
                                         addToReadList({
                                             id: mangaId,
-                                            title: selectedManga.title,
-                                            image: selectedManga.images.jpg.large_image_url,
-                                            score: selectedManga.score,
-                                            type: selectedManga.type,
-                                            totalCount: selectedManga.chapters || mangaChapters.length,
-                                            genres: selectedManga.genres?.map((g: any) => g.name),
-                                            mediaStatus: selectedManga.status,
-                                            synopsis: selectedManga.synopsis,
+                                            title: displayManga.title,
+                                            image: displayManga.images.jpg.large_image_url,
+                                            score: displayManga.score,
+                                            type: displayManga.type,
+                                            totalCount: displayManga.chapters || mangaChapters.length,
+                                            genres: displayManga.genres?.map((g: any) => g.name),
+                                            mediaStatus: displayManga.status,
+                                            synopsis: displayManga.synopsis,
                                             status: 'reading' // Default status
                                         });
                                     }
@@ -349,8 +350,8 @@ export default function MangaDetailsPage() {
                                     } else {
                                         addFavorite({
                                             id: mangaId,
-                                            title: selectedManga.title,
-                                            image: selectedManga.images.jpg.large_image_url
+                                            title: displayManga.title,
+                                            image: displayManga.images.jpg.large_image_url
                                         });
                                     }
                                 }}
@@ -385,14 +386,14 @@ export default function MangaDetailsPage() {
                         {activeTab === 'summary' && (
                             <>
                                 <p className="text-gray-300 text-base leading-relaxed max-w-3xl">
-                                    {selectedManga.synopsis || 'No synopsis available.'}
+                                    {displayManga.synopsis || 'No synopsis available.'}
                                 </p>
 
                                 {/* Synonyms Section - English only */}
                                 {(() => {
                                     // Only pure English: Latin chars without accents
                                     const isEnglishOnly = (s: string) => /^[a-zA-Z0-9\s\-':!?.,"()]+$/.test(s);
-                                    const englishSynonyms = (selectedManga.synonyms || []).filter(isEnglishOnly);
+                                    const englishSynonyms = (displayManga.synonyms || []).filter(isEnglishOnly);
                                     return englishSynonyms.length > 0 ? (
                                         <div className="py-4 mt-4">
                                             <h4 className="text-sm font-bold text-gray-400 mb-2">Also Known As</h4>
@@ -426,17 +427,26 @@ export default function MangaDetailsPage() {
                                             onChapterClick={handleChapterClick}
                                         />
                                     ) : (
-                                        <div className="text-gray-500 text-center py-4">
-                                            No chapters found on MangaKatana.
+                                        <div className="text-gray-500 text-center py-4 space-y-2">
+                                            <div>
+                                                {hasResolvedChapterSource
+                                                    ? 'No readable chapters were returned from MangaKatana.'
+                                                    : 'Chapter source for this title was not resolved yet.'}
+                                            </div>
+                                            {!hasResolvedChapterSource && metadataChapterCount > 0 && (
+                                                <div className="text-xs text-gray-600">
+                                                    AniList has metadata for {metadataChapterCount} total chapters, but the readable chapter source still needs a match.
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
 
                                 {/* Characters Section (if available) */}
                                 {/* Characters Section */}
-                                {selectedManga.characters && (
+                                {displayManga.characters && (
                                     <DetailsCharacters
-                                        characters={selectedManga.characters as any}
+                                        characters={displayManga.characters as any}
                                         title="Characters"
                                     />
                                 )}
@@ -446,7 +456,7 @@ export default function MangaDetailsPage() {
                         {activeTab === 'relations' && (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                                 {/* Use `relations` from enriched data */}
-                                {(selectedManga as any).relations?.edges?.map((edge: any) => (
+                                {(displayManga as any).relations?.edges?.map((edge: any) => (
                                     <MangaCard
                                         key={edge.node.id}
                                         manga={{
@@ -459,7 +469,18 @@ export default function MangaDetailsPage() {
                                             volumes: 0,
                                             score: 0
                                         }}
-                                        onClick={() => navigate(`/manga/details/${edge.node.id}`)}
+                                        onClick={() => navigate(`/manga/details/${edge.node.id}`, { state: { manga: {
+                                            mal_id: edge.node.id,
+                                            title: edge.node.title.romaji,
+                                            title_english: edge.node.title.english,
+                                            title_native: edge.node.title.native,
+                                            images: { jpg: { large_image_url: edge.node.coverImage.large, image_url: edge.node.coverImage.large } },
+                                            type: edge.node.format,
+                                            status: 'Unknown',
+                                            chapters: 0,
+                                            volumes: 0,
+                                            score: 0
+                                        } } })}
                                     />
                                 )) || <div className="text-gray-500">No relations found.</div>}
                             </div>

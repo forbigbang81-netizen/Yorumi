@@ -329,9 +329,9 @@ export default function Navbar({
         <div className={`fixed inset-0 z-[120] transition-all duration-300 ${showMobileMenu ? 'pointer-events-auto' : 'pointer-events-none'}`}>
             <div
                 onClick={() => setShowMobileMenu(false)}
-                className={`absolute inset-0 transition-opacity duration-300 ${showMobileMenu ? 'opacity-100 bg-black/55 backdrop-blur-sm' : 'opacity-0'}`}
+                className={`absolute inset-0 menu-backdrop-blur transition-opacity duration-300 ${showMobileMenu ? 'opacity-100 bg-black/55 backdrop-blur-sm' : 'opacity-0'}`}
             />
-            <aside className={`absolute top-0 left-0 h-full w-[82vw] max-w-[360px] md:w-[360px] bg-black/40 border-r border-white/5 backdrop-blur-2xl transition-transform duration-300 flex flex-col ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'}`}>
+            <aside className={`absolute top-0 left-0 h-full w-[82vw] max-w-[360px] md:w-[360px] menu-panel-blur bg-black/40 border-r border-white/5 backdrop-blur-2xl transition-transform duration-300 flex flex-col ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="h-[60px] shrink-0 border-b border-white/5 flex items-center px-3">
                     <button
                         onClick={() => setShowMobileMenu(false)}
