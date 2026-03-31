@@ -57,6 +57,7 @@ export interface ReadListItem {
 
 const STORAGE_KEYS = {
     CONTINUE_WATCHING: 'yorumi_continue_watching',
+    CONTINUE_READING: 'yorumi_continue_reading',
     WATCH_LIST: 'yorumi_watch_list',
     READ_LIST: 'yorumi_read_list',
     EPISODE_HISTORY: 'yorumi_episode_history',
@@ -98,6 +99,17 @@ export const clearLocalProgressStorage = () => {
     }
 };
 
+export const clearLegacyUnscopedProgressStorage = () => {
+    try {
+        Object.values(STORAGE_KEYS).forEach((key) => {
+            localStorage.removeItem(key);
+        });
+        emitStorageUpdated();
+    } catch (error) {
+        console.error('Failed to clear legacy progress storage:', error);
+    }
+};
+
 const emitStorageUpdated = () => {
     if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('yorumi-storage-updated'));
@@ -115,6 +127,7 @@ export const storage = {
             ].slice(0, 20); // Keep last 20
 
             setScopedItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(updated));
+            emitStorageUpdated();
         } catch (error) {
             console.error('Failed to save progress:', error);
         }
@@ -130,6 +143,54 @@ export const storage = {
         }
     },
 
+    removeFromContinueWatching: (animeId: string) => {
+        try {
+            const current = storage.getContinueWatching();
+            const updated = current.filter(item => item.animeId !== animeId);
+            setScopedItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(updated));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to remove from continue watching:', error);
+        }
+    },
+
+    // Continue Reading
+    saveReadingProgress: (progress: Omit<ReadProgress, 'lastRead'>) => {
+        try {
+            const current = storage.getContinueReading();
+            const updated = [
+                { ...progress, lastRead: Date.now() },
+                ...current.filter(item => item.mangaId !== progress.mangaId)
+            ].slice(0, 20); // Keep last 20
+
+            setScopedItem(STORAGE_KEYS.CONTINUE_READING, JSON.stringify(updated));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to save reading progress:', error);
+        }
+    },
+
+    getContinueReading: (): ReadProgress[] => {
+        try {
+            const data = getScopedItem(STORAGE_KEYS.CONTINUE_READING);
+            return data ? JSON.parse(data) : [];
+        } catch (error) {
+            console.error('Failed to get continue reading:', error);
+            return [];
+        }
+    },
+
+    removeFromContinueReading: (mangaId: string) => {
+        try {
+            const current = storage.getContinueReading();
+            const updated = current.filter(item => item.mangaId !== mangaId);
+            setScopedItem(STORAGE_KEYS.CONTINUE_READING, JSON.stringify(updated));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to remove from continue reading:', error);
+        }
+    },
+
     // Watch List
     addToWatchList: (item: Omit<WatchListItem, 'addedAt' | 'status'>, status: WatchListItem['status'] = 'watching') => {
         try {
@@ -142,6 +203,7 @@ export const storage = {
             ];
 
             setScopedItem(STORAGE_KEYS.WATCH_LIST, JSON.stringify(updated));
+            emitStorageUpdated();
         } catch (error) {
             console.error('Failed to add to watch list:', error);
         }
@@ -152,6 +214,7 @@ export const storage = {
             const current = storage.getWatchList();
             const updated = current.filter(item => item.id !== animeId);
             setScopedItem(STORAGE_KEYS.WATCH_LIST, JSON.stringify(updated));
+            emitStorageUpdated();
         } catch (error) {
             console.error('Failed to remove from watch list:', error);
         }
@@ -184,6 +247,7 @@ export const storage = {
             ];
 
             setScopedItem(STORAGE_KEYS.READ_LIST, JSON.stringify(updated));
+            emitStorageUpdated();
         } catch (error) {
             console.error('Failed to add to read list:', error);
         }
@@ -194,6 +258,7 @@ export const storage = {
             const current = storage.getReadList();
             const updated = current.filter(item => item.id !== mangaId);
             setScopedItem(STORAGE_KEYS.READ_LIST, JSON.stringify(updated));
+            emitStorageUpdated();
         } catch (error) {
             console.error('Failed to remove from read list:', error);
         }
@@ -398,6 +463,7 @@ export const syncStorage = {
         const watchList = storage.getWatchList();
         const readList = storage.getReadList();
         const continueWatching = storage.getContinueWatching();
+        const continueReading = storage.getContinueReading();
         const episodeHistory = storage.getEpisodeHistory();
         const chapterHistory = storage.getChapterHistory();
         const animeWatchTime = storage.getAnimeWatchTime();
@@ -409,6 +475,7 @@ export const syncStorage = {
                 watchList,
                 readList,
                 continueWatching,
+                continueReading,
                 episodeHistory,
                 chapterHistory,
                 animeWatchTime,
@@ -469,6 +536,15 @@ export const syncStorage = {
                         .filter((v, i, a) => a.findIndex(t => t.animeId === v.animeId) === i) // Unique by ID
                         .slice(0, 20);
                     setScopedItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(merged));
+                    didUpdateLocal = true;
+                }
+
+                if (data.continueReading) {
+                    const local = storage.getContinueReading();
+                    const merged = [...data.continueReading, ...local]
+                        .filter((v, i, a) => a.findIndex(t => t.mangaId === v.mangaId) === i)
+                        .slice(0, 20);
+                    setScopedItem(STORAGE_KEYS.CONTINUE_READING, JSON.stringify(merged));
                     didUpdateLocal = true;
                 }
 
@@ -587,6 +663,12 @@ storage.addToReadList = (item, status) => {
     if (auth.currentUser) syncStorage.pushToCloud();
 };
 
+const originalSaveReadingProgress = storage.saveReadingProgress;
+storage.saveReadingProgress = (progress) => {
+    originalSaveReadingProgress(progress);
+    if (auth.currentUser) syncStorage.pushToCloud();
+};
+
 const originalRemoveFromReadList = storage.removeFromReadList;
 storage.removeFromReadList = (id) => {
     originalRemoveFromReadList(id);
@@ -635,5 +717,17 @@ storage.setAnimeGenreCache = (cache) => {
 const originalSetMangaGenreCache = storage.setMangaGenreCache;
 storage.setMangaGenreCache = (cache) => {
     originalSetMangaGenreCache(cache);
+    if (auth.currentUser) syncStorage.pushToCloud();
+};
+
+const originalRemoveFromContinueWatching = storage.removeFromContinueWatching;
+storage.removeFromContinueWatching = (id) => {
+    originalRemoveFromContinueWatching(id);
+    if (auth.currentUser) syncStorage.pushToCloud();
+};
+
+const originalRemoveFromContinueReading = storage.removeFromContinueReading;
+storage.removeFromContinueReading = (id) => {
+    originalRemoveFromContinueReading(id);
     if (auth.currentUser) syncStorage.pushToCloud();
 };

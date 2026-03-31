@@ -3,7 +3,7 @@ import { type User, signInWithPopup, signOut, onAuthStateChanged, updateProfile 
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../services/firebase';
 import { getDeterministicAvatar } from '../utils/avatars';
-import { clearLocalProgressStorage, syncStorage } from '../utils/storage';
+import { clearLegacyUnscopedProgressStorage, syncStorage } from '../utils/storage';
 
 interface AuthContextType {
     user: User | null;
@@ -48,7 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { avatar: null, banner: null, profileCardBackground: null };
     };
 
-    const saveUserProfile = async (uid: string, values: { avatar?: string; banner?: string; profileCardBackground?: string }) => {
+    const saveUserProfile = async (uid: string, values: { avatar?: string; banner?: string; profileCardBackground?: string; displayName?: string; email?: string; searchName?: string; creationTime?: string }) => {
         try {
             const docRef = doc(db, 'users', uid);
             await setDoc(docRef, values, { merge: true });
@@ -62,14 +62,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(currentUser);
 
             if (currentUser) {
-                // Prevent cross-account carryover from local storage.
-                clearLocalProgressStorage();
+                // Only clear legacy unscoped keys. Scoped user data should survive refresh/sign-in.
+                clearLegacyUnscopedProgressStorage();
 
                 // Sync data from cloud
                 try {
                     await syncStorage.pullFromCloud();
                 } catch (e) {
                     console.error("Failed to sync on login", e);
+                }
+
+                // Persist searchable user info to Firestore for user search
+                try {
+                    await saveUserProfile(currentUser.uid, {
+                        displayName: currentUser.displayName || '',
+                        email: currentUser.email || '',
+                        searchName: (currentUser.displayName || '').toLowerCase(),
+                        creationTime: currentUser.metadata.creationTime || '',
+                    });
+                } catch (e) {
+                    console.error('Failed to persist user search info:', e);
                 }
 
                 // 1. Optimistically load from LocalStorage for instant UI (No "D" flash)
@@ -135,8 +147,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     setProfileCardBackground(null);
                 }
             } else {
-                // Keep local progress clean when signed out.
-                clearLocalProgressStorage();
+                // Remove only legacy unscoped keys on sign-out.
+                clearLegacyUnscopedProgressStorage();
                 setAvatar(null);
                 setBanner(null);
                 setProfileCardBackground(null);
@@ -170,6 +182,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
                 await updateProfile(auth.currentUser, { displayName: name });
                 setUser({ ...auth.currentUser, displayName: name });
+                // Keep Firestore searchable fields in sync
+                await saveUserProfile(auth.currentUser.uid, {
+                    displayName: name,
+                    searchName: name.toLowerCase(),
+                });
             } catch (error) {
                 console.error("Failed to update name", error);
                 throw error;
