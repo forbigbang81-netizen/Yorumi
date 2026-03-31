@@ -10,6 +10,8 @@ export interface WatchProgress {
     animeTitle: string;
     animeImage: string;
     animePoster?: string;
+    totalCount?: number;
+    mediaStatus?: string;
     positionSeconds?: number;
     durationSeconds?: number;
 }
@@ -23,6 +25,8 @@ export interface ReadProgress {
     mangaTitle: string;
     mangaImage: string;
     mangaPoster?: string;
+    totalCount?: number;
+    mediaStatus?: string;
 }
 
 export interface WatchListItem {

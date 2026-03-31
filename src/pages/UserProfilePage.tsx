@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { User, Cat, Book, ChevronLeft, Clock, BookOpen, History, ChevronRight } from 'lucide-react';
+import { User, Cat, Book, ChevronLeft, BookOpen, History, ChevronRight } from 'lucide-react';
 import { userSearchService, type PublicUserProfile } from '../services/userService';
 import { useAuth } from '../context/AuthContext';
 import useEmblaCarousel from 'embla-carousel-react';
@@ -388,10 +388,80 @@ const buildMangaGenreCounts = (profile: PublicUserProfile): Record<string, numbe
 
 /* ─── Profile Tab ─── */
 
+type CompletionMeta = {
+    totalCount: number;
+    isFinished: boolean;
+};
+
+const normalizeStatusKey = (value: unknown) =>
+    String(value ?? '')
+        .toLowerCase()
+        .replace(/[^a-z]/g, '');
+
+const isFinishedAnimeStatus = (value: unknown) =>
+    new Set(['finished', 'finishedairing', 'completed']).has(normalizeStatusKey(value));
+
+const isFinishedMangaStatus = (value: unknown) =>
+    new Set(['finished', 'finishedpublishing', 'completed']).has(normalizeStatusKey(value));
+
+const readPositiveCount = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+};
+
+const upsertCompletionMeta = (
+    metaMap: Map<string, CompletionMeta>,
+    key: string,
+    item: any,
+    isFinishedStatus: (value: unknown) => boolean
+) => {
+    const current = metaMap.get(key) || { totalCount: 0, isFinished: false };
+    metaMap.set(key, {
+        totalCount: Math.max(current.totalCount, readPositiveCount(item?.totalCount)),
+        isFinished: current.isFinished || isFinishedStatus(item?.mediaStatus || item?.status)
+    });
+};
+
+const countCompletedAnimeGroups = (
+    animeGroups: Map<string, Set<string>>,
+    animeGroupProgress: Map<string, Set<number>>,
+    episodeHistory: Record<string, number[]>,
+    completionMeta: Map<string, CompletionMeta>
+) => Array.from(animeGroups.entries()).reduce((sum, [key, ids]) => {
+    const meta = completionMeta.get(key);
+    if (!meta || !meta.isFinished || meta.totalCount <= 0) return sum;
+
+    const uniqueEpisodes = new Set<number>();
+    ids.forEach((id) => (episodeHistory[id] || []).forEach((ep) => {
+        const n = parseEpisodeNumber(ep);
+        if (n > 0) uniqueEpisodes.add(n);
+    }));
+    (animeGroupProgress.get(key) || []).forEach((ep) => uniqueEpisodes.add(ep));
+
+    return sum + (uniqueEpisodes.size >= meta.totalCount ? 1 : 0);
+}, 0);
+
+const countCompletedMangaGroups = (
+    mangaGroups: Map<string, Set<string>>,
+    mangaGroupProgress: Map<string, Set<string>>,
+    chapterHistory: Record<string, string[]>,
+    completionMeta: Map<string, CompletionMeta>
+) => Array.from(mangaGroups.entries()).reduce((sum, [key, ids]) => {
+    const meta = completionMeta.get(key);
+    if (!meta || !meta.isFinished || meta.totalCount <= 0) return sum;
+
+    const uniqueChapters = new Set<string>();
+    ids.forEach((id) => (chapterHistory[id] || []).forEach((ch) => uniqueChapters.add(String(ch))));
+    (mangaGroupProgress.get(key) || []).forEach((ch) => uniqueChapters.add(ch));
+
+    return sum + (uniqueChapters.size >= meta.totalCount ? 1 : 0);
+}, 0);
+
 const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
     // Porting the exact Map-based logic from ProfilePage.tsx for mathematical parity.
     const animeGroups = new Map<string, Set<string>>();
     const animeGroupProgress = new Map<string, Set<number>>();
+    const animeCompletionMeta = new Map<string, CompletionMeta>();
     const ensureAnimeGroup = (key: string) => {
         if (!animeGroups.has(key)) animeGroups.set(key, new Set<string>());
         return animeGroups.get(key)!;
@@ -401,14 +471,23 @@ const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
         return animeGroupProgress.get(key)!;
     };
 
-    (profile.watchList || []).forEach((i: any) => ensureAnimeGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    (profile.watchList || []).forEach((i: any) => {
+        const key = normalizeTitleKey(i.title) || `id:${i.id}`;
+        ensureAnimeGroup(key).add(String(i.id));
+        upsertCompletionMeta(animeCompletionMeta, key, i, isFinishedAnimeStatus);
+    });
     (profile.continueWatching || []).forEach((i: any) => {
         const key = normalizeTitleKey(i.animeTitle) || `id:${i.animeId}`;
         ensureAnimeGroup(key).add(String(i.animeId));
+        upsertCompletionMeta(animeCompletionMeta, key, i, isFinishedAnimeStatus);
         const ep = parseEpisodeNumber(i.episodeNumber);
         if (ep > 0) ensureAnimeProgress(key).add(ep);
     });
-    (profile.favoriteAnime || []).forEach((i: any) => ensureAnimeGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    (profile.favoriteAnime || []).forEach((i: any) => {
+        const key = normalizeTitleKey(i.title) || `id:${i.id}`;
+        ensureAnimeGroup(key).add(String(i.id));
+        upsertCompletionMeta(animeCompletionMeta, key, i, isFinishedAnimeStatus);
+    });
     Object.keys(profile.episodeHistory || {}).forEach(id => {
         if (!Array.from(animeGroups.values()).some(ids => ids.has(id))) ensureAnimeGroup(`id:${id}`).add(id);
     });
@@ -418,6 +497,7 @@ const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
 
     const mangaGroups = new Map<string, Set<string>>();
     const mangaGroupProgress = new Map<string, Set<string>>();
+    const mangaCompletionMeta = new Map<string, CompletionMeta>();
     const ensureMangaGroup = (key: string) => {
         if (!mangaGroups.has(key)) mangaGroups.set(key, new Set<string>());
         return mangaGroups.get(key)!;
@@ -427,11 +507,20 @@ const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
         return mangaGroupProgress.get(key)!;
     };
 
-    (profile.readList || []).forEach((i: any) => ensureMangaGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
-    (profile.favoriteManga || []).forEach((i: any) => ensureMangaGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    (profile.readList || []).forEach((i: any) => {
+        const key = normalizeTitleKey(i.title) || `id:${i.id}`;
+        ensureMangaGroup(key).add(String(i.id));
+        upsertCompletionMeta(mangaCompletionMeta, key, i, isFinishedMangaStatus);
+    });
+    (profile.favoriteManga || []).forEach((i: any) => {
+        const key = normalizeTitleKey(i.title) || `id:${i.id}`;
+        ensureMangaGroup(key).add(String(i.id));
+        upsertCompletionMeta(mangaCompletionMeta, key, i, isFinishedMangaStatus);
+    });
     (profile.continueReading || []).forEach((i: any) => {
         const key = normalizeTitleKey(i.mangaTitle) || `id:${i.mangaId}`;
         ensureMangaGroup(key).add(String(i.mangaId));
+        upsertCompletionMeta(mangaCompletionMeta, key, i, isFinishedMangaStatus);
         if (i.chapterNumber) ensureMangaProgress(key).add(String(i.chapterNumber));
     });
     Object.keys(profile.chapterHistory || {}).forEach(id => {
@@ -458,17 +547,8 @@ const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
         return sum + unique.size;
     }, 0);
 
-    let totalWatchSeconds = profile.animeWatchTimeTotalSeconds || 0;
-    if (totalWatchSeconds <= 0) {
-        totalWatchSeconds = Array.from(animeGroups.values()).reduce((sum, ids) => {
-            let groupSeconds = 0;
-            ids.forEach((id) => {
-                groupSeconds = Math.max(groupSeconds, profile.animeWatchTime?.[id] || 0);
-            });
-            return sum + groupSeconds;
-        }, 0);
-    }
-    const totalHours = Math.round((totalWatchSeconds / 3600) * 10) / 10;
+    const completedAnime = countCompletedAnimeGroups(animeGroups, animeGroupProgress, profile.episodeHistory || {}, animeCompletionMeta);
+    const completedManga = countCompletedMangaGroups(mangaGroups, mangaGroupProgress, profile.chapterHistory || {}, mangaCompletionMeta);
 
     // Combined genre analysis including continueWatching/Reading for accurate public breakdown.
     const genreCounts = {
@@ -549,12 +629,9 @@ const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
                                 <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Chapters</div>
                             </div>
                         </div>
-                        {totalHours > 0 && (
+                        {(completedAnime > 0 || completedManga > 0) && (
                             <div className="mt-5 pt-5 border-t border-white/10 text-center">
-                                <div className="flex items-center justify-center gap-2 text-gray-400 text-sm font-semibold">
-                                    <Clock className="w-4 h-4" />
-                                    <span>{totalHours} total hours watched</span>
-                                </div>
+                                <span className="text-gray-400 text-sm font-semibold">{completedAnime} completed anime • {completedManga} completed manga</span>
                             </div>
                         )}
                     </div>
@@ -734,7 +811,6 @@ const RecentActivityBoard = ({ items }: { items: any[] }) => {
 const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
     const navigate = useNavigate();
     const fmt = new Intl.NumberFormat('en-US');
-    const hoursFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 
     const watchList = profile.watchList || [];
     const continueWatching = profile.continueWatching || [];
@@ -743,6 +819,7 @@ const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
     // Exact Map-based grouping for Anime.
     const animeGroups = new Map<string, Set<string>>();
     const animeGroupProgress = new Map<string, Set<number>>();
+    const animeCompletionMeta = new Map<string, CompletionMeta>();
     const ensureGroup = (key: string) => {
         if (!animeGroups.has(key)) animeGroups.set(key, new Set<string>());
         return animeGroups.get(key)!;
@@ -752,14 +829,23 @@ const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
         return animeGroupProgress.get(key)!;
     };
 
-    watchList.forEach((i: any) => ensureGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    watchList.forEach((i: any) => {
+        const key = normalizeTitleKey(i.title) || `id:${i.id}`;
+        ensureGroup(key).add(String(i.id));
+        upsertCompletionMeta(animeCompletionMeta, key, i, isFinishedAnimeStatus);
+    });
     continueWatching.forEach((i: any) => {
         const key = normalizeTitleKey(i.animeTitle) || `id:${i.animeId}`;
         ensureGroup(key).add(String(i.animeId));
+        upsertCompletionMeta(animeCompletionMeta, key, i, isFinishedAnimeStatus);
         const ep = parseEpisodeNumber(i.episodeNumber);
         if (ep > 0) ensureProgress(key).add(ep);
     });
-    (profile.favoriteAnime || []).forEach((i: any) => ensureGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    (profile.favoriteAnime || []).forEach((i: any) => {
+        const key = normalizeTitleKey(i.title) || `id:${i.id}`;
+        ensureGroup(key).add(String(i.id));
+        upsertCompletionMeta(animeCompletionMeta, key, i, isFinishedAnimeStatus);
+    });
     Object.keys(episodeHistory).forEach(id => {
         if (!Array.from(animeGroups.values()).some(ids => ids.has(id))) ensureGroup(`id:${id}`).add(id);
     });
@@ -778,17 +864,7 @@ const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
         return sum + unique.size;
     }, 0);
 
-    let totalWatchSeconds = profile.animeWatchTimeTotalSeconds || 0;
-    if (totalWatchSeconds <= 0) {
-        totalWatchSeconds = Array.from(animeGroups.values()).reduce((sum, ids) => {
-            let groupSeconds = 0;
-            ids.forEach((id) => {
-                groupSeconds = Math.max(groupSeconds, profile.animeWatchTime?.[id] || 0);
-            });
-            return sum + groupSeconds;
-        }, 0);
-    }
-    const totalHours = Math.round((totalWatchSeconds / 3600) * 10) / 10;
+    const completedAnime = countCompletedAnimeGroups(animeGroups, animeGroupProgress, episodeHistory, animeCompletionMeta);
     const hasStats = totalAnime > 0;
     const valueClass = hasStats ? 'text-[#3cb6ff]' : 'text-gray-400';
 
@@ -805,7 +881,7 @@ const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
                             <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
                                 <StatItem value={fmt.format(totalAnime)} label="TOTAL ANIMES" valueClassName={valueClass} />
                                 <StatItem value={fmt.format(totalEpisodes)} label="EPISODES WATCHED" valueClassName={valueClass} />
-                                <StatItem value={hoursFmt.format(totalHours)} label="TOTAL HOURS" valueClassName={valueClass} />
+                                <StatItem value={fmt.format(completedAnime)} label="COMPLETED ANIME" valueClassName={valueClass} />
                             </div>
                         </div>
                     </div>
@@ -846,7 +922,6 @@ const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
 const UserMangaOverview = ({ profile }: { profile: PublicUserProfile }) => {
     const navigate = useNavigate();
     const fmt = new Intl.NumberFormat('en-US');
-    const hoursFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 
     const readList = profile.readList || [];
     const continueReading = profile.continueReading || [];
@@ -855,6 +930,7 @@ const UserMangaOverview = ({ profile }: { profile: PublicUserProfile }) => {
     // Exact Map-based grouping for Manga.
     const mangaGroups = new Map<string, Set<string>>();
     const mangaGroupProgress = new Map<string, Set<string>>();
+    const mangaCompletionMeta = new Map<string, CompletionMeta>();
     const ensureGroup = (key: string) => {
         if (!mangaGroups.has(key)) mangaGroups.set(key, new Set<string>());
         return mangaGroups.get(key)!;
@@ -864,11 +940,20 @@ const UserMangaOverview = ({ profile }: { profile: PublicUserProfile }) => {
         return mangaGroupProgress.get(key)!;
     };
 
-    readList.forEach((i: any) => ensureGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
-    (profile.favoriteManga || []).forEach((i: any) => ensureGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    readList.forEach((i: any) => {
+        const key = normalizeTitleKey(i.title) || `id:${i.id}`;
+        ensureGroup(key).add(String(i.id));
+        upsertCompletionMeta(mangaCompletionMeta, key, i, isFinishedMangaStatus);
+    });
+    (profile.favoriteManga || []).forEach((i: any) => {
+        const key = normalizeTitleKey(i.title) || `id:${i.id}`;
+        ensureGroup(key).add(String(i.id));
+        upsertCompletionMeta(mangaCompletionMeta, key, i, isFinishedMangaStatus);
+    });
     continueReading.forEach((i: any) => {
         const key = normalizeTitleKey(i.mangaTitle) || `id:${i.mangaId}`;
         ensureGroup(key).add(String(i.mangaId));
+        upsertCompletionMeta(mangaCompletionMeta, key, i, isFinishedMangaStatus);
         if (i.chapterNumber) ensureProgress(key).add(String(i.chapterNumber));
     });
     Object.keys(chapterHistory).forEach(id => {
@@ -883,7 +968,7 @@ const UserMangaOverview = ({ profile }: { profile: PublicUserProfile }) => {
         return sum + unique.size;
     }, 0);
 
-    const totalHours = Math.round(((totalChapters * 6) / 60) * 10) / 10;
+    const completedManga = countCompletedMangaGroups(mangaGroups, mangaGroupProgress, chapterHistory, mangaCompletionMeta);
     const hasStats = totalManga > 0;
     const valueClass = hasStats ? 'text-yorumi-manga' : 'text-gray-400';
 
@@ -900,7 +985,7 @@ const UserMangaOverview = ({ profile }: { profile: PublicUserProfile }) => {
                             <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
                                 <StatItem value={fmt.format(totalManga)} label="TOTAL MANGA" valueClassName={valueClass} />
                                 <StatItem value={fmt.format(totalChapters)} label="CHAPTERS READ" valueClassName={valueClass} />
-                                <StatItem value={hoursFmt.format(totalHours)} label="TOTAL HOURS" valueClassName={valueClass} />
+                                <StatItem value={fmt.format(completedManga)} label="COMPLETED MANGA" valueClassName={valueClass} />
                             </div>
                         </div>
                     </div>

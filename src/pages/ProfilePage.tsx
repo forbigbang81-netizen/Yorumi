@@ -556,6 +556,79 @@ const MangaOverviewTab = () => {
     );
 };
 
+type CompletionMeta = {
+    totalCount: number;
+    isFinished: boolean;
+};
+
+const normalizeCompletionStatusKey = (value: unknown) =>
+    String(value ?? '')
+        .toLowerCase()
+        .replace(/[^a-z]/g, '');
+
+const isFinishedAnimeStatus = (value: unknown) =>
+    new Set(['finished', 'finishedairing', 'completed']).has(normalizeCompletionStatusKey(value));
+
+const isFinishedMangaStatus = (value: unknown) =>
+    new Set(['finished', 'finishedpublishing', 'completed']).has(normalizeCompletionStatusKey(value));
+
+const readPositiveCount = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+};
+
+const upsertCompletionMeta = (
+    metaMap: Map<string, CompletionMeta>,
+    key: string,
+    item: any,
+    isFinishedStatus: (value: unknown) => boolean
+) => {
+    const current = metaMap.get(key) || { totalCount: 0, isFinished: false };
+    metaMap.set(key, {
+        totalCount: Math.max(current.totalCount, readPositiveCount(item?.totalCount)),
+        isFinished: current.isFinished || isFinishedStatus(item?.mediaStatus || item?.status)
+    });
+};
+
+const countCompletedAnimeGroups = (
+    animeGroups: Map<string, Set<string>>,
+    groupProgressEpisodes: Map<string, Set<number>>,
+    episodeHistory: Record<string, number[]>,
+    completionMeta: Map<string, CompletionMeta>
+) => Array.from(animeGroups.entries()).reduce((sum, [groupKey, ids]) => {
+    const meta = completionMeta.get(groupKey);
+    if (!meta || !meta.isFinished || meta.totalCount <= 0) return sum;
+
+    const uniqueEpisodes = new Set<number>();
+    ids.forEach((id) => {
+        (episodeHistory[id] || []).forEach((ep) => {
+            const n = typeof ep === 'number' ? ep : Number(ep);
+            if (Number.isFinite(n) && n > 0) uniqueEpisodes.add(n);
+        });
+    });
+    (groupProgressEpisodes.get(groupKey) || new Set<number>()).forEach((ep) => uniqueEpisodes.add(ep));
+
+    return sum + (uniqueEpisodes.size >= meta.totalCount ? 1 : 0);
+}, 0);
+
+const countCompletedMangaGroups = (
+    mangaGroups: Map<string, Set<string>>,
+    groupProgressChapters: Map<string, Set<string>>,
+    chapterHistory: Record<string, string[]>,
+    completionMeta: Map<string, CompletionMeta>
+) => Array.from(mangaGroups.entries()).reduce((sum, [groupKey, ids]) => {
+    const meta = completionMeta.get(groupKey);
+    if (!meta || !meta.isFinished || meta.totalCount <= 0) return sum;
+
+    const uniqueChapters = new Set<string>();
+    ids.forEach((id) => {
+        (chapterHistory[id] || []).forEach((chapter) => uniqueChapters.add(String(chapter)));
+    });
+    (groupProgressChapters.get(groupKey) || new Set<string>()).forEach((chapter) => uniqueChapters.add(chapter));
+
+    return sum + (uniqueChapters.size >= meta.totalCount ? 1 : 0);
+}, 0);
+
 const MangaStatsOverview = () => {
     const { readList } = useReadList();
     const { continueReadingList } = useContinueReading();
@@ -578,6 +651,7 @@ const MangaStatsOverview = () => {
 
     const mangaGroups = new Map<string, Set<string>>();
     const groupProgressChapters = new Map<string, Set<string>>();
+    const mangaCompletionMeta = new Map<string, CompletionMeta>();
     const ensureGroup = (groupKey: string) => {
         if (!mangaGroups.has(groupKey)) mangaGroups.set(groupKey, new Set<string>());
         return mangaGroups.get(groupKey)!;
@@ -590,11 +664,13 @@ const MangaStatsOverview = () => {
     readList.forEach((item) => {
         const key = normalizeTitleKey(item.title) || `id:${String(item.id)}`;
         ensureGroup(key).add(String(item.id));
+        upsertCompletionMeta(mangaCompletionMeta, key, item, isFinishedMangaStatus);
     });
 
     continueReadingList.forEach((item) => {
         const key = normalizeTitleKey(item.mangaTitle) || `id:${String(item.mangaId)}`;
         ensureGroup(key).add(String(item.mangaId));
+        upsertCompletionMeta(mangaCompletionMeta, key, item, isFinishedMangaStatus);
         const chapter = String(item.chapterNumber || '').trim();
         if (chapter) {
             ensureGroupProgress(key).add(chapter);
@@ -604,6 +680,7 @@ const MangaStatsOverview = () => {
     favorites.forEach((item) => {
         const key = normalizeTitleKey(item.title) || `id:${String(item.id)}`;
         ensureGroup(key).add(String(item.id));
+        upsertCompletionMeta(mangaCompletionMeta, key, item, isFinishedMangaStatus);
     });
 
     const totalManga = hasAccountMangaHistory ? mangaGroups.size : 0;
@@ -619,14 +696,10 @@ const MangaStatsOverview = () => {
         }, 0)
         : 0;
 
-    // Approximate reading time: 6 minutes per chapter.
-    const minutesPerChapter = 6;
-    const totalHours = Math.round(((totalChaptersRead * minutesPerChapter) / 60) * 10) / 10;
+    const completedManga = hasAccountMangaHistory
+        ? countCompletedMangaGroups(mangaGroups, groupProgressChapters, chapterHistory, mangaCompletionMeta)
+        : 0;
     const fmt = new Intl.NumberFormat('en-US');
-    const hoursFmt = new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 1
-    });
 
     return (
         <div>
@@ -635,7 +708,7 @@ const MangaStatsOverview = () => {
                 <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
                     <StatItem value={fmt.format(totalManga)} label="TOTAL MANGA" valueClassName={valueClassName} />
                     <StatItem value={fmt.format(totalChaptersRead)} label="CHAPTERS READ" valueClassName={valueClassName} />
-                    <StatItem value={hoursFmt.format(totalHours)} label="TOTAL HOURS" valueClassName={valueClassName} />
+                    <StatItem value={fmt.format(completedManga)} label="COMPLETED MANGA" valueClassName={valueClassName} />
                 </div>
             </div>
         </div>
@@ -1183,6 +1256,7 @@ const AnimeStatsOverview = () => {
 
     const animeGroups = new Map<string, Set<string>>();
     const groupProgressEpisodes = new Map<string, Set<number>>();
+    const animeCompletionMeta = new Map<string, CompletionMeta>();
     const ensureGroup = (groupKey: string) => {
         if (!animeGroups.has(groupKey)) animeGroups.set(groupKey, new Set<string>());
         return animeGroups.get(groupKey)!;
@@ -1195,11 +1269,13 @@ const AnimeStatsOverview = () => {
     watchList.forEach((item) => {
         const key = normalizeTitleKey(item.title) || `id:${String(item.id)}`;
         ensureGroup(key).add(String(item.id));
+        upsertCompletionMeta(animeCompletionMeta, key, item, isFinishedAnimeStatus);
     });
 
     continueWatchingList.forEach((item) => {
         const key = normalizeTitleKey(item.animeTitle) || `id:${String(item.animeId)}`;
         ensureGroup(key).add(String(item.animeId));
+        upsertCompletionMeta(animeCompletionMeta, key, item, isFinishedAnimeStatus);
         const epNum = parseEpisodeNumber(item.episodeNumber);
         if (Number.isFinite(epNum) && epNum > 0) {
             ensureGroupProgress(key).add(epNum);
@@ -1209,6 +1285,7 @@ const AnimeStatsOverview = () => {
     favorites.forEach((item) => {
         const key = normalizeTitleKey(item.title) || `id:${String(item.id)}`;
         ensureGroup(key).add(String(item.id));
+        upsertCompletionMeta(animeCompletionMeta, key, item, isFinishedAnimeStatus);
     });
 
     // Ensure watched-history IDs are represented even if the anime isn't in watchlist/favorites/continue list.
@@ -1247,49 +1324,8 @@ const AnimeStatsOverview = () => {
         Object.keys(animeWatchTime || {}).length > 0;
     const valueClassName = hasAccountAnimeHistory ? 'text-[#3cb6ff]' : 'text-gray-400';
 
-    const totalWatchSeconds = React.useMemo(() => {
-        const totals: number[] = [];
-
-        const pushParsedTotal = (value: unknown) => {
-            const parsed = Number(value);
-            if (Number.isFinite(parsed) && parsed >= 0) {
-                totals.push(Math.floor(parsed));
-            }
-        };
-
-        const pushTotalFromStorage = (raw: string | null) => {
-            if (!raw) return;
-            try {
-                pushParsedTotal(JSON.parse(raw));
-            } catch {
-                // Ignore malformed total-watch-time payloads.
-            }
-        };
-
-        pushParsedTotal(storage.getAnimeWatchTimeTotalSeconds());
-        if (user?.uid) pushTotalFromStorage(localStorage.getItem(`yorumi_anime_watch_time_total_${user.uid}`));
-        pushTotalFromStorage(localStorage.getItem('yorumi_anime_watch_time_total'));
-
-        const mergedDedicatedTotal = totals.length > 0 ? Math.max(...totals) : 0;
-        if (mergedDedicatedTotal > 0) {
-            return mergedDedicatedTotal;
-        }
-
-        return Array.from(animeGroups.values()).reduce((sum, ids) => {
-            // Legacy fallback: use max per deduped anime group to avoid double counting mirrored ID records.
-            let groupSeconds = 0;
-            ids.forEach((id) => {
-                groupSeconds = Math.max(groupSeconds, animeWatchTime[id] || 0);
-            });
-            return sum + groupSeconds;
-        }, 0);
-    }, [user?.uid, statsTick, animeGroups, animeWatchTime]);
-    const totalHours = Math.round((totalWatchSeconds / 3600) * 10) / 10;
+    const completedAnime = countCompletedAnimeGroups(animeGroups, groupProgressEpisodes, episodeHistory as Record<string, number[]>, animeCompletionMeta);
     const fmt = new Intl.NumberFormat('en-US');
-    const hoursFmt = new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 1
-    });
 
     return (
         <div>
@@ -1298,7 +1334,7 @@ const AnimeStatsOverview = () => {
                 <div className="grid grid-cols-3 gap-4 divide-x divide-white/20">
                     <StatItem value={fmt.format(totalAnime)} label="TOTAL ANIMES" valueClassName={valueClassName} />
                     <StatItem value={fmt.format(totalEpisodesWatched)} label="EPISODES WATCHED" valueClassName={valueClassName} />
-                    <StatItem value={hoursFmt.format(totalHours)} label="TOTAL HOURS" valueClassName={valueClassName} />
+                    <StatItem value={fmt.format(completedAnime)} label="COMPLETED ANIME" valueClassName={valueClassName} />
                 </div>
             </div>
         </div>

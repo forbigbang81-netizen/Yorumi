@@ -66,6 +66,8 @@ export function useContinueWatching() {
             animeTitle: anime.title,
             animeImage: image,
             animePoster: poster,
+            totalCount: typeof anime.episodes === 'number' && anime.episodes > 0 ? anime.episodes : undefined,
+            mediaStatus: anime.status,
             positionSeconds: normalizedPosition,
             durationSeconds: normalizedDuration
         };

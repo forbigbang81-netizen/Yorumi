@@ -6,6 +6,8 @@ import { useActivityHistory } from './useActivityHistory';
 interface Manga {
     mal_id: number | string;
     title: string;
+    status?: string;
+    chapters?: number | null;
     images: {
         jpg: {
             image_url?: string;
@@ -55,7 +57,9 @@ export function useContinueReading() {
             lastRead: Date.now(),
             mangaTitle: manga.title,
             mangaImage: manga.images.jpg.large_image_url,
-            mangaPoster: manga.images.jpg.image_url || manga.images.jpg.large_image_url
+            mangaPoster: manga.images.jpg.image_url || manga.images.jpg.large_image_url,
+            totalCount: typeof manga.chapters === 'number' && manga.chapters > 0 ? manga.chapters : undefined,
+            mediaStatus: manga.status
         };
 
         storage.saveReadingProgress(progress);
