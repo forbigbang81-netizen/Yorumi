@@ -4,6 +4,37 @@ import AnimeCard from '../features/anime/components/AnimeCard';
 import { useWatchList } from '../hooks/useWatchList';
 import { slugify } from '../utils/slugify';
 
+const isAnimeSessionId = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+const getStoredAnimeRouteId = (item: any) => {
+    const scraperId = String(item.scraperId || '').trim();
+    if (isAnimeSessionId(scraperId)) return `s:${scraperId}`;
+
+    const anilistId = String(item.anilistId || item.id || '').trim();
+    return anilistId;
+};
+
+const buildStoredAnimeState = (item: any) => {
+    const rawId = String(item.anilistId || item.id || '').trim();
+    const parsedId = Number.parseInt(rawId, 10);
+    const hasNumericId = Number.isFinite(parsedId) && /^\d+$/.test(rawId);
+
+    return {
+        id: hasNumericId ? parsedId : 0,
+        mal_id: Number.parseInt(String(item.malId || '0'), 10) || 0,
+        scraperId: String(item.scraperId || '').trim() || (!hasNumericId && isAnimeSessionId(rawId) ? rawId : undefined),
+        title: item.title,
+        images: { jpg: { large_image_url: item.image, image_url: item.image } },
+        score: item.score || 0,
+        type: item.type || 'TV',
+        status: item.mediaStatus || 'UNKNOWN',
+        episodes: item.totalCount || null,
+        genres: item.genres?.map((g: string) => ({ name: g })) || [],
+        synopsis: item.synopsis || ''
+    };
+};
+
 export default function WatchListPage() {
     const navigate = useNavigate();
     const { watchList, removeFromWatchList, loading } = useWatchList();
@@ -31,34 +62,25 @@ export default function WatchListPage() {
                 ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
                         {watchList.map((item) => {
-                            const animeData: any = {
-                                mal_id: parseInt(item.id),
-                                title: item.title,
-                                images: { jpg: { large_image_url: item.image, image_url: item.image } },
-                                score: item.score || 0,
-                                type: item.type || 'TV',
-                                status: item.mediaStatus || 'UNKNOWN',
-                                episodes: item.totalCount,
-                                genres: item.genres?.map((g: string) => ({ name: g })) || [],
-                                synopsis: item.synopsis || ''
-                            };
+                            const animeData: any = buildStoredAnimeState(item);
+                            const routeId = getStoredAnimeRouteId(item);
 
                             return (
                                 <AnimeCard
                                     key={item.id}
                                     anime={animeData}
-                                    onClick={() => navigate(`/anime/details/${item.id}`)}
-                                onWatchClick={() => {
-                                    const title = slugify(item.title || 'anime');
-                                    navigate(`/anime/watch/${title}/${item.id}`);
-                                }}
-                                inList={true}
-                                onToggleList={() => removeFromWatchList(item.id)}
-                                disableTilt
-                            />
-                        );
-                    })}
-                </div>
+                                    onClick={() => navigate(`/anime/details/${routeId}`, { state: { anime: animeData } })}
+                                    onWatchClick={() => {
+                                        const title = slugify(item.title || 'anime');
+                                        navigate(`/anime/watch/${title}/${routeId}`, { state: { anime: animeData } });
+                                    }}
+                                    inList={true}
+                                    onToggleList={() => removeFromWatchList(item.id)}
+                                    disableTilt
+                                />
+                            );
+                        })}
+                    </div>
                 )}
             </div>
         </div>

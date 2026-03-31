@@ -7,6 +7,36 @@ import useEmblaCarousel from 'embla-carousel-react';
 
 type TabType = 'profile' | 'anime-overview' | 'manga-overview';
 
+const isAnimeSessionId = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+const getStoredAnimeRouteId = (item: any) => {
+    const scraperId = String(item.scraperId || '').trim();
+    if (isAnimeSessionId(scraperId)) return `s:${scraperId}`;
+
+    return String(item.anilistId || item.id || '').trim();
+};
+
+const buildStoredAnimeState = (item: any) => {
+    const rawId = String(item.anilistId || item.id || '').trim();
+    const parsedId = Number.parseInt(rawId, 10);
+    const hasNumericId = Number.isFinite(parsedId) && /^\d+$/.test(rawId);
+
+    return {
+        id: hasNumericId ? parsedId : 0,
+        mal_id: Number.parseInt(String(item.malId || '0'), 10) || 0,
+        scraperId: String(item.scraperId || '').trim() || (!hasNumericId && isAnimeSessionId(rawId) ? rawId : undefined),
+        title: item.title,
+        images: { jpg: { large_image_url: item.image, image_url: item.image } },
+        score: item.score || 0,
+        type: item.type || 'TV',
+        status: item.mediaStatus || 'UNKNOWN',
+        episodes: item.totalCount || null,
+        genres: item.genres?.map((g: string) => ({ name: g })) || [],
+        synopsis: item.synopsis || ''
+    };
+};
+
 export default function UserProfilePage() {
     const { uid } = useParams<{ uid: string }>();
     const navigate = useNavigate();
@@ -906,7 +936,7 @@ const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
                     <ListCarousel
                         items={watchList}
                         label="Watch List"
-                        onClickItem={(item) => navigate(`/anime/details/${item.id}`)}
+                        onClickItem={(item) => navigate(`/anime/details/${getStoredAnimeRouteId(item)}`, { state: { anime: buildStoredAnimeState(item) } })}
                         accentClass="hover:border-yorumi-accent/70"
                         emptyIcon={<History className="w-10 h-10 text-gray-700 mx-auto" />}
                         emptyText="No anime in their watch list yet."

@@ -31,6 +31,9 @@ export interface ReadProgress {
 
 export interface WatchListItem {
     id: string;
+    anilistId?: string;
+    malId?: string;
+    scraperId?: string;
     title: string;
     image: string;
     addedAt: number;
@@ -72,27 +75,56 @@ const STORAGE_KEYS = {
     MANGA_GENRE_CACHE: 'yorumi_manga_genre_cache'
 };
 
+const storageMemoryCache = new Map<string, string>();
+
 const getScopedStorageKey = (key: string) => {
     const uid = auth.currentUser?.uid;
     return uid ? `${key}_${uid}` : key;
 };
 
 const setScopedItem = (key: string, value: string) => {
-    localStorage.setItem(getScopedStorageKey(key), value);
+    const scopedKey = getScopedStorageKey(key);
+    storageMemoryCache.set(scopedKey, value);
+
+    if (auth.currentUser) {
+        return;
+    }
+
+    try {
+        localStorage.setItem(scopedKey, value);
+    } catch (error) {
+        console.warn(`Failed to persist ${scopedKey} to localStorage; keeping in memory only.`, error);
+    }
 };
 
 const getScopedItem = (key: string) => {
-    return localStorage.getItem(getScopedStorageKey(key));
+    const scopedKey = getScopedStorageKey(key);
+    if (storageMemoryCache.has(scopedKey)) {
+        return storageMemoryCache.get(scopedKey) || null;
+    }
+
+    try {
+        const stored = localStorage.getItem(scopedKey);
+        if (stored != null) {
+            storageMemoryCache.set(scopedKey, stored);
+        }
+        return stored;
+    } catch (error) {
+        console.warn(`Failed to read ${scopedKey} from localStorage.`, error);
+        return null;
+    }
 };
 
 export const clearLocalProgressStorage = () => {
     try {
         Object.values(STORAGE_KEYS).forEach((key) => {
+            storageMemoryCache.delete(key);
             localStorage.removeItem(key);
             const scopedPrefix = `${key}_`;
             for (let i = localStorage.length - 1; i >= 0; i -= 1) {
                 const k = localStorage.key(i);
                 if (k && k.startsWith(scopedPrefix)) {
+                    storageMemoryCache.delete(k);
                     localStorage.removeItem(k);
                 }
             }
@@ -106,6 +138,7 @@ export const clearLocalProgressStorage = () => {
 export const clearLegacyUnscopedProgressStorage = () => {
     try {
         Object.values(STORAGE_KEYS).forEach((key) => {
+            storageMemoryCache.delete(key);
             localStorage.removeItem(key);
         });
         emitStorageUpdated();

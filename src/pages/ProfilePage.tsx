@@ -17,6 +17,36 @@ import useEmblaCarousel from 'embla-carousel-react';
 
 type TabType = 'profile' | 'anime-overview' | 'manga-overview';
 
+const isAnimeSessionId = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+const getStoredAnimeRouteId = (item: any) => {
+    const scraperId = String(item.scraperId || '').trim();
+    if (isAnimeSessionId(scraperId)) return `s:${scraperId}`;
+
+    return String(item.anilistId || item.id || '').trim();
+};
+
+const buildStoredAnimeState = (item: any) => {
+    const rawId = String(item.anilistId || item.id || '').trim();
+    const parsedId = Number.parseInt(rawId, 10);
+    const hasNumericId = Number.isFinite(parsedId) && /^\d+$/.test(rawId);
+
+    return {
+        id: hasNumericId ? parsedId : 0,
+        mal_id: Number.parseInt(String(item.malId || '0'), 10) || 0,
+        scraperId: String(item.scraperId || '').trim() || (!hasNumericId && isAnimeSessionId(rawId) ? rawId : undefined),
+        title: item.title,
+        images: { jpg: { large_image_url: item.image, image_url: item.image } },
+        score: item.score || 0,
+        type: item.type || 'TV',
+        status: item.mediaStatus || 'UNKNOWN',
+        episodes: item.totalCount || null,
+        genres: item.genres?.map((g: string) => ({ name: g })) || [],
+        synopsis: item.synopsis || ''
+    };
+};
+
 export default function ProfilePage() {
     const { user, avatar, banner, updateBanner } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -1429,26 +1459,17 @@ const AnimeWatchListCarousel = () => {
             <div className="overflow-hidden" ref={emblaRef}>
                 <div className="flex gap-5">
                     {(loading ? [] : previewList).map((item) => {
-                        const animeData: any = {
-                            mal_id: parseInt(item.id),
-                            title: item.title,
-                            images: { jpg: { large_image_url: item.image, image_url: item.image } },
-                            score: item.score || 0,
-                            type: item.type || 'TV',
-                            status: item.mediaStatus || 'UNKNOWN',
-                            episodes: item.totalCount,
-                            genres: item.genres?.map((g: string) => ({ name: g })) || [],
-                            synopsis: item.synopsis || ''
-                        };
+                        const animeData: any = buildStoredAnimeState(item);
+                        const routeId = getStoredAnimeRouteId(item);
 
                         return (
                             <div key={item.id} className="flex-[0_0_165px] min-w-0">
                                 <AnimeCard
                                     anime={animeData}
-                                    onClick={() => navigate(`/anime/details/${item.id}`)}
+                                    onClick={() => navigate(`/anime/details/${routeId}`, { state: { anime: animeData } })}
                                     onWatchClick={() => {
                                         const title = slugify(item.title || 'anime');
-                                        navigate(`/anime/watch/${title}/${item.id}`);
+                                        navigate(`/anime/watch/${title}/${routeId}`, { state: { anime: animeData } });
                                     }}
                                     inList={true}
                                     onToggleList={() => removeFromWatchList(item.id)}

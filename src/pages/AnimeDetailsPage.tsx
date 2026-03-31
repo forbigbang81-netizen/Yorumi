@@ -158,6 +158,9 @@ export default function AnimeDetailsPage() {
         } else {
             addToWatchList({
                 id: animeId,
+                anilistId: selectedAnime.id ? String(selectedAnime.id) : undefined,
+                malId: selectedAnime.mal_id ? String(selectedAnime.mal_id) : undefined,
+                scraperId: isAnimePaheSession(selectedAnime.scraperId) ? selectedAnime.scraperId : undefined,
                 title: selectedAnime.title,
                 image: selectedAnime.images.jpg.large_image_url,
                 score: selectedAnime.score,
