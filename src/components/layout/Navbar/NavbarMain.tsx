@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Search, X, Menu, ChevronLeft, Plus } from 'lucide-react';
+import { Search, X, Menu, ChevronLeft, Plus, Users } from 'lucide-react';
 import { animeService } from '../../../services/animeService';
 import { mangaService } from '../../../services/mangaService';
 import { useAuth } from '../../../context/AuthContext';
@@ -183,6 +183,7 @@ export default function Navbar({
     };
 
     const isTransparentPage = !location.pathname.includes('/manga/read') && !location.pathname.includes('/anime/watch');
+    const communityHoverColor = activeTab === 'manga' ? 'group-hover:text-yorumi-manga' : 'group-hover:text-yorumi-accent';
 
     return (
         <>
@@ -246,6 +247,14 @@ export default function Navbar({
                             onClick={handleRandom}
                             theme={activeTab}
                         />
+                        <button
+                            onClick={() => navigate('/users')}
+                            className="group flex items-center justify-center p-2 text-gray-500 hover:text-white transition-colors"
+                            title="Community"
+                            aria-label="Community"
+                        >
+                            <Users className={`w-5 h-5 transition-all duration-300 ${communityHoverColor} group-hover:-translate-y-0.5 group-hover:scale-110`} />
+                        </button>
                     </div>
                 </div>
 
@@ -323,6 +332,13 @@ export default function Navbar({
                             variant="mobile"
                             theme={activeTab}
                         />
+                        <button
+                            onClick={() => handleMobileNavigate('/users')}
+                            className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-gray-400 hover:text-white bg-[#1c1c1c] rounded border border-transparent hover:border-white/10 transition-all"
+                        >
+                            <Users className="w-3.5 h-3.5" />
+                            Community
+                        </button>
                     </div>
                 </div>
             </div>

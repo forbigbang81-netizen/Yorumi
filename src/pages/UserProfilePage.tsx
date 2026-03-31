@@ -253,19 +253,30 @@ const ActivityHeatmap = ({ activityData }: { activityData: Record<string, number
 const GenreOverview = ({ genreCounts, label = 'Genre Overview' }: { genreCounts: Record<string, number>; label?: string }) => {
     const sorted = Object.entries(genreCounts).sort(([, a], [, b]) => b - a);
     const hasHistory = sorted.some(([, c]) => c > 0);
+    const accentPalette = ['bg-[#ff579c]', 'bg-[#518feb]', 'bg-[#61ffb8]', 'bg-[#ffd768]', 'bg-[#6d94b0]', 'bg-[#b06d6d]', 'bg-[#986db0]', 'bg-[#6db091]'];
     const top4 = (sorted.length > 0 ? sorted : [['Romance', 0], ['Action', 0], ['Fantasy', 0], ['Drama', 0]])
         .slice(0, 4)
         .map(([genre, count], i) => ({
             label: genre as string,
             count: count as number,
-            bg: hasHistory ? ['bg-[#ff579c]', 'bg-[#518feb]', 'bg-[#61ffb8]', 'bg-[#ffd768]'][i] : 'bg-gray-600',
-            text: hasHistory ? ['text-[#ff579c]', 'text-[#518feb]', 'text-[#61ffb8]', 'text-[#ffd768]'][i] : 'text-gray-400',
+            bg: hasHistory ? accentPalette[i] : 'bg-gray-600',
+            text: hasHistory ? accentPalette[i].replace('bg-', 'text-') : 'text-gray-400',
         }));
+    const totalEntries = sorted.reduce((sum, [, count]) => sum + count, 0);
+    const footerSegments = hasHistory
+        ? sorted.slice(0, 8).map(([genre, count], i) => ({
+            genre,
+            count,
+            width: totalEntries > 0 ? `${(count / totalEntries) * 100}%` : '0%',
+            bg: accentPalette[i % accentPalette.length],
+        }))
+        : [];
 
     return (
         <div>
             <h3 className="text-xs font-bold text-gray-500 mb-3 px-1">{label}</h3>
-            <div className="bg-[#1c1c1c] rounded-3xl p-5 md:p-6">
+            <div className="bg-[#1c1c1c] rounded-3xl overflow-hidden">
+                <div className="p-5 md:p-6">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     {top4.map(g => (
                         <div key={g.label} className="flex flex-col items-center">
@@ -279,6 +290,19 @@ const GenreOverview = ({ genreCounts, label = 'Genre Overview' }: { genreCounts:
                         </div>
                     ))}
                 </div>
+                </div>
+                {hasHistory && footerSegments.length > 0 && (
+                    <div className="h-4 flex w-full mt-1">
+                        {footerSegments.map((segment) => (
+                            <div
+                                key={segment.genre}
+                                className={segment.bg}
+                                style={{ width: segment.width }}
+                                title={`${segment.genre}: ${segment.count}`}
+                            />
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

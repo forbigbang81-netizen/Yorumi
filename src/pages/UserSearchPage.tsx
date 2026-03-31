@@ -261,11 +261,9 @@ export default function UserSearchPage() {
                                     <button
                                         key={user.uid}
                                         onClick={() => navigate(`/user/${user.uid}`)}
-                                        className="group flex flex-col items-center bg-[#1c1c1c] hover:bg-[#222222] border border-white/5 hover:border-yorumi-accent/30 rounded-2xl p-4 transition-all duration-300 relative overflow-hidden"
+                                        className="group flex flex-col items-center p-2 transition-all duration-300"
                                     >
-                                        <div className="absolute inset-0 bg-gradient-to-br from-yorumi-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                                        
-                                        <div className="w-full aspect-square rounded-xl overflow-hidden border-2 border-white/10 group-hover:border-yorumi-accent/50 transition-colors mb-3 bg-[#2a2a2a] relative z-10">
+                                        <div className="w-full aspect-square rounded-xl overflow-hidden border-2 border-white/10 group-hover:border-yorumi-accent/50 transition-colors mb-3 bg-[#2a2a2a]">
                                             {user.avatar ? (
                                                 <img src={user.avatar} alt={user.displayName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                                             ) : (
@@ -275,7 +273,7 @@ export default function UserSearchPage() {
                                             )}
                                         </div>
                                         
-                                        <div className="w-full text-center relative z-10">
+                                        <div className="w-full text-center">
                                             <div className="text-white font-bold text-sm md:text-base truncate px-1 group-hover:text-yorumi-accent transition-colors">
                                                 {user.displayName}
                                             </div>
