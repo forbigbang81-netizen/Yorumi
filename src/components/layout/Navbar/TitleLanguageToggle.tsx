@@ -22,7 +22,7 @@ export default function TitleLanguageToggle({ variant = 'desktop', onClose, them
             <div className="flex items-center rounded bg-[#1c1c1c] overflow-hidden border border-transparent">
                 <button
                     onClick={() => handleChange('eng')}
-                    className={`px-4 py-2 text-xs font-black uppercase tracking-wider transition-all ${language === 'eng'
+                    className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-all ${language === 'eng'
                         ? activeClass
                         : 'text-gray-500'
                         }`}
@@ -31,7 +31,7 @@ export default function TitleLanguageToggle({ variant = 'desktop', onClose, them
                 </button>
                 <button
                     onClick={() => handleChange('jpy')}
-                    className={`px-4 py-2 text-xs font-black uppercase tracking-wider transition-all ${language === 'jpy'
+                    className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-all ${language === 'jpy'
                         ? activeClass
                         : 'text-gray-500'
                         }`}
