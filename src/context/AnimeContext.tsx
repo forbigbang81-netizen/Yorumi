@@ -1035,22 +1035,54 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
 
     // --- Episode Tracking ---
+    const getCanonicalAnimeHistoryId = (anime: Anime | null) => {
+        if (!anime) return '';
+        const malId = String(anime.mal_id || '').trim();
+        const anilistId = String(anime.id || '').trim();
+        return malId || anilistId;
+    };
+
+    const normalizeEpisodeHistoryForAnime = (anime: Anime | null) => {
+        if (!anime) return;
+
+        const canonicalId = getCanonicalAnimeHistoryId(anime);
+        const malId = String(anime.mal_id || '').trim();
+        const anilistId = String(anime.id || '').trim();
+        const aliasIds = Array.from(new Set([malId, anilistId].filter(Boolean)));
+
+        if (!canonicalId || aliasIds.length <= 1) return;
+
+        const history = storage.getEpisodeHistory();
+        const mergedEpisodes = Array.from(new Set(
+            aliasIds.flatMap((id) => (history[id] || []).map((episode) => Number(episode)).filter((episode) => Number.isFinite(episode) && episode > 0))
+        )).sort((a, b) => a - b);
+
+        const hadAliasData = aliasIds.some((id) => id !== canonicalId && Array.isArray(history[id]) && history[id].length > 0);
+        if (!hadAliasData) return;
+
+        const nextHistory = { ...history, [canonicalId]: mergedEpisodes };
+        aliasIds.forEach((id) => {
+            if (id !== canonicalId) {
+                delete nextHistory[id];
+            }
+        });
+
+        storage.setEpisodeHistory(nextHistory);
+    };
+
     const refreshWatchedEpisodes = () => {
         if (!selectedAnime) {
             setWatchedEpisodes(new Set());
             return;
         }
 
-        const primaryId = String(selectedAnime.mal_id || '');
-        const secondaryId = String(selectedAnime.id || '');
-        const primaryHistory = primaryId ? storage.getWatchedEpisodes(primaryId) : [];
-        const secondaryHistory = secondaryId && secondaryId !== primaryId
-            ? storage.getWatchedEpisodes(secondaryId)
-            : [];
-        setWatchedEpisodes(new Set([...primaryHistory, ...secondaryHistory]));
+        const canonicalId = getCanonicalAnimeHistoryId(selectedAnime);
+        const history = canonicalId ? storage.getWatchedEpisodes(canonicalId) : [];
+        setWatchedEpisodes(new Set(history));
     };
 
     useEffect(() => {
+        normalizeEpisodeHistoryForAnime(selectedAnime);
         refreshWatchedEpisodes();
     }, [selectedAnime, user?.uid]);
 
@@ -1062,14 +1094,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
     const markEpisodeComplete = (episodeNumber: number) => {
         if (!selectedAnime) return;
-        const primaryId = String(selectedAnime.mal_id || '');
-        const secondaryId = String(selectedAnime.id || '');
-
-        if (primaryId) {
-            storage.markEpisodeAsWatched(primaryId, episodeNumber);
-        }
-        if (secondaryId && secondaryId !== primaryId) {
-            storage.markEpisodeAsWatched(secondaryId, episodeNumber);
+        const canonicalId = getCanonicalAnimeHistoryId(selectedAnime);
+        if (canonicalId) {
+            storage.markEpisodeAsWatched(canonicalId, episodeNumber);
         }
 
         setWatchedEpisodes(prev => new Set(prev).add(episodeNumber));

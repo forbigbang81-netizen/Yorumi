@@ -340,6 +340,15 @@ export const storage = {
         }
     },
 
+    setEpisodeHistory: (history: Record<string, number[]>) => {
+        try {
+            setScopedItem(STORAGE_KEYS.EPISODE_HISTORY, JSON.stringify(history || {}));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to set episode history:', error);
+        }
+    },
+
     getWatchedEpisodes: (animeId: string): number[] => {
         const history = storage.getEpisodeHistory();
         return history[animeId] || [];
@@ -715,6 +724,12 @@ storage.removeFromReadList = (id) => {
 const originalMarkEpisodeAsWatched = storage.markEpisodeAsWatched;
 storage.markEpisodeAsWatched = (animeId, episodeNumber) => {
     originalMarkEpisodeAsWatched(animeId, episodeNumber);
+    if (auth.currentUser) syncStorage.pushToCloud();
+};
+
+const originalSetEpisodeHistory = storage.setEpisodeHistory;
+storage.setEpisodeHistory = (history) => {
+    originalSetEpisodeHistory(history);
     if (auth.currentUser) syncStorage.pushToCloud();
 };
 
