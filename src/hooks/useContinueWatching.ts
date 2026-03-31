@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { doc, setDoc, deleteDoc, onSnapshot, collection, query, orderBy, limit } from 'firebase/firestore';
-import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
+import { storage, type WatchProgress } from '../utils/storage';
 import { useActivityHistory } from './useActivityHistory';
 import type { Anime, Episode } from '../types/anime';
-import { type WatchProgress } from '../utils/storage';
 
 interface PlaybackProgress {
     positionSeconds?: number;
@@ -16,31 +14,26 @@ export function useContinueWatching() {
     const { recordActivity } = useActivityHistory();
     const [continueWatchingList, setContinueWatchingList] = useState<WatchProgress[]>([]);
 
-    // Subscribe to Firestore updates
+    const reload = useCallback(() => {
+        setContinueWatchingList(storage.getContinueWatching());
+    }, []);
+
     useEffect(() => {
         if (!user) {
             setContinueWatchingList([]);
             return;
         }
 
-        const q = query(
-            collection(db, 'users', user.uid, 'continueWatching'),
-            orderBy('lastWatched', 'desc'),
-            limit(20)
-        );
+        // Initial load
+        reload();
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => doc.data() as WatchProgress);
-            setContinueWatchingList(data);
-        }, (error) => {
-            console.error("Failed to subscribe to continue watching:", error);
-        });
-
-        return () => unsubscribe();
-    }, [user]);
+        // Re-render whenever storage mutates
+        window.addEventListener('yorumi-storage-updated', reload);
+        return () => window.removeEventListener('yorumi-storage-updated', reload);
+    }, [user, reload]);
 
     const saveProgress = useCallback(async (anime: Anime, episode: Episode, playback?: PlaybackProgress) => {
-        if (!user) return; // Only save if logged in
+        if (!user) return;
 
         const image = anime.anilist_banner_image || anime.images.jpg.large_image_url;
         const poster = anime.images.jpg.image_url || anime.images.jpg.large_image_url;
@@ -56,12 +49,14 @@ export function useContinueWatching() {
 
         const validId = anime.mal_id || anime.id;
         if (!validId) return;
+
         const normalizedPosition = Number.isFinite(playback?.positionSeconds)
             ? Math.max(0, Math.floor(Number(playback?.positionSeconds)))
             : undefined;
         const normalizedDuration = Number.isFinite(playback?.durationSeconds)
             ? Math.max(0, Math.floor(Number(playback?.durationSeconds)))
             : undefined;
+
         const progress: WatchProgress = {
             animeId: validId.toString(),
             episodeId: episode.session || (episode as any).id || '',
@@ -75,22 +70,19 @@ export function useContinueWatching() {
             durationSeconds: normalizedDuration
         };
 
+        // storage.saveProgress syncs to the cloud document field automatically
+        storage.saveProgress(progress);
+
         try {
-            await setDoc(doc(db, 'users', user.uid, 'continueWatching', validId.toString()), progress);
             await recordActivity(`anime:${validId}:ep:${progress.episodeNumber}`);
         } catch (error) {
-            console.error("Failed to save progress to Firestore:", error);
+            console.error('Failed to record activity:', error);
         }
     }, [user, recordActivity]);
 
     const removeFromHistory = useCallback(async (malId: number | string) => {
         if (!user) return;
-
-        try {
-            await deleteDoc(doc(db, 'users', user.uid, 'continueWatching', malId.toString()));
-        } catch (error) {
-            console.error("Failed to remove from history:", error);
-        }
+        storage.removeFromContinueWatching(malId.toString());
     }, [user]);
 
     return {

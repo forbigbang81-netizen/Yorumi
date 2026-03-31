@@ -12,6 +12,8 @@ import MangaPage from './pages/MangaPage';
 import GenrePage from './pages/GenrePage';
 import MangaGenrePage from './pages/MangaGenrePage';
 import ProfilePage from './pages/ProfilePage';
+import UserSearchPage from './pages/UserSearchPage';
+import UserProfilePage from './pages/UserProfilePage';
 import ContinueWatchingPage from './pages/ContinueWatchingPage';
 import WatchListPage from './pages/WatchListPage';
 import FavoriteAnimePage from './pages/FavoriteAnimePage';
@@ -218,6 +220,8 @@ function App() {
         <Route path="/manga/manhwa" element={<MangaFormatPage />} />
         <Route path="/manga/one-shot" element={<MangaFormatPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/users" element={<UserSearchPage />} />
+        <Route path="/user/:uid" element={<UserProfilePage />} />
         <Route path="/anime/continue-watching" element={<ContinueWatchingPage />} />
         <Route path="/anime/watch-list" element={<WatchListPage />} />
         <Route path="/anime/favorites" element={<FavoriteAnimePage />} />

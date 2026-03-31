@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { doc, setDoc, deleteDoc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
-import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
-import type { WatchListItem } from '../utils/storage';
+import { storage, type WatchListItem } from '../utils/storage';
 
 export function useWatchList() {
     const { user } = useAuth();
     const [watchList, setWatchList] = useState<WatchListItem[]>([]);
     const [loading, setLoading] = useState(true);
+
+    const reload = useCallback(() => {
+        setWatchList(storage.getWatchList());
+        setLoading(false);
+    }, []);
 
     useEffect(() => {
         if (!user) {
@@ -16,46 +19,22 @@ export function useWatchList() {
             return;
         }
 
-        const q = query(
-            collection(db, 'users', user.uid, 'watchList'),
-            orderBy('addedAt', 'desc')
-        );
+        // Initial load
+        reload();
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => doc.data() as WatchListItem);
-            setWatchList(data);
-            setLoading(false);
-        }, (error) => {
-            console.error("Failed to subscribe to watch list:", error);
-            setLoading(false);
-        });
+        // Re-render whenever storage mutates
+        window.addEventListener('yorumi-storage-updated', reload);
+        return () => window.removeEventListener('yorumi-storage-updated', reload);
+    }, [user, reload]);
 
-        return () => unsubscribe();
+    const addToWatchList = useCallback((item: Omit<WatchListItem, 'addedAt'>) => {
+        if (!user) return;
+        storage.addToWatchList(item, item.status || 'watching');
     }, [user]);
 
-    const addToWatchList = useCallback(async (item: Omit<WatchListItem, 'addedAt'>) => {
+    const removeFromWatchList = useCallback((id: string) => {
         if (!user) return;
-
-        const newItem: WatchListItem = {
-            ...item,
-            addedAt: Date.now()
-        };
-
-        try {
-            await setDoc(doc(db, 'users', user.uid, 'watchList', item.id), newItem);
-        } catch (error) {
-            console.error("Failed to add to watch list:", error);
-        }
-    }, [user]);
-
-    const removeFromWatchList = useCallback(async (id: string) => {
-        if (!user) return;
-
-        try {
-            await deleteDoc(doc(db, 'users', user.uid, 'watchList', id));
-        } catch (error) {
-            console.error("Failed to remove from watch list:", error);
-        }
+        storage.removeFromWatchList(id);
     }, [user]);
 
     const isInWatchList = useCallback((id: string) => {

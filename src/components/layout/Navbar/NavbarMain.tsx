@@ -161,6 +161,7 @@ export default function Navbar({
             { label: 'New Manga', to: '/manga/new' },
             { label: 'Manhwa', to: '/manga/manhwa' },
             { label: 'One Shot', to: '/manga/one-shot' },
+            { label: 'Community', to: '/users' },
             { label: 'Profile', to: '/profile?tab=manga-overview' },
         ]
         : [
@@ -171,6 +172,7 @@ export default function Navbar({
             { label: 'OVAs', to: '/anime/ova' },
             { label: 'ONAs', to: '/anime/ona' },
             { label: 'Specials', to: '/anime/specials' },
+            { label: 'Community', to: '/users' },
             { label: 'Profile', to: '/profile?tab=anime-overview' },
         ];
 
