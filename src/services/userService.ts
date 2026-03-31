@@ -13,6 +13,7 @@ export interface PublicUserProfile {
     watchList: any[];
     readList: any[];
     continueWatching: any[];
+    continueReading: any[];
     episodeHistory: Record<string, number[]>;
     chapterHistory: Record<string, string[]>;
     animeWatchTime: Record<string, number>;
@@ -59,6 +60,7 @@ export const userSearchService = {
                     watchList: data.watchList || [],
                     readList: data.readList || [],
                     continueWatching: data.continueWatching || [],
+                    continueReading: data.continueReading || [],
                     episodeHistory: data.episodeHistory || {},
                     chapterHistory: data.chapterHistory || {},
                     animeWatchTime: data.animeWatchTime || {},
@@ -167,6 +169,7 @@ export const userSearchService = {
                 watchList: data.watchList || [],
                 readList: data.readList || [],
                 continueWatching: data.continueWatching || [],
+                continueReading: data.continueReading || [],
                 episodeHistory: data.episodeHistory || {},
                 chapterHistory: data.chapterHistory || {},
                 animeWatchTime: data.animeWatchTime || {},
