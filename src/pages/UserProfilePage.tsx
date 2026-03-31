@@ -312,17 +312,30 @@ const GenreOverview = ({ genreCounts, label = 'Genre Overview' }: { genreCounts:
 
 const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
     const animeCount = new Set([
-        ...(profile.watchList || []).map((i: any) => i.id),
-        ...(profile.continueWatching || []).map((i: any) => i.animeId),
+        ...(profile.watchList || []).map((i: any) => String(i.id)),
+        ...(profile.continueWatching || []).map((i: any) => String(i.animeId)),
+        ...Object.keys(profile.episodeHistory || {}),
+        ...(profile.favoriteAnime || []).map((i: any) => String(i.id)),
     ]).size;
-    const mangaCount = new Set((profile.readList || []).map((i: any) => i.id)).size;
+    const mangaCount = new Set([
+        ...(profile.readList || []).map((i: any) => String(i.id)),
+        ...Object.keys(profile.chapterHistory || {}),
+        ...(profile.favoriteManga || []).map((i: any) => String(i.id)),
+    ]).size;
     const totalEpisodes = Object.values(profile.episodeHistory || {}).reduce((s, eps) => s + (Array.isArray(eps) ? eps.length : 0), 0);
     const totalChapters = Object.values(profile.chapterHistory || {}).reduce((s, chs) => s + (Array.isArray(chs) ? chs.length : 0), 0);
     const totalHours = Math.round(((profile.animeWatchTimeTotalSeconds || 0) / 3600) * 10) / 10;
 
     // Combined genre analysis from both anime + manga
     const genreCounts: Record<string, number> = {};
-    [...(profile.watchList || []), ...(profile.readList || [])].forEach((item: any) => {
+    const uniqueItemsWithGenres = new Map();
+    [...(profile.watchList || []), ...(profile.favoriteAnime || []), ...(profile.readList || []), ...(profile.favoriteManga || [])].forEach((item: any) => {
+        if (!uniqueItemsWithGenres.has(item.id)) {
+            uniqueItemsWithGenres.set(item.id, item);
+        }
+    });
+
+    Array.from(uniqueItemsWithGenres.values()).forEach((item: any) => {
         (Array.isArray(item.genres) ? item.genres : []).forEach((g: any) => {
             const name = typeof g === 'string' ? g : g?.name;
             if (name) genreCounts[name] = (genreCounts[name] || 0) + 1;
@@ -593,6 +606,7 @@ const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
     const uniqueAnimeIds = new Set([
         ...watchList.map((i: any) => String(i.id)),
         ...Object.keys(episodeHistory),
+        ...(profile.favoriteAnime || []).map((i: any) => String(i.id)),
     ]);
     const totalAnime = uniqueAnimeIds.size;
     const totalEpisodes = Object.values(episodeHistory).reduce((s, eps) => s + (Array.isArray(eps) ? eps.length : 0), 0);
@@ -601,7 +615,13 @@ const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
     const valueClass = hasStats ? 'text-[#3cb6ff]' : 'text-gray-400';
 
     const genreCounts: Record<string, number> = {};
-    watchList.forEach((item: any) => {
+    const uniqueAnimeWithGenres = new Map();
+    [...(profile.watchList || []), ...(profile.favoriteAnime || [])].forEach((item: any) => {
+        if (!uniqueAnimeWithGenres.has(item.id)) {
+            uniqueAnimeWithGenres.set(item.id, item);
+        }
+    });
+    Array.from(uniqueAnimeWithGenres.values()).forEach((item: any) => {
         (Array.isArray(item.genres) ? item.genres : []).forEach((g: any) => {
             const name = typeof g === 'string' ? g : g?.name;
             if (name) genreCounts[name] = (genreCounts[name] || 0) + 1;
@@ -664,14 +684,25 @@ const UserMangaOverview = ({ profile }: { profile: PublicUserProfile }) => {
 
     const readList = profile.readList || [];
     const chapterHistory = profile.chapterHistory || {};
-    const totalManga = readList.length;
+    const uniqueMangaIds = new Set([
+        ...readList.map((i: any) => String(i.id)),
+        ...Object.keys(chapterHistory),
+        ...(profile.favoriteManga || []).map((i: any) => String(i.id)),
+    ]);
+    const totalManga = uniqueMangaIds.size;
     const totalChapters = Object.values(chapterHistory).reduce((s, chs) => s + (Array.isArray(chs) ? chs.length : 0), 0);
     const totalHours = Math.round(((totalChapters * 6) / 60) * 10) / 10;
     const hasStats = totalManga > 0;
     const valueClass = hasStats ? 'text-yorumi-manga' : 'text-gray-400';
 
     const genreCounts: Record<string, number> = {};
-    readList.forEach((item: any) => {
+    const uniqueMangaWithGenres = new Map();
+    [...(profile.readList || []), ...(profile.favoriteManga || [])].forEach((item: any) => {
+        if (!uniqueMangaWithGenres.has(item.id)) {
+            uniqueMangaWithGenres.set(item.id, item);
+        }
+    });
+    Array.from(uniqueMangaWithGenres.values()).forEach((item: any) => {
         (Array.isArray(item.genres) ? item.genres : []).forEach((g: any) => {
             const name = typeof g === 'string' ? g : g?.name;
             if (name) genreCounts[name] = (genreCounts[name] || 0) + 1;

@@ -204,7 +204,8 @@ export default function Navbar({
                     >
                         <Menu className="w-5 h-5" />
                     </button>
-                    {/* Logo */}
+                    <div className="flex items-center gap-2">
+                        {/* Logo */}
                     <div
                         onClick={onLogoClick || onClearSearch}
                         className="flex items-center cursor-pointer hover:opacity-90 transition-opacity select-none shrink-0"
@@ -213,6 +214,16 @@ export default function Navbar({
                     >
                         <span className="text-xl md:text-2xl font-black text-white tracking-tighter">YORU</span>
                         <span className={`text-xl md:text-2xl font-black ${activeTab === 'manga' ? 'text-yorumi-manga' : 'text-yorumi-accent'} tracking-tighter`}>MI</span>
+                    </div>
+
+                        <div className="md:hidden">
+                            <NavToggle
+                                activeTab={activeTab}
+                                onTabChange={onTabChange}
+                                onClearSearch={onClearSearch}
+                                variant="mobile"
+                            />
+                        </div>
                     </div>
 
                     {/* Desktop Search */}
@@ -313,13 +324,7 @@ export default function Navbar({
 
                     <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                            <NavToggle
-                                activeTab={activeTab}
-                                onTabChange={onTabChange}
-                                onClearSearch={onClearSearch}
-                                variant="mobile"
-                                onClose={() => setShowMobileSearch(false)}
-                            />
+                            
                             <TitleLanguageToggle
                                 variant="mobile"
                                 onClose={() => setShowMobileSearch(false)}

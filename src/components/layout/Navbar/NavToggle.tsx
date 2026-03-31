@@ -29,21 +29,21 @@ export default function NavToggle({
             <div className="flex items-center rounded bg-[#1c1c1c] overflow-hidden border border-transparent">
                 <button
                     onClick={handleAnimeClick}
-                    className={`px-4 py-2 text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'anime'
+                    className={`px-2 py-1 text-[10px] font-black uppercase tracking-wider transition-all ${activeTab === 'anime'
                         ? 'bg-yorumi-accent text-[#0a0a0a]'
                         : 'text-gray-500'
                         }`}
                 >
-                    Anime
+                    ANI
                 </button>
                 <button
                     onClick={handleMangaClick}
-                    className={`px-4 py-2 text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'manga'
+                    className={`px-2 py-1 text-[10px] font-black uppercase tracking-wider transition-all ${activeTab === 'manga'
                         ? 'bg-yorumi-manga text-white'
                         : 'text-gray-500'
                         }`}
                 >
-                    Manga
+                    MAN
                 </button>
             </div>
         );
