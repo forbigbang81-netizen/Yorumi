@@ -88,14 +88,6 @@ export default function UserProfilePage() {
                     <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a]/30 to-transparent" />
                 </div>
 
-                {/* Back Button */}
-                <button
-                    onClick={() => navigate('/users')}
-                    className="absolute top-4 left-4 z-20 flex items-center gap-2 text-white/70 hover:text-white transition-colors bg-black/30 backdrop-blur-sm rounded-full px-4 py-2 text-sm font-semibold"
-                >
-                    <ChevronLeft className="w-4 h-4" />
-                    Community
-                </button>
 
                 {/* Profile Greeting */}
                 <div className="relative z-10 flex flex-col items-center mt-4 md:mt-10 px-4 text-center">
@@ -325,67 +317,165 @@ const parseEpisodeNumber = (value: unknown): number => {
     return match ? Number(match[1]) : NaN;
 };
 
+const normalizeGenres = (genres: unknown): string[] => {
+    if (!Array.isArray(genres)) return [];
+    return genres
+        .map((genre) => (typeof genre === 'string' ? genre : (genre as { name?: string })?.name || genre))
+        .filter((genre): genre is string => typeof genre === 'string' && genre.trim().length > 0);
+};
+
+const buildAnimeGenreCounts = (profile: PublicUserProfile): Record<string, number> => {
+    const genreCounts: Record<string, number> = {};
+    const animeGenreMap = new Map<string, string[]>();
+
+    (profile.watchList || []).forEach((item: any) => {
+        animeGenreMap.set(String(item.id), normalizeGenres(item.genres));
+    });
+
+    (profile.continueWatching || []).forEach((item: any) => {
+        const animeId = String(item.animeId);
+        if (!animeGenreMap.has(animeId)) {
+            animeGenreMap.set(animeId, normalizeGenres(profile.animeGenreCache?.[animeId] || []));
+        }
+    });
+
+    (profile.favoriteAnime || []).forEach((item: any) => {
+        const animeId = String(item.id);
+        if (!animeGenreMap.has(animeId)) {
+            animeGenreMap.set(animeId, normalizeGenres(item.genres?.length ? item.genres : profile.animeGenreCache?.[animeId] || []));
+        }
+    });
+
+    animeGenreMap.forEach((genres) => {
+        genres.forEach((genreName) => {
+            genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
+        });
+    });
+
+    return genreCounts;
+};
+
+const buildMangaGenreCounts = (profile: PublicUserProfile): Record<string, number> => {
+    const genreCounts: Record<string, number> = {};
+    const mangaGenreMap = new Map<string, string[]>();
+
+    (profile.readList || []).forEach((item: any) => {
+        mangaGenreMap.set(String(item.id), normalizeGenres(item.genres));
+    });
+
+    (profile.continueReading || []).forEach((item: any) => {
+        const mangaId = String(item.mangaId);
+        if (!mangaGenreMap.has(mangaId)) {
+            mangaGenreMap.set(mangaId, normalizeGenres(profile.mangaGenreCache?.[mangaId] || []));
+        }
+    });
+
+    (profile.favoriteManga || []).forEach((item: any) => {
+        const mangaId = String(item.id);
+        if (!mangaGenreMap.has(mangaId)) {
+            mangaGenreMap.set(mangaId, normalizeGenres(item.genres?.length ? item.genres : profile.mangaGenreCache?.[mangaId] || []));
+        }
+    });
+
+    mangaGenreMap.forEach((genres) => {
+        genres.forEach((genreName) => {
+            genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
+        });
+    });
+
+    return genreCounts;
+};
+
 /* ─── Profile Tab ─── */
 
 const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
-    // Anime Count (Title grouped)
-    const animeGroups = new Set<string>();
-    (profile.watchList || []).forEach(i => animeGroups.add(normalizeTitleKey(i.title) || `id:${i.id}`));
-    (profile.continueWatching || []).forEach(i => animeGroups.add(normalizeTitleKey(i.animeTitle) || `id:${i.animeId}`));
-    (profile.favoriteAnime || []).forEach(i => animeGroups.add(normalizeTitleKey(i.title) || `id:${i.id}`));
-    Object.keys(profile.episodeHistory || {}).forEach(id => {
-        // If not already grouped by title from lists, we might not have the title here.
-        // But the counts should mostly come from lists + continue watching.
-        if (!Array.from(animeGroups).some(key => key.includes(id))) {
-            animeGroups.add(`id:${id}`);
-        }
-    });
-    const animeCount = animeGroups.size;
+    // Porting the exact Map-based logic from ProfilePage.tsx for mathematical parity.
+    const animeGroups = new Map<string, Set<string>>();
+    const animeGroupProgress = new Map<string, Set<number>>();
+    const ensureAnimeGroup = (key: string) => {
+        if (!animeGroups.has(key)) animeGroups.set(key, new Set<string>());
+        return animeGroups.get(key)!;
+    };
+    const ensureAnimeProgress = (key: string) => {
+        if (!animeGroupProgress.has(key)) animeGroupProgress.set(key, new Set<number>());
+        return animeGroupProgress.get(key)!;
+    };
 
-    // Manga Count (Title grouped)
-    const mangaGroups = new Set<string>();
-    (profile.readList || []).forEach(i => mangaGroups.add(normalizeTitleKey(i.title) || `id:${i.id}`));
-    (profile.favoriteManga || []).forEach(i => mangaGroups.add(normalizeTitleKey(i.title) || `id:${i.id}`));
-    Object.keys(profile.chapterHistory || {}).forEach(id => {
-        if (!Array.from(mangaGroups).some(key => key.includes(id))) {
-            mangaGroups.add(`id:${id}`);
-        }
+    (profile.watchList || []).forEach((i: any) => ensureAnimeGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    (profile.continueWatching || []).forEach((i: any) => {
+        const key = normalizeTitleKey(i.animeTitle) || `id:${i.animeId}`;
+        ensureAnimeGroup(key).add(String(i.animeId));
+        const ep = parseEpisodeNumber(i.episodeNumber);
+        if (ep > 0) ensureAnimeProgress(key).add(ep);
     });
+    (profile.favoriteAnime || []).forEach((i: any) => ensureAnimeGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    Object.keys(profile.episodeHistory || {}).forEach(id => {
+        if (!Array.from(animeGroups.values()).some(ids => ids.has(id))) ensureAnimeGroup(`id:${id}`).add(id);
+    });
+    Object.keys(profile.animeWatchTime || {}).forEach(id => {
+        if (!Array.from(animeGroups.values()).some(ids => ids.has(id))) ensureAnimeGroup(`id:${id}`).add(id);
+    });
+
+    const mangaGroups = new Map<string, Set<string>>();
+    const mangaGroupProgress = new Map<string, Set<string>>();
+    const ensureMangaGroup = (key: string) => {
+        if (!mangaGroups.has(key)) mangaGroups.set(key, new Set<string>());
+        return mangaGroups.get(key)!;
+    };
+    const ensureMangaProgress = (key: string) => {
+        if (!mangaGroupProgress.has(key)) mangaGroupProgress.set(key, new Set<string>());
+        return mangaGroupProgress.get(key)!;
+    };
+
+    (profile.readList || []).forEach((i: any) => ensureMangaGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    (profile.favoriteManga || []).forEach((i: any) => ensureMangaGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    (profile.continueReading || []).forEach((i: any) => {
+        const key = normalizeTitleKey(i.mangaTitle) || `id:${i.mangaId}`;
+        ensureMangaGroup(key).add(String(i.mangaId));
+        if (i.chapterNumber) ensureMangaProgress(key).add(String(i.chapterNumber));
+    });
+    Object.keys(profile.chapterHistory || {}).forEach(id => {
+        if (!Array.from(mangaGroups.values()).some(ids => ids.has(id))) ensureMangaGroup(`id:${id}`).add(id);
+    });
+
+    const animeCount = animeGroups.size;
     const mangaCount = mangaGroups.size;
 
-    const totalEpisodes = Object.values(profile.episodeHistory || {}).reduce((s, eps) => {
-        const uniqueEps = new Set<number>();
-        (Array.isArray(eps) ? eps : []).forEach(ep => {
+    const totalEpisodes = Array.from(animeGroups.entries()).reduce((sum, [key, ids]) => {
+        const unique = new Set<number>();
+        ids.forEach(id => (profile.episodeHistory?.[id] || []).forEach(ep => {
             const n = parseEpisodeNumber(ep);
-            if (!isNaN(n)) uniqueEps.add(n);
-        });
-        return s + uniqueEps.size;
+            if (n > 0) unique.add(n);
+        }));
+        (animeGroupProgress.get(key) || []).forEach(ep => unique.add(ep));
+        return sum + unique.size;
     }, 0);
 
-    const totalChapters = Object.values(profile.chapterHistory || {}).reduce((s, chs) => {
-        const uniqueChs = new Set<string>();
-        (Array.isArray(chs) ? chs : []).forEach(ch => uniqueChs.add(String(ch)));
-        return s + uniqueChs.size;
+    const totalChapters = Array.from(mangaGroups.entries()).reduce((sum, [key, ids]) => {
+        const unique = new Set<string>();
+        ids.forEach(id => (profile.chapterHistory?.[id] || []).forEach(ch => unique.add(String(ch))));
+        (mangaGroupProgress.get(key) || []).forEach(ch => unique.add(ch));
+        return sum + unique.size;
     }, 0);
 
-    const totalHours = Math.round(((profile.animeWatchTimeTotalSeconds || 0) / 3600) * 10) / 10;
+    let totalWatchSeconds = profile.animeWatchTimeTotalSeconds || 0;
+    if (totalWatchSeconds <= 0) {
+        totalWatchSeconds = Array.from(animeGroups.values()).reduce((sum, ids) => {
+            let groupSeconds = 0;
+            ids.forEach((id) => {
+                groupSeconds = Math.max(groupSeconds, profile.animeWatchTime?.[id] || 0);
+            });
+            return sum + groupSeconds;
+        }, 0);
+    }
+    const totalHours = Math.round((totalWatchSeconds / 3600) * 10) / 10;
 
-    // Combined genre analysis from both anime + manga (Title grouped entries)
-    const genreCounts: Record<string, number> = {};
-    const titleToGenres = new Map<string, string[]>();
-
-    [...(profile.watchList || []), ...(profile.favoriteAnime || []), ...(profile.readList || []), ...(profile.favoriteManga || [])].forEach((item: any) => {
-        const key = normalizeTitleKey(item.title) || `id:${item.id}`;
-        const genres = Array.isArray(item.genres) ? item.genres.map((g: any) => typeof g === 'string' ? g : g?.name).filter(Boolean) : [];
-        if (genres.length > 0 && !titleToGenres.has(key)) {
-            titleToGenres.set(key, genres);
-        }
-    });
-
-    Array.from(titleToGenres.values()).forEach(genres => {
-        genres.forEach(name => {
-            genreCounts[name] = (genreCounts[name] || 0) + 1;
-        });
+    // Combined genre analysis including continueWatching/Reading for accurate public breakdown.
+    const genreCounts = {
+        ...buildAnimeGenreCounts(profile)
+    };
+    Object.entries(buildMangaGenreCounts(profile)).forEach(([name, count]) => {
+        genreCounts[name] = (genreCounts[name] || 0) + count;
     });
 
     const memberSince = profile.creationTime
@@ -650,45 +740,59 @@ const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
     const continueWatching = profile.continueWatching || [];
     const episodeHistory = profile.episodeHistory || {};
 
-    // Group by title
-    const animeGroups = new Set<string>();
-    watchList.forEach(i => animeGroups.add(normalizeTitleKey(i.title) || `id:${i.id}`));
-    continueWatching.forEach(i => animeGroups.add(normalizeTitleKey(i.animeTitle) || `id:${i.animeId}`));
-    (profile.favoriteAnime || []).forEach(i => animeGroups.add(normalizeTitleKey(i.title) || `id:${i.id}`));
+    // Exact Map-based grouping for Anime.
+    const animeGroups = new Map<string, Set<string>>();
+    const animeGroupProgress = new Map<string, Set<number>>();
+    const ensureGroup = (key: string) => {
+        if (!animeGroups.has(key)) animeGroups.set(key, new Set<string>());
+        return animeGroups.get(key)!;
+    };
+    const ensureProgress = (key: string) => {
+        if (!animeGroupProgress.has(key)) animeGroupProgress.set(key, new Set<number>());
+        return animeGroupProgress.get(key)!;
+    };
+
+    watchList.forEach((i: any) => ensureGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    continueWatching.forEach((i: any) => {
+        const key = normalizeTitleKey(i.animeTitle) || `id:${i.animeId}`;
+        ensureGroup(key).add(String(i.animeId));
+        const ep = parseEpisodeNumber(i.episodeNumber);
+        if (ep > 0) ensureProgress(key).add(ep);
+    });
+    (profile.favoriteAnime || []).forEach((i: any) => ensureGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
     Object.keys(episodeHistory).forEach(id => {
-        if (!Array.from(animeGroups).some(key => key.includes(id))) {
-            animeGroups.add(`id:${id}`);
-        }
+        if (!Array.from(animeGroups.values()).some(ids => ids.has(id))) ensureGroup(`id:${id}`).add(id);
+    });
+    Object.keys(profile.animeWatchTime || {}).forEach(id => {
+        if (!Array.from(animeGroups.values()).some(ids => ids.has(id))) ensureGroup(`id:${id}`).add(id);
     });
 
     const totalAnime = animeGroups.size;
-    const totalEpisodes = Object.values(episodeHistory).reduce((s, eps) => {
-        const uniqueEps = new Set<number>();
-        (Array.isArray(eps) ? eps : []).forEach(ep => {
+    const totalEpisodes = Array.from(animeGroups.entries()).reduce((sum, [key, ids]) => {
+        const unique = new Set<number>();
+        ids.forEach(id => (episodeHistory[id] || []).forEach(ep => {
             const n = parseEpisodeNumber(ep);
-            if (!isNaN(n)) uniqueEps.add(n);
-        });
-        return s + uniqueEps.size;
+            if (n > 0) unique.add(n);
+        }));
+        (animeGroupProgress.get(key) || []).forEach(ep => unique.add(ep));
+        return sum + unique.size;
     }, 0);
 
-    const totalHours = Math.round(((profile.animeWatchTimeTotalSeconds || 0) / 3600) * 10) / 10;
+    let totalWatchSeconds = profile.animeWatchTimeTotalSeconds || 0;
+    if (totalWatchSeconds <= 0) {
+        totalWatchSeconds = Array.from(animeGroups.values()).reduce((sum, ids) => {
+            let groupSeconds = 0;
+            ids.forEach((id) => {
+                groupSeconds = Math.max(groupSeconds, profile.animeWatchTime?.[id] || 0);
+            });
+            return sum + groupSeconds;
+        }, 0);
+    }
+    const totalHours = Math.round((totalWatchSeconds / 3600) * 10) / 10;
     const hasStats = totalAnime > 0;
     const valueClass = hasStats ? 'text-[#3cb6ff]' : 'text-gray-400';
 
-    const genreCounts: Record<string, number> = {};
-    const titleToGenres = new Map<string, string[]>();
-    [...watchList, ...(profile.favoriteAnime || [])].forEach((item: any) => {
-        const key = normalizeTitleKey(item.title) || `id:${item.id}`;
-        const genres = Array.isArray(item.genres) ? item.genres.map((g: any) => typeof g === 'string' ? g : g?.name).filter(Boolean) : [];
-        if (genres.length > 0 && !titleToGenres.has(key)) {
-            titleToGenres.set(key, genres);
-        }
-    });
-    Array.from(titleToGenres.values()).forEach(genres => {
-        genres.forEach(name => {
-            genreCounts[name] = (genreCounts[name] || 0) + 1;
-        });
-    });
+    const genreCounts = buildAnimeGenreCounts(profile);
 
     return (
         <div className="space-y-10">
@@ -745,43 +849,45 @@ const UserMangaOverview = ({ profile }: { profile: PublicUserProfile }) => {
     const hoursFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 
     const readList = profile.readList || [];
+    const continueReading = profile.continueReading || [];
     const chapterHistory = profile.chapterHistory || {};
 
-    // Group by title
-    const mangaGroups = new Set<string>();
-    readList.forEach(i => mangaGroups.add(normalizeTitleKey(i.title) || `id:${i.id}`));
-    (profile.favoriteManga || []).forEach(i => mangaGroups.add(normalizeTitleKey(i.title) || `id:${i.id}`));
+    // Exact Map-based grouping for Manga.
+    const mangaGroups = new Map<string, Set<string>>();
+    const mangaGroupProgress = new Map<string, Set<string>>();
+    const ensureGroup = (key: string) => {
+        if (!mangaGroups.has(key)) mangaGroups.set(key, new Set<string>());
+        return mangaGroups.get(key)!;
+    };
+    const ensureProgress = (key: string) => {
+        if (!mangaGroupProgress.has(key)) mangaGroupProgress.set(key, new Set<string>());
+        return mangaGroupProgress.get(key)!;
+    };
+
+    readList.forEach((i: any) => ensureGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    (profile.favoriteManga || []).forEach((i: any) => ensureGroup(normalizeTitleKey(i.title) || `id:${i.id}`).add(String(i.id)));
+    continueReading.forEach((i: any) => {
+        const key = normalizeTitleKey(i.mangaTitle) || `id:${i.mangaId}`;
+        ensureGroup(key).add(String(i.mangaId));
+        if (i.chapterNumber) ensureProgress(key).add(String(i.chapterNumber));
+    });
     Object.keys(chapterHistory).forEach(id => {
-        if (!Array.from(mangaGroups).some(key => key.includes(id))) {
-            mangaGroups.add(`id:${id}`);
-        }
+        if (!Array.from(mangaGroups.values()).some(ids => ids.has(id))) ensureGroup(`id:${id}`).add(id);
     });
 
     const totalManga = mangaGroups.size;
-    const totalChapters = Object.values(chapterHistory).reduce((s, chs) => {
-        const uniqueChs = new Set<string>();
-        (Array.isArray(chs) ? chs : []).forEach(ch => uniqueChs.add(String(ch)));
-        return s + uniqueChs.size;
+    const totalChapters = Array.from(mangaGroups.entries()).reduce((sum, [key, ids]) => {
+        const unique = new Set<string>();
+        ids.forEach(id => (chapterHistory[id] || []).forEach(ch => unique.add(String(ch))));
+        (mangaGroupProgress.get(key) || []).forEach(ch => unique.add(ch));
+        return sum + unique.size;
     }, 0);
 
     const totalHours = Math.round(((totalChapters * 6) / 60) * 10) / 10;
     const hasStats = totalManga > 0;
     const valueClass = hasStats ? 'text-yorumi-manga' : 'text-gray-400';
 
-    const genreCounts: Record<string, number> = {};
-    const titleToGenres = new Map<string, string[]>();
-    [...readList, ...(profile.favoriteManga || [])].forEach((item: any) => {
-        const key = normalizeTitleKey(item.title) || `id:${item.id}`;
-        const genres = Array.isArray(item.genres) ? item.genres.map((g: any) => typeof g === 'string' ? g : g?.name).filter(Boolean) : [];
-        if (genres.length > 0 && !titleToGenres.has(key)) {
-            titleToGenres.set(key, genres);
-        }
-    });
-    Array.from(titleToGenres.values()).forEach(genres => {
-        genres.forEach(name => {
-            genreCounts[name] = (genreCounts[name] || 0) + 1;
-        });
-    });
+    const genreCounts = buildMangaGenreCounts(profile);
 
     return (
         <div className="space-y-10">
