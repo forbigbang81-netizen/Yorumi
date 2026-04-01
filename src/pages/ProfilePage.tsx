@@ -620,6 +620,44 @@ const upsertCompletionMeta = (
     });
 };
 
+const applyAnimeCompletionSnapshot = (
+    animeGroups: Map<string, Set<string>>,
+    completionMeta: Map<string, CompletionMeta>,
+    animeCompletionCache: Record<string, { title?: string; totalCount?: number; mediaStatus?: string }>,
+    normalizeTitleKey: (title?: string) => string
+) => {
+    Object.entries(animeCompletionCache || {}).forEach(([animeId, snapshot]) => {
+        const alreadyGrouped = Array.from(animeGroups.values()).some((ids) => ids.has(animeId));
+        if (alreadyGrouped) return;
+
+        const key = normalizeTitleKey(snapshot?.title) || `history:${animeId}`;
+        if (!animeGroups.has(key)) {
+            animeGroups.set(key, new Set<string>());
+        }
+        animeGroups.get(key)!.add(animeId);
+        upsertCompletionMeta(completionMeta, key, snapshot, isFinishedAnimeStatus);
+    });
+};
+
+const applyMangaCompletionSnapshot = (
+    mangaGroups: Map<string, Set<string>>,
+    completionMeta: Map<string, CompletionMeta>,
+    mangaCompletionCache: Record<string, { title?: string; totalCount?: number; mediaStatus?: string }>,
+    normalizeTitleKey: (title?: string) => string
+) => {
+    Object.entries(mangaCompletionCache || {}).forEach(([mangaId, snapshot]) => {
+        const alreadyGrouped = Array.from(mangaGroups.values()).some((ids) => ids.has(mangaId));
+        if (alreadyGrouped) return;
+
+        const key = normalizeTitleKey(snapshot?.title) || `history:${mangaId}`;
+        if (!mangaGroups.has(key)) {
+            mangaGroups.set(key, new Set<string>());
+        }
+        mangaGroups.get(key)!.add(mangaId);
+        upsertCompletionMeta(completionMeta, key, snapshot, isFinishedMangaStatus);
+    });
+};
+
 const countCompletedAnimeGroups = (
     animeGroups: Map<string, Set<string>>,
     groupProgressEpisodes: Map<string, Set<number>>,
@@ -663,7 +701,7 @@ const MangaStatsOverview = () => {
     const { readList } = useReadList();
     const { continueReadingList } = useContinueReading();
     const { favorites } = useFavoriteManga();
-    const [, setStatsTick] = useState(0);
+    const [statsTick, setStatsTick] = useState(0);
 
     useEffect(() => {
         const onStorageUpdated = () => setStatsTick((v) => v + 1);
@@ -673,6 +711,7 @@ const MangaStatsOverview = () => {
     const hasAccountMangaHistory = readList.length > 0 || continueReadingList.length > 0 || favorites.length > 0;
     const valueClassName = hasAccountMangaHistory ? 'text-yorumi-manga' : 'text-gray-400';
     const chapterHistory = storage.getChapterHistory();
+    const mangaCompletionCache = React.useMemo(() => storage.getMangaCompletionCache(), [statsTick]);
     const normalizeTitleKey = (title?: string) =>
         (title || '')
             .toLowerCase()
@@ -712,6 +751,8 @@ const MangaStatsOverview = () => {
         ensureGroup(key).add(String(item.id));
         upsertCompletionMeta(mangaCompletionMeta, key, item, isFinishedMangaStatus);
     });
+
+    applyMangaCompletionSnapshot(mangaGroups, mangaCompletionMeta, mangaCompletionCache, normalizeTitleKey);
 
     const totalManga = hasAccountMangaHistory ? mangaGroups.size : 0;
 
@@ -1270,6 +1311,7 @@ const AnimeStatsOverview = () => {
 
         return merged;
     }, [user?.uid, statsTick]);
+    const animeCompletionCache = React.useMemo(() => storage.getAnimeCompletionCache(), [statsTick]);
     const parseEpisodeNumber = (value: unknown): number => {
         if (typeof value === 'number' && Number.isFinite(value)) return value;
         const raw = String(value ?? '').trim();
@@ -1317,6 +1359,8 @@ const AnimeStatsOverview = () => {
         ensureGroup(key).add(String(item.id));
         upsertCompletionMeta(animeCompletionMeta, key, item, isFinishedAnimeStatus);
     });
+
+    applyAnimeCompletionSnapshot(animeGroups, animeCompletionMeta, animeCompletionCache, normalizeTitleKey);
 
     // Ensure watched-history IDs are represented even if the anime isn't in watchlist/favorites/continue list.
     Object.keys(episodeHistory).forEach((historyId) => {

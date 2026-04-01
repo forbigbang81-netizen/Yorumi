@@ -452,6 +452,42 @@ const upsertCompletionMeta = (
     });
 };
 
+const applyAnimeCompletionSnapshot = (
+    animeGroups: Map<string, Set<string>>,
+    completionMeta: Map<string, CompletionMeta>,
+    animeCompletionCache: Record<string, { title?: string; totalCount?: number; mediaStatus?: string }>
+) => {
+    Object.entries(animeCompletionCache || {}).forEach(([animeId, snapshot]) => {
+        const alreadyGrouped = Array.from(animeGroups.values()).some((ids) => ids.has(animeId));
+        if (alreadyGrouped) return;
+
+        const key = normalizeTitleKey(snapshot?.title) || `history:${animeId}`;
+        if (!animeGroups.has(key)) {
+            animeGroups.set(key, new Set<string>());
+        }
+        animeGroups.get(key)!.add(animeId);
+        upsertCompletionMeta(completionMeta, key, snapshot, isFinishedAnimeStatus);
+    });
+};
+
+const applyMangaCompletionSnapshot = (
+    mangaGroups: Map<string, Set<string>>,
+    completionMeta: Map<string, CompletionMeta>,
+    mangaCompletionCache: Record<string, { title?: string; totalCount?: number; mediaStatus?: string }>
+) => {
+    Object.entries(mangaCompletionCache || {}).forEach(([mangaId, snapshot]) => {
+        const alreadyGrouped = Array.from(mangaGroups.values()).some((ids) => ids.has(mangaId));
+        if (alreadyGrouped) return;
+
+        const key = normalizeTitleKey(snapshot?.title) || `history:${mangaId}`;
+        if (!mangaGroups.has(key)) {
+            mangaGroups.set(key, new Set<string>());
+        }
+        mangaGroups.get(key)!.add(mangaId);
+        upsertCompletionMeta(completionMeta, key, snapshot, isFinishedMangaStatus);
+    });
+};
+
 const countCompletedAnimeGroups = (
     animeGroups: Map<string, Set<string>>,
     animeGroupProgress: Map<string, Set<number>>,
@@ -518,6 +554,7 @@ const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
         ensureAnimeGroup(key).add(String(i.id));
         upsertCompletionMeta(animeCompletionMeta, key, i, isFinishedAnimeStatus);
     });
+    applyAnimeCompletionSnapshot(animeGroups, animeCompletionMeta, profile.animeCompletionCache || {});
     Object.keys(profile.episodeHistory || {}).forEach(id => {
         if (!Array.from(animeGroups.values()).some(ids => ids.has(id))) ensureAnimeGroup(`id:${id}`).add(id);
     });
@@ -553,6 +590,7 @@ const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
         upsertCompletionMeta(mangaCompletionMeta, key, i, isFinishedMangaStatus);
         if (i.chapterNumber) ensureMangaProgress(key).add(String(i.chapterNumber));
     });
+    applyMangaCompletionSnapshot(mangaGroups, mangaCompletionMeta, profile.mangaCompletionCache || {});
     Object.keys(profile.chapterHistory || {}).forEach(id => {
         if (!Array.from(mangaGroups.values()).some(ids => ids.has(id))) ensureMangaGroup(`id:${id}`).add(id);
     });
@@ -876,6 +914,7 @@ const UserAnimeOverview = ({ profile }: { profile: PublicUserProfile }) => {
         ensureGroup(key).add(String(i.id));
         upsertCompletionMeta(animeCompletionMeta, key, i, isFinishedAnimeStatus);
     });
+    applyAnimeCompletionSnapshot(animeGroups, animeCompletionMeta, profile.animeCompletionCache || {});
     Object.keys(episodeHistory).forEach(id => {
         if (!Array.from(animeGroups.values()).some(ids => ids.has(id))) ensureGroup(`id:${id}`).add(id);
     });
@@ -986,6 +1025,7 @@ const UserMangaOverview = ({ profile }: { profile: PublicUserProfile }) => {
         upsertCompletionMeta(mangaCompletionMeta, key, i, isFinishedMangaStatus);
         if (i.chapterNumber) ensureProgress(key).add(String(i.chapterNumber));
     });
+    applyMangaCompletionSnapshot(mangaGroups, mangaCompletionMeta, profile.mangaCompletionCache || {});
     Object.keys(chapterHistory).forEach(id => {
         if (!Array.from(mangaGroups.values()).some(ids => ids.has(id))) ensureGroup(`id:${id}`).add(id);
     });

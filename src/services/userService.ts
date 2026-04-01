@@ -19,6 +19,8 @@ export interface PublicUserProfile {
     animeWatchTime: Record<string, number>;
     animeWatchTimeTotalSeconds: number;
     animeGenreCache: Record<string, string[]>;
+    animeCompletionCache: Record<string, { title?: string; totalCount?: number; mediaStatus?: string }>;
+    mangaCompletionCache: Record<string, { title?: string; totalCount?: number; mediaStatus?: string }>;
     mangaGenreCache: Record<string, string[]>;
     // Subcollection data fetched separately
     activityHistory: Record<string, number>;
@@ -66,6 +68,8 @@ export const userSearchService = {
                     animeWatchTime: data.animeWatchTime || {},
                     animeWatchTimeTotalSeconds: data.animeWatchTimeTotalSeconds || 0,
                     animeGenreCache: data.animeGenreCache || {},
+                    animeCompletionCache: data.animeCompletionCache || {},
+                    mangaCompletionCache: data.mangaCompletionCache || {},
                     mangaGenreCache: data.mangaGenreCache || {},
                 } as PublicUserProfile;
             });
@@ -105,6 +109,8 @@ export const userSearchService = {
                     animeWatchTime: data.animeWatchTime || {},
                     animeWatchTimeTotalSeconds: data.animeWatchTimeTotalSeconds || 0,
                     animeGenreCache: data.animeGenreCache || {},
+                    animeCompletionCache: data.animeCompletionCache || {},
+                    mangaCompletionCache: data.mangaCompletionCache || {},
                     mangaGenreCache: data.mangaGenreCache || {},
                 } as PublicUserProfile;
             });
@@ -175,6 +181,8 @@ export const userSearchService = {
                 animeWatchTime: data.animeWatchTime || {},
                 animeWatchTimeTotalSeconds: data.animeWatchTimeTotalSeconds || 0,
                 animeGenreCache: data.animeGenreCache || {},
+                animeCompletionCache: data.animeCompletionCache || {},
+                mangaCompletionCache: data.mangaCompletionCache || {},
                 mangaGenreCache: data.mangaGenreCache || {},
                 activityHistory,
                 favoriteAnime,

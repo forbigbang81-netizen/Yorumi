@@ -29,6 +29,18 @@ export interface ReadProgress {
     mediaStatus?: string;
 }
 
+export interface AnimeCompletionSnapshot {
+    title?: string;
+    totalCount?: number;
+    mediaStatus?: string;
+}
+
+export interface MangaCompletionSnapshot {
+    title?: string;
+    totalCount?: number;
+    mediaStatus?: string;
+}
+
 export interface WatchListItem {
     id: string;
     anilistId?: string;
@@ -72,6 +84,8 @@ const STORAGE_KEYS = {
     ANIME_WATCH_TIME: 'yorumi_anime_watch_time',
     ANIME_WATCH_TIME_TOTAL: 'yorumi_anime_watch_time_total',
     ANIME_GENRE_CACHE: 'yorumi_anime_genre_cache',
+    ANIME_COMPLETION_CACHE: 'yorumi_anime_completion_cache',
+    MANGA_COMPLETION_CACHE: 'yorumi_manga_completion_cache',
     MANGA_GENRE_CACHE: 'yorumi_manga_genre_cache'
 };
 
@@ -445,6 +459,44 @@ export const storage = {
         }
     },
 
+    getAnimeCompletionCache: (): Record<string, AnimeCompletionSnapshot> => {
+        try {
+            const data = getScopedItem(STORAGE_KEYS.ANIME_COMPLETION_CACHE);
+            return data ? JSON.parse(data) : {};
+        } catch (error) {
+            console.error('Failed to get anime completion cache:', error);
+            return {};
+        }
+    },
+
+    setAnimeCompletionCache: (cache: Record<string, AnimeCompletionSnapshot>) => {
+        try {
+            setScopedItem(STORAGE_KEYS.ANIME_COMPLETION_CACHE, JSON.stringify(cache || {}));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to set anime completion cache:', error);
+        }
+    },
+
+    getMangaCompletionCache: (): Record<string, MangaCompletionSnapshot> => {
+        try {
+            const data = getScopedItem(STORAGE_KEYS.MANGA_COMPLETION_CACHE);
+            return data ? JSON.parse(data) : {};
+        } catch (error) {
+            console.error('Failed to get manga completion cache:', error);
+            return {};
+        }
+    },
+
+    setMangaCompletionCache: (cache: Record<string, MangaCompletionSnapshot>) => {
+        try {
+            setScopedItem(STORAGE_KEYS.MANGA_COMPLETION_CACHE, JSON.stringify(cache || {}));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to set manga completion cache:', error);
+        }
+    },
+
     getMangaGenreCache: (): Record<string, string[]> => {
         try {
             const data = getScopedItem(STORAGE_KEYS.MANGA_GENRE_CACHE);
@@ -514,6 +566,8 @@ export const syncStorage = {
         const chapterHistory = storage.getChapterHistory();
         const animeWatchTime = storage.getAnimeWatchTime();
         const animeGenreCache = storage.getAnimeGenreCache();
+        const animeCompletionCache = storage.getAnimeCompletionCache();
+        const mangaCompletionCache = storage.getMangaCompletionCache();
         const mangaGenreCache = storage.getMangaGenreCache();
 
         try {
@@ -526,6 +580,8 @@ export const syncStorage = {
                 chapterHistory,
                 animeWatchTime,
                 animeGenreCache,
+                animeCompletionCache,
+                mangaCompletionCache,
                 mangaGenreCache,
                 lastSynced: Date.now()
             }, { merge: true });
@@ -661,6 +717,38 @@ export const syncStorage = {
                     didUpdateLocal = true;
                 }
 
+                if (data.animeCompletionCache) {
+                    const local = storage.getAnimeCompletionCache();
+                    const merged: Record<string, AnimeCompletionSnapshot> = { ...local };
+                    Object.entries(data.animeCompletionCache as Record<string, AnimeCompletionSnapshot>).forEach(([animeId, snapshot]) => {
+                        const current = merged[animeId] || {};
+                        const next = snapshot || {};
+                        merged[animeId] = {
+                            title: current.title || next.title,
+                            totalCount: Math.max(Number(current.totalCount) || 0, Number(next.totalCount) || 0) || undefined,
+                            mediaStatus: current.mediaStatus || next.mediaStatus
+                        };
+                    });
+                    setScopedItem(STORAGE_KEYS.ANIME_COMPLETION_CACHE, JSON.stringify(merged));
+                    didUpdateLocal = true;
+                }
+
+                if (data.mangaCompletionCache) {
+                    const local = storage.getMangaCompletionCache();
+                    const merged: Record<string, MangaCompletionSnapshot> = { ...local };
+                    Object.entries(data.mangaCompletionCache as Record<string, MangaCompletionSnapshot>).forEach(([mangaId, snapshot]) => {
+                        const current = merged[mangaId] || {};
+                        const next = snapshot || {};
+                        merged[mangaId] = {
+                            title: current.title || next.title,
+                            totalCount: Math.max(Number(current.totalCount) || 0, Number(next.totalCount) || 0) || undefined,
+                            mediaStatus: current.mediaStatus || next.mediaStatus
+                        };
+                    });
+                    setScopedItem(STORAGE_KEYS.MANGA_COMPLETION_CACHE, JSON.stringify(merged));
+                    didUpdateLocal = true;
+                }
+
                 // Merge Manga Genre Cache
                 if (data.mangaGenreCache) {
                     const local = storage.getMangaGenreCache();
@@ -688,6 +776,15 @@ export const syncStorage = {
 const originalSaveProgress = storage.saveProgress;
 storage.saveProgress = (progress) => {
     originalSaveProgress(progress);
+    const currentCache = storage.getAnimeCompletionCache();
+    storage.setAnimeCompletionCache({
+        ...currentCache,
+        [progress.animeId]: {
+            title: progress.animeTitle,
+            totalCount: progress.totalCount,
+            mediaStatus: progress.mediaStatus
+        }
+    });
     if (auth.currentUser) syncStorage.pushToCloud();
 };
 
@@ -712,6 +809,15 @@ storage.addToReadList = (item, status) => {
 const originalSaveReadingProgress = storage.saveReadingProgress;
 storage.saveReadingProgress = (progress) => {
     originalSaveReadingProgress(progress);
+    const currentCache = storage.getMangaCompletionCache();
+    storage.setMangaCompletionCache({
+        ...currentCache,
+        [progress.mangaId]: {
+            title: progress.mangaTitle,
+            totalCount: progress.totalCount,
+            mediaStatus: progress.mediaStatus
+        }
+    });
     if (auth.currentUser) syncStorage.pushToCloud();
 };
 
