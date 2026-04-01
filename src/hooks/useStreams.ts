@@ -15,6 +15,7 @@ export function useStreams(scraperSession: string | null) {
     const [showQualityMenu, setShowQualityMenu] = useState(false);
     const [streamLoading, setStreamLoading] = useState(false);
     const streamCache = useRef(new Map<string, Promise<StreamLink[]>>());
+    const activeLoadRequestRef = useRef(0);
 
     const currentStream = streams[selectedStreamIndex] || null;
 
@@ -144,6 +145,8 @@ export function useStreams(scraperSession: string | null) {
     }, [allStreams, selectedAudio, selectedProvider, filterStreams]);
 
     const loadStream = useCallback(async (episode: Episode) => {
+        const requestId = activeLoadRequestRef.current + 1;
+        activeLoadRequestRef.current = requestId;
         setCurrentEpisode(episode);
         setStreamLoading(true);
         setAllStreams([]);
@@ -151,6 +154,9 @@ export function useStreams(scraperSession: string | null) {
 
         try {
             const streamData = await ensureStreamData(episode);
+            if (activeLoadRequestRef.current !== requestId) {
+                return;
+            }
             if (streamData.length > 0) {
                 const nextAudio = streamData.some((s) => normalizeAudio(s.audio) === selectedAudio)
                     ? selectedAudio
@@ -174,9 +180,14 @@ export function useStreams(scraperSession: string | null) {
                 setIsAutoQuality(true);
             }
         } catch (e) {
+            if (activeLoadRequestRef.current !== requestId) {
+                return;
+            }
             console.error('Failed to load stream', e);
         } finally {
-            setStreamLoading(false);
+            if (activeLoadRequestRef.current === requestId) {
+                setStreamLoading(false);
+            }
         }
     }, [ensureStreamData, selectedAudio, selectedProvider, pickBestProvider]);
 
@@ -221,6 +232,7 @@ export function useStreams(scraperSession: string | null) {
 
     // Clear all stream state when switching anime
     const clearStreams = useCallback(() => {
+        activeLoadRequestRef.current += 1;
         setCurrentEpisode(null);
         setAllStreams([]);
         setStreams([]);
