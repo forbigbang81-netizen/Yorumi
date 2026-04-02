@@ -14,6 +14,7 @@ import { storage } from '../utils/storage';
 import { animeService } from '../services/animeService';
 import { mangaService } from '../services/mangaService';
 import useEmblaCarousel from 'embla-carousel-react';
+import { DEFAULT_BANNER_URL, resolveStaticAssetUrl } from '../config/cloudinaryAssets';
 
 type TabType = 'profile' | 'anime-overview' | 'manga-overview';
 
@@ -76,7 +77,7 @@ export default function ProfilePage() {
                 {/* Background Image */}
                 <div className="absolute inset-0 z-0">
                     <img
-                        src={banner || '/anime-bg.png'}
+                        src={resolveStaticAssetUrl(banner) || DEFAULT_BANNER_URL}
                         alt="Background"
                         className="w-full h-full object-cover opacity-60"
                     />

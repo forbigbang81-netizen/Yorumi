@@ -1,3 +1,5 @@
+import { getCloudinaryAvatarUrl } from '../config/cloudinaryAssets';
+
 // Categorised Avatar Data
 export type AvatarCategory =
     | 'DragonBall' | 'OnePiece' | 'ZoroChibi'
@@ -70,7 +72,7 @@ export const getAllCategories = (): AvatarCategory[] => {
 
 export const getRandomAvatar = () => {
     const randomItem = AVATAR_DATA[Math.floor(Math.random() * AVATAR_DATA.length)];
-    return `/avatars/${randomItem.path}`;
+    return getCloudinaryAvatarUrl(randomItem.path) || `/avatars/${randomItem.path}`;
 };
 
 export const getDeterministicAvatar = (seed: string) => {
@@ -79,7 +81,7 @@ export const getDeterministicAvatar = (seed: string) => {
         hash = seed.charCodeAt(i) + ((hash << 5) - hash);
     }
     const index = Math.abs(hash) % AVATAR_DATA.length;
-    return `/avatars/${AVATAR_DATA[index].path}`;
+    return getCloudinaryAvatarUrl(AVATAR_DATA[index].path) || `/avatars/${AVATAR_DATA[index].path}`;
 };
 
 export const getAvatarsByCategory = (category: AvatarCategory | 'All'): AvatarItem[] => {

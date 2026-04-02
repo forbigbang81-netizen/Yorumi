@@ -138,11 +138,19 @@ export const userSearchService = {
             const activityRef = doc(db, 'users', uid, 'activity', 'history');
             const favAnimeRef = collection(db, 'users', uid, 'favoriteAnime');
             const favMangaRef = collection(db, 'users', uid, 'favoriteManga');
+            const watchListRef = collection(db, 'users', uid, 'watchList');
+            const readListRef = collection(db, 'users', uid, 'readList');
+            const continueWatchingRef = collection(db, 'users', uid, 'continueWatching');
+            const continueReadingRef = collection(db, 'users', uid, 'continueReading');
 
-            const [activityResult, favAnimeResult, favMangaResult] = await Promise.allSettled([
+            const [activityResult, favAnimeResult, favMangaResult, watchListResult, readListResult, continueWatchingResult, continueReadingResult] = await Promise.allSettled([
                 getDoc(activityRef),
                 getDocs(query(favAnimeRef, orderBy('addedAt', 'desc'))),
                 getDocs(query(favMangaRef, orderBy('addedAt', 'desc'))),
+                getDocs(query(watchListRef, orderBy('addedAt', 'desc'))),
+                getDocs(query(readListRef, orderBy('addedAt', 'desc'))),
+                getDocs(query(continueWatchingRef, orderBy('lastWatched', 'desc'))),
+                getDocs(query(continueReadingRef, orderBy('lastRead', 'desc'))),
             ]);
 
             const activityHistory: Record<string, number> =
@@ -160,9 +168,33 @@ export const userSearchService = {
                     ? favMangaResult.value.docs.map(d => d.data())
                     : [];
 
+            const watchList: any[] =
+                watchListResult.status === 'fulfilled'
+                    ? watchListResult.value.docs.map(d => d.data())
+                    : (data.watchList || []);
+
+            const readList: any[] =
+                readListResult.status === 'fulfilled'
+                    ? readListResult.value.docs.map(d => d.data())
+                    : (data.readList || []);
+
+            const continueWatching: any[] =
+                continueWatchingResult.status === 'fulfilled'
+                    ? continueWatchingResult.value.docs.map(d => d.data())
+                    : (data.continueWatching || []);
+
+            const continueReading: any[] =
+                continueReadingResult.status === 'fulfilled'
+                    ? continueReadingResult.value.docs.map(d => d.data())
+                    : (data.continueReading || []);
+
             if (activityResult.status === 'rejected') console.warn('Could not load activity history (check Firestore rules):', activityResult.reason);
             if (favAnimeResult.status === 'rejected') console.warn('Could not load favoriteAnime (check Firestore rules):', favAnimeResult.reason);
             if (favMangaResult.status === 'rejected') console.warn('Could not load favoriteManga (check Firestore rules):', favMangaResult.reason);
+            if (watchListResult.status === 'rejected') console.warn('Could not load watchList (check Firestore rules):', watchListResult.reason);
+            if (readListResult.status === 'rejected') console.warn('Could not load readList (check Firestore rules):', readListResult.reason);
+            if (continueWatchingResult.status === 'rejected') console.warn('Could not load continueWatching (check Firestore rules):', continueWatchingResult.reason);
+            if (continueReadingResult.status === 'rejected') console.warn('Could not load continueReading (check Firestore rules):', continueReadingResult.reason);
 
             return {
                 uid: docSnap.id,
@@ -172,10 +204,10 @@ export const userSearchService = {
                 banner: data.banner || null,
                 profileCardBackground: data.profileCardBackground || null,
                 creationTime: data.creationTime || null,
-                watchList: data.watchList || [],
-                readList: data.readList || [],
-                continueWatching: data.continueWatching || [],
-                continueReading: data.continueReading || [],
+                watchList,
+                readList,
+                continueWatching,
+                continueReading,
                 episodeHistory: data.episodeHistory || {},
                 chapterHistory: data.chapterHistory || {},
                 animeWatchTime: data.animeWatchTime || {},

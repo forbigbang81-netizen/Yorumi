@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../services/firebase';
 import { getDeterministicAvatar } from '../utils/avatars';
 import { clearLegacyUnscopedProgressStorage, syncStorage } from '../utils/storage';
+import { DEFAULT_BANNER_URL, resolveStaticAssetUrl } from '../config/cloudinaryAssets';
 
 interface AuthContextType {
     user: User | null;
@@ -89,13 +90,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const storedBanner = localStorage.getItem(`banner_${currentUser.uid}`);
                 const storedProfileCardBackground = localStorage.getItem(`profile_card_bg_${currentUser.uid}`);
                 if (storedAvatar) {
-                    setAvatar(storedAvatar);
+                    setAvatar(resolveStaticAssetUrl(storedAvatar));
                 }
                 if (storedBanner) {
-                    setBanner(storedBanner);
+                    setBanner(resolveStaticAssetUrl(storedBanner));
                 }
                 if (storedProfileCardBackground) {
-                    setProfileCardBackground(storedProfileCardBackground);
+                    setProfileCardBackground(resolveStaticAssetUrl(storedProfileCardBackground));
                 }
 
                 // 2. Fetch from Backend (Source of Truth - Firestore) and update if different
@@ -106,8 +107,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                 if (dbAvatar) {
                     if (dbAvatar !== storedAvatar) {
-                        setAvatar(dbAvatar);
-                        localStorage.setItem(`avatar_${currentUser.uid}`, dbAvatar);
+                        const resolvedAvatar = resolveStaticAssetUrl(dbAvatar) || dbAvatar;
+                        setAvatar(resolvedAvatar);
+                        localStorage.setItem(`avatar_${currentUser.uid}`, resolvedAvatar);
                     }
                 } else {
                     // 3. If no DB avatar but we have local, sync local to DB
@@ -122,14 +124,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     }
                 }
 
-                const defaultBanner = '/anime-bg.png';
+                const defaultBanner = DEFAULT_BANNER_URL;
                 if (dbBanner) {
                     if (dbBanner !== storedBanner) {
-                        setBanner(dbBanner);
-                        localStorage.setItem(`banner_${currentUser.uid}`, dbBanner);
+                        const resolvedBanner = resolveStaticAssetUrl(dbBanner) || dbBanner;
+                        setBanner(resolvedBanner);
+                        localStorage.setItem(`banner_${currentUser.uid}`, resolvedBanner);
                     }
                 } else if (storedBanner) {
-                    saveUserProfile(currentUser.uid, { banner: storedBanner });
+                    const resolvedStoredBanner = resolveStaticAssetUrl(storedBanner) || storedBanner;
+                    setBanner(resolvedStoredBanner);
+                    saveUserProfile(currentUser.uid, { banner: resolvedStoredBanner });
                 } else {
                     setBanner(defaultBanner);
                     saveUserProfile(currentUser.uid, { banner: defaultBanner });
@@ -138,11 +143,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                 if (dbProfileCardBackground) {
                     if (dbProfileCardBackground !== storedProfileCardBackground) {
-                        setProfileCardBackground(dbProfileCardBackground);
-                        localStorage.setItem(`profile_card_bg_${currentUser.uid}`, dbProfileCardBackground);
+                        const resolvedBackground = resolveStaticAssetUrl(dbProfileCardBackground) || dbProfileCardBackground;
+                        setProfileCardBackground(resolvedBackground);
+                        localStorage.setItem(`profile_card_bg_${currentUser.uid}`, resolvedBackground);
                     }
                 } else if (storedProfileCardBackground) {
-                    saveUserProfile(currentUser.uid, { profileCardBackground: storedProfileCardBackground });
+                    const resolvedStoredBackground = resolveStaticAssetUrl(storedProfileCardBackground) || storedProfileCardBackground;
+                    setProfileCardBackground(resolvedStoredBackground);
+                    saveUserProfile(currentUser.uid, { profileCardBackground: resolvedStoredBackground });
                 } else {
                     setProfileCardBackground(null);
                 }

@@ -1,4 +1,4 @@
-import luffyGif from '../../assets/luffy.gif';
+import { CLOUDINARY_SHARED_ASSETS } from '../../config/cloudinaryAssets';
 
 interface LoadingSpinnerProps {
     size?: 'sm' | 'md' | 'lg';
@@ -15,7 +15,7 @@ export default function LoadingSpinner({ size = 'md', text }: LoadingSpinnerProp
     return (
         <div className="flex flex-col items-center justify-center p-8">
             <img
-                src={luffyGif}
+                src={CLOUDINARY_SHARED_ASSETS.luffyGif}
                 alt="Loading..."
                 className={`object-contain ${sizeClasses[size]}`}
             />

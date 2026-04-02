@@ -3,6 +3,7 @@ import type { Anime } from '../../../types/anime';
 import { useTitleLanguage } from '../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../utils/titleLanguage';
 import TopTenSkeleton from './TopTenSkeleton';
+import { CLOUDINARY_SHARED_ASSETS } from '../../../config/cloudinaryAssets';
 
 interface TopTenSidebarProps {
     today: Anime[];
@@ -68,7 +69,7 @@ export default function TopTenSidebar({ today, week, month, isLoading = false, o
                                 <div className="relative w-16 flex items-center justify-center">
                                     <div className="absolute left-2 top-1/2 -translate-y-1/2 opacity-90">
                                         <img
-                                            src="/monsterslash.png"
+                                            src={CLOUDINARY_SHARED_ASSETS.monsterSlash}
                                             alt=""
                                             className="w-11 h-11 object-contain transition-all duration-300 ease-out group-hover:scale-125 group-hover:brightness-125 group-hover:drop-shadow-[0_0_12px_rgba(34,197,94,0.6)]"
                                             aria-hidden="true"

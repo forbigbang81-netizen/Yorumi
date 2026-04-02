@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc, increment } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, increment, orderBy, query, setDoc, deleteField } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 
 export interface WatchProgress {
@@ -89,6 +89,13 @@ const STORAGE_KEYS = {
     MANGA_GENRE_CACHE: 'yorumi_manga_genre_cache'
 };
 
+const USER_SUBCOLLECTIONS = {
+    WATCH_LIST: 'watchList',
+    READ_LIST: 'readList',
+    CONTINUE_WATCHING: 'continueWatching',
+    CONTINUE_READING: 'continueReading'
+} as const;
+
 const storageMemoryCache = new Map<string, string>();
 
 const getScopedStorageKey = (key: string) => {
@@ -96,13 +103,42 @@ const getScopedStorageKey = (key: string) => {
     return uid ? `${key}_${uid}` : key;
 };
 
+const getEntryRecency = (value: unknown, primaryKey: 'lastWatched' | 'lastRead') => {
+    if (!value || typeof value !== 'object') return 0;
+    const entry = value as Record<string, unknown>;
+    const primary = Number(entry[primaryKey]);
+    if (Number.isFinite(primary) && primary > 0) return primary;
+    const fallback = Number(entry.timestamp);
+    return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+};
+
+const mergeRecentItems = <T extends object>(
+    cloudItems: T[],
+    localItems: T[],
+    idKey: keyof T,
+    recencyKey: 'lastWatched' | 'lastRead'
+) => {
+    const merged = new Map<string, T>();
+
+    [...cloudItems, ...localItems].forEach((item) => {
+        const rawId = item[idKey];
+        const id = typeof rawId === 'string' || typeof rawId === 'number' ? String(rawId) : '';
+        if (!id) return;
+
+        const existing = merged.get(id);
+        if (!existing || getEntryRecency(item, recencyKey) >= getEntryRecency(existing, recencyKey)) {
+            merged.set(id, item);
+        }
+    });
+
+    return Array.from(merged.values())
+        .sort((a, b) => getEntryRecency(b, recencyKey) - getEntryRecency(a, recencyKey))
+        .slice(0, 20);
+};
+
 const setScopedItem = (key: string, value: string) => {
     const scopedKey = getScopedStorageKey(key);
     storageMemoryCache.set(scopedKey, value);
-
-    if (auth.currentUser) {
-        return;
-    }
 
     try {
         localStorage.setItem(scopedKey, value);
@@ -552,16 +588,73 @@ const getUserRef = () => {
     return doc(db, 'users', user.uid);
 };
 
+const getUserCollectionRef = (collectionName: typeof USER_SUBCOLLECTIONS[keyof typeof USER_SUBCOLLECTIONS]) => {
+    const user = auth.currentUser;
+    if (!user) return null;
+    return collection(db, 'users', user.uid, collectionName);
+};
+
+const normalizeDocId = (value: string | number) => String(value).trim();
+const CLOUD_SYNC_DEBOUNCE_MS = 1500;
+const WATCH_TIME_TOTAL_DEBOUNCE_MS = 4000;
+
+let pendingCloudSyncPromise: Promise<void> | null = null;
+let cloudSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let queuedWatchTimeTotalIncrement = 0;
+let watchTimeTotalTimer: ReturnType<typeof setTimeout> | null = null;
+
+const setUserSubcollectionDoc = async <T extends object>(
+    collectionName: typeof USER_SUBCOLLECTIONS[keyof typeof USER_SUBCOLLECTIONS],
+    id: string | number,
+    value: T
+) => {
+    const collectionRef = getUserCollectionRef(collectionName);
+    const docId = normalizeDocId(id);
+    if (!collectionRef || !docId) return;
+
+    try {
+        await setDoc(doc(collectionRef, docId), value);
+    } catch (error) {
+        console.error(`Failed to write ${collectionName}/${docId}:`, error);
+    }
+};
+
+const deleteUserSubcollectionDoc = async (
+    collectionName: typeof USER_SUBCOLLECTIONS[keyof typeof USER_SUBCOLLECTIONS],
+    id: string | number
+) => {
+    const collectionRef = getUserCollectionRef(collectionName);
+    const docId = normalizeDocId(id);
+    if (!collectionRef || !docId) return;
+
+    try {
+        await deleteDoc(doc(collectionRef, docId));
+    } catch (error) {
+        console.error(`Failed to delete ${collectionName}/${docId}:`, error);
+    }
+};
+
+const getOrderedUserSubcollection = async <T>(
+    collectionName: typeof USER_SUBCOLLECTIONS[keyof typeof USER_SUBCOLLECTIONS],
+    orderField: string
+): Promise<T[]> => {
+    const collectionRef = getUserCollectionRef(collectionName);
+    if (!collectionRef) return [];
+
+    try {
+        const snapshot = await getDocs(query(collectionRef, orderBy(orderField, 'desc')));
+        return snapshot.docs.map((entry) => entry.data() as T);
+    } catch (error) {
+        console.warn(`Failed to load ${collectionName} subcollection:`, error);
+        return [];
+    }
+};
+
 export const syncStorage = {
     // Sync Local -> Cloud
     pushToCloud: async () => {
         const userRef = getUserRef();
         if (!userRef) return;
-
-        const watchList = storage.getWatchList();
-        const readList = storage.getReadList();
-        const continueWatching = storage.getContinueWatching();
-        const continueReading = storage.getContinueReading();
         const episodeHistory = storage.getEpisodeHistory();
         const chapterHistory = storage.getChapterHistory();
         const animeWatchTime = storage.getAnimeWatchTime();
@@ -572,10 +665,6 @@ export const syncStorage = {
 
         try {
             await setDoc(userRef, {
-                watchList,
-                readList,
-                continueWatching,
-                continueReading,
                 episodeHistory,
                 chapterHistory,
                 animeWatchTime,
@@ -583,6 +672,10 @@ export const syncStorage = {
                 animeCompletionCache,
                 mangaCompletionCache,
                 mangaGenreCache,
+                watchList: deleteField(),
+                readList: deleteField(),
+                continueWatching: deleteField(),
+                continueReading: deleteField(),
                 lastSynced: Date.now()
             }, { merge: true });
         } catch (error) {
@@ -596,7 +689,13 @@ export const syncStorage = {
         if (!userRef) return;
 
         try {
-            const snap = await getDoc(userRef);
+            const [snap, cloudWatchList, cloudReadList, cloudContinueWatching, cloudContinueReading] = await Promise.all([
+                getDoc(userRef),
+                getOrderedUserSubcollection<WatchListItem>(USER_SUBCOLLECTIONS.WATCH_LIST, 'addedAt'),
+                getOrderedUserSubcollection<ReadListItem>(USER_SUBCOLLECTIONS.READ_LIST, 'addedAt'),
+                getOrderedUserSubcollection<WatchProgress>(USER_SUBCOLLECTIONS.CONTINUE_WATCHING, 'lastWatched'),
+                getOrderedUserSubcollection<ReadProgress>(USER_SUBCOLLECTIONS.CONTINUE_READING, 'lastRead')
+            ]);
             if (snap.exists()) {
                 const data = snap.data();
                 let didUpdateLocal = false;
@@ -606,10 +705,12 @@ export const syncStorage = {
                 // OR better: Merge sets based on IDs.
 
                 // Simple merge for lists (Union by ID)
-                if (data.watchList) {
+                const legacyWatchList = Array.isArray(data.watchList) ? data.watchList as WatchListItem[] : [];
+                const watchListSource = cloudWatchList.length > 0 ? cloudWatchList : legacyWatchList;
+                if (watchListSource.length > 0) {
                     const local = storage.getWatchList();
                     const merged = [...local];
-                    data.watchList.forEach((cloudItem: WatchListItem) => {
+                    watchListSource.forEach((cloudItem: WatchListItem) => {
                         if (!merged.some(i => i.id === cloudItem.id)) {
                             merged.push(cloudItem);
                         }
@@ -618,10 +719,12 @@ export const syncStorage = {
                     didUpdateLocal = true;
                 }
 
-                if (data.readList) {
+                const legacyReadList = Array.isArray(data.readList) ? data.readList as ReadListItem[] : [];
+                const readListSource = cloudReadList.length > 0 ? cloudReadList : legacyReadList;
+                if (readListSource.length > 0) {
                     const local = storage.getReadList();
                     const merged = [...local];
-                    data.readList.forEach((cloudItem: ReadListItem) => {
+                    readListSource.forEach((cloudItem: ReadListItem) => {
                         if (!merged.some(i => i.id === cloudItem.id)) {
                             merged.push(cloudItem);
                         }
@@ -630,22 +733,30 @@ export const syncStorage = {
                     didUpdateLocal = true;
                 }
 
-                if (data.continueWatching) {
-                    // Start simplified: Overwrite local with cloud if cloud is newer? 
-                    // Let's just merge and slice.
+                const legacyContinueWatching = Array.isArray(data.continueWatching) ? data.continueWatching as WatchProgress[] : [];
+                const continueWatchingSource = cloudContinueWatching.length > 0 ? cloudContinueWatching : legacyContinueWatching;
+                if (continueWatchingSource.length > 0) {
                     const local = storage.getContinueWatching();
-                    const merged = [...data.continueWatching, ...local]
-                        .filter((v, i, a) => a.findIndex(t => t.animeId === v.animeId) === i) // Unique by ID
-                        .slice(0, 20);
+                    const merged = mergeRecentItems(
+                        continueWatchingSource,
+                        local,
+                        'animeId',
+                        'lastWatched'
+                    );
                     setScopedItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(merged));
                     didUpdateLocal = true;
                 }
 
-                if (data.continueReading) {
+                const legacyContinueReading = Array.isArray(data.continueReading) ? data.continueReading as ReadProgress[] : [];
+                const continueReadingSource = cloudContinueReading.length > 0 ? cloudContinueReading : legacyContinueReading;
+                if (continueReadingSource.length > 0) {
                     const local = storage.getContinueReading();
-                    const merged = [...data.continueReading, ...local]
-                        .filter((v, i, a) => a.findIndex(t => t.mangaId === v.mangaId) === i)
-                        .slice(0, 20);
+                    const merged = mergeRecentItems(
+                        continueReadingSource,
+                        local,
+                        'mangaId',
+                        'lastRead'
+                    );
                     setScopedItem(STORAGE_KEYS.CONTINUE_READING, JSON.stringify(merged));
                     didUpdateLocal = true;
                 }
@@ -772,6 +883,70 @@ export const syncStorage = {
     }
 };
 
+const flushCloudSync = async () => {
+    if (pendingCloudSyncPromise) {
+        return pendingCloudSyncPromise;
+    }
+
+    pendingCloudSyncPromise = syncStorage.pushToCloud()
+        .catch((error) => {
+            console.error('Failed to flush queued cloud sync:', error);
+        })
+        .finally(() => {
+            pendingCloudSyncPromise = null;
+        });
+
+    return pendingCloudSyncPromise;
+};
+
+const scheduleCloudSync = () => {
+    if (!auth.currentUser) return;
+
+    if (cloudSyncTimer) {
+        clearTimeout(cloudSyncTimer);
+    }
+
+    cloudSyncTimer = setTimeout(() => {
+        cloudSyncTimer = null;
+        void flushCloudSync();
+    }, CLOUD_SYNC_DEBOUNCE_MS);
+};
+
+const flushWatchTimeTotalIncrement = async () => {
+    const userRef = getUserRef();
+    const normalized = Math.floor(queuedWatchTimeTotalIncrement);
+    queuedWatchTimeTotalIncrement = 0;
+
+    if (!userRef || normalized <= 0) return;
+
+    try {
+        await setDoc(userRef, {
+            animeWatchTimeTotalSeconds: increment(normalized)
+        }, { merge: true });
+    } catch (error) {
+        console.error('Failed to sync anime total watch time to cloud:', error);
+        queuedWatchTimeTotalIncrement += normalized;
+    }
+};
+
+const scheduleWatchTimeTotalIncrement = (seconds: number) => {
+    if (!auth.currentUser) return;
+
+    const normalized = Math.floor(Number(seconds) || 0);
+    if (normalized <= 0) return;
+
+    queuedWatchTimeTotalIncrement += normalized;
+
+    if (watchTimeTotalTimer) {
+        return;
+    }
+
+    watchTimeTotalTimer = setTimeout(() => {
+        watchTimeTotalTimer = null;
+        void flushWatchTimeTotalIncrement();
+    }, WATCH_TIME_TOTAL_DEBOUNCE_MS);
+};
+
 // Hook into storage methods to auto-sync
 const originalSaveProgress = storage.saveProgress;
 storage.saveProgress = (progress) => {
@@ -785,25 +960,43 @@ storage.saveProgress = (progress) => {
             mediaStatus: progress.mediaStatus
         }
     });
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) {
+        const latest = storage.getContinueWatching().find((item) => item.animeId === progress.animeId);
+        if (latest) {
+            void setUserSubcollectionDoc(USER_SUBCOLLECTIONS.CONTINUE_WATCHING, latest.animeId, latest);
+        }
+        scheduleCloudSync();
+    }
 };
 
 const originalAddToWatchList = storage.addToWatchList;
 storage.addToWatchList = (item, status) => {
     originalAddToWatchList(item, status);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) {
+        const latest = storage.getWatchList().find((entry) => entry.id === item.id);
+        if (latest) {
+            void setUserSubcollectionDoc(USER_SUBCOLLECTIONS.WATCH_LIST, latest.id, latest);
+        }
+    }
 };
 
 const originalRemoveFromWatchList = storage.removeFromWatchList;
 storage.removeFromWatchList = (id) => {
     originalRemoveFromWatchList(id);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) {
+        void deleteUserSubcollectionDoc(USER_SUBCOLLECTIONS.WATCH_LIST, id);
+    }
 };
 
 const originalAddToReadList = storage.addToReadList;
 storage.addToReadList = (item, status) => {
     originalAddToReadList(item, status);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) {
+        const latest = storage.getReadList().find((entry) => entry.id === item.id);
+        if (latest) {
+            void setUserSubcollectionDoc(USER_SUBCOLLECTIONS.READ_LIST, latest.id, latest);
+        }
+    }
 };
 
 const originalSaveReadingProgress = storage.saveReadingProgress;
@@ -818,74 +1011,77 @@ storage.saveReadingProgress = (progress) => {
             mediaStatus: progress.mediaStatus
         }
     });
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) {
+        const latest = storage.getContinueReading().find((item) => item.mangaId === progress.mangaId);
+        if (latest) {
+            void setUserSubcollectionDoc(USER_SUBCOLLECTIONS.CONTINUE_READING, latest.mangaId, latest);
+        }
+        scheduleCloudSync();
+    }
 };
 
 const originalRemoveFromReadList = storage.removeFromReadList;
 storage.removeFromReadList = (id) => {
     originalRemoveFromReadList(id);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) {
+        void deleteUserSubcollectionDoc(USER_SUBCOLLECTIONS.READ_LIST, id);
+    }
 };
 
 const originalMarkEpisodeAsWatched = storage.markEpisodeAsWatched;
 storage.markEpisodeAsWatched = (animeId, episodeNumber) => {
     originalMarkEpisodeAsWatched(animeId, episodeNumber);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) scheduleCloudSync();
 };
 
 const originalSetEpisodeHistory = storage.setEpisodeHistory;
 storage.setEpisodeHistory = (history) => {
     originalSetEpisodeHistory(history);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) scheduleCloudSync();
 };
 
 const originalMarkChapterAsRead = storage.markChapterAsRead;
 storage.markChapterAsRead = (mangaId, chapterId) => {
     originalMarkChapterAsRead(mangaId, chapterId);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) scheduleCloudSync();
 };
 
 const originalAddAnimeWatchTime = storage.addAnimeWatchTime;
 storage.addAnimeWatchTime = (animeId, seconds) => {
     originalAddAnimeWatchTime(animeId, seconds);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) scheduleCloudSync();
 };
 
 const originalAddAnimeWatchTimeTotal = storage.addAnimeWatchTimeTotal;
 storage.addAnimeWatchTimeTotal = (seconds) => {
     originalAddAnimeWatchTimeTotal(seconds);
-
-    const userRef = getUserRef();
-    const normalized = Math.floor(Number(seconds) || 0);
-    if (!userRef || normalized <= 0) return;
-
-    setDoc(userRef, {
-        animeWatchTimeTotalSeconds: increment(normalized)
-    }, { merge: true }).catch((error) => {
-        console.error('Failed to sync anime total watch time to cloud:', error);
-    });
+    scheduleWatchTimeTotalIncrement(seconds);
 };
 
 const originalSetAnimeGenreCache = storage.setAnimeGenreCache;
 storage.setAnimeGenreCache = (cache) => {
     originalSetAnimeGenreCache(cache);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) scheduleCloudSync();
 };
 
 const originalSetMangaGenreCache = storage.setMangaGenreCache;
 storage.setMangaGenreCache = (cache) => {
     originalSetMangaGenreCache(cache);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) scheduleCloudSync();
 };
 
 const originalRemoveFromContinueWatching = storage.removeFromContinueWatching;
 storage.removeFromContinueWatching = (id) => {
     originalRemoveFromContinueWatching(id);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) {
+        void deleteUserSubcollectionDoc(USER_SUBCOLLECTIONS.CONTINUE_WATCHING, id);
+    }
 };
 
 const originalRemoveFromContinueReading = storage.removeFromContinueReading;
 storage.removeFromContinueReading = (id) => {
     originalRemoveFromContinueReading(id);
-    if (auth.currentUser) syncStorage.pushToCloud();
+    if (auth.currentUser) {
+        void deleteUserSubcollectionDoc(USER_SUBCOLLECTIONS.CONTINUE_READING, id);
+    }
 };

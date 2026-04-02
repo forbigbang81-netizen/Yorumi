@@ -4,6 +4,7 @@ import { User, Cat, Book, ChevronLeft, BookOpen, History, ChevronRight } from 'l
 import { userSearchService, type PublicUserProfile } from '../services/userService';
 import { useAuth } from '../context/AuthContext';
 import useEmblaCarousel from 'embla-carousel-react';
+import { DEFAULT_BANNER_URL, resolveStaticAssetUrl } from '../config/cloudinaryAssets';
 
 type TabType = 'profile' | 'anime-overview' | 'manga-overview';
 
@@ -110,7 +111,7 @@ export default function UserProfilePage() {
             <div className="relative w-full h-[35vh] md:h-[45vh] flex flex-col items-center justify-center overflow-hidden">
                 <div className="absolute inset-0 z-0">
                     <img
-                        src={profile.banner || '/anime-bg.png'}
+                        src={resolveStaticAssetUrl(profile.banner) || DEFAULT_BANNER_URL}
                         alt="Banner"
                         className="w-full h-full object-cover opacity-60"
                     />
@@ -654,7 +655,7 @@ const UserProfileTab = ({ profile }: { profile: PublicUserProfile }) => {
                         <div className="flex justify-center sm:justify-start sm:pt-1">
                             <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-[#3cb6ff] shadow-xl bg-yorumi-main shrink-0">
                                 {profile.avatar ? (
-                                    <img src={profile.avatar} alt={profile.displayName} className="w-full h-full object-cover" />
+                                    <img src={resolveStaticAssetUrl(profile.avatar) || profile.avatar} alt={profile.displayName} className="w-full h-full object-cover" />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center text-white font-bold text-4xl">
                                         {profile.displayName?.charAt(0).toUpperCase() || '?'}

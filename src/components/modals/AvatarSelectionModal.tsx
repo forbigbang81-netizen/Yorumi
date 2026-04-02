@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getAllCategories, getAvatarsByCategory, type AvatarCategory } from '../../utils/avatars';
 import { X, Check } from 'lucide-react';
+import { getCloudinaryAvatarUrl, resolveStaticAssetUrl } from '../../config/cloudinaryAssets';
 
 interface AvatarSelectionModalProps {
     isOpen: boolean;
@@ -12,6 +13,7 @@ interface AvatarSelectionModalProps {
 
 export default function AvatarSelectionModal({ isOpen, onClose, currentAvatar, onSelectAvatar }: AvatarSelectionModalProps) {
     const categories = getAllCategories();
+    const resolvedCurrentAvatar = resolveStaticAssetUrl(currentAvatar);
     // Default to first category if available
     const [selectedCategory, setSelectedCategory] = useState<AvatarCategory>(categories[0] || 'DragonBall');
 
@@ -63,8 +65,8 @@ export default function AvatarSelectionModal({ isOpen, onClose, currentAvatar, o
                 <div className="flex-1 overflow-y-auto p-6 pt-4 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
                     <div className="flex flex-wrap justify-center gap-6">
                         {avatars.map((avatar) => {
-                            const fullPath = `/avatars/${avatar.path}`;
-                            const isSelected = currentAvatar === fullPath;
+                            const fullPath = getCloudinaryAvatarUrl(avatar.path) || `/avatars/${avatar.path}`;
+                            const isSelected = resolvedCurrentAvatar === fullPath || currentAvatar === fullPath;
 
                             return (
                                 <button

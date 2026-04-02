@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check } from 'lucide-react';
+import { DEFAULT_BANNER_URL, resolveStaticAssetUrl } from '../../config/cloudinaryAssets';
 
 interface BannerSelectionModalProps {
     isOpen: boolean;
@@ -10,7 +11,7 @@ interface BannerSelectionModalProps {
 }
 
 const presetBanners = [
-    '/anime-bg.png'
+    DEFAULT_BANNER_URL
 ];
 
 export default function BannerSelectionModal({ isOpen, onClose, currentBanner, onSelectBanner }: BannerSelectionModalProps) {
@@ -39,7 +40,7 @@ export default function BannerSelectionModal({ isOpen, onClose, currentBanner, o
                         <h3 className="text-sm font-bold text-gray-400 mb-3">Presets</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {presetBanners.map((banner) => {
-                                const isSelected = currentBanner === banner;
+                                const isSelected = resolveStaticAssetUrl(currentBanner) === banner;
                                 return (
                                     <button
                                         key={banner}
