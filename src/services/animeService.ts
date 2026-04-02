@@ -268,6 +268,15 @@ const setCachedStream = (key: string, data: any) => {
     }
 };
 
+const clearCachedStream = (key: string) => {
+    streamCache.delete(key);
+    try {
+        sessionStorage.removeItem(`${PERSISTED_STREAM_CACHE_PREFIX}:${key}`);
+    } catch {
+        // Ignore storage errors.
+    }
+};
+
 const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v2:${id}`;
 const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v4:${id}`;
 
@@ -808,6 +817,34 @@ export const animeService = {
 
         inFlightRequests.set(cacheKey, fetchPromise);
         return fetchPromise;
+    },
+
+    invalidateStreamCache(animeSession: string, episodeSession?: string) {
+        if (!animeSession) return;
+
+        if (episodeSession) {
+            clearCachedStream(`streams:${animeSession}:${episodeSession}`);
+            inFlightRequests.delete(`streams:${animeSession}:${episodeSession}`);
+            return;
+        }
+
+        const prefix = `streams:${animeSession}:`;
+        Array.from(streamCache.keys())
+            .filter((key) => key.startsWith(prefix))
+            .forEach((key) => clearCachedStream(key));
+        Array.from(inFlightRequests.keys())
+            .filter((key) => key.startsWith(prefix))
+            .forEach((key) => inFlightRequests.delete(key));
+        try {
+            for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
+                const key = sessionStorage.key(i);
+                if (key && key.startsWith(`${PERSISTED_STREAM_CACHE_PREFIX}:${prefix}`)) {
+                    sessionStorage.removeItem(key);
+                }
+            }
+        } catch {
+            // Ignore storage errors.
+        }
     },
 
     // Get popular this month from AniList (Deduplicated)

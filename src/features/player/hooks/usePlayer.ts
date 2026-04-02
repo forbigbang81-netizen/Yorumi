@@ -34,16 +34,13 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         streams,
         isAutoQuality,
         selectedAudio,
-        selectedProvider,
         availableAudios,
-        availableProviders,
         selectedStreamIndex,
         showQualityMenu,
         setShowQualityMenu,
         handleQualityChange: applyQualityChange,
         setAutoQuality: applyAutoQuality,
         setSelectedAudio: applySelectedAudio,
-        setSelectedProvider: applySelectedProvider,
         tryNextStream,
         clearStreams,
         loadStream,
@@ -248,8 +245,9 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     // When loading finishes with no stream result → immediately show exhausted (no retry loop).
     useEffect(() => {
         if (!currentEpisode || currentStream || streamLoading) return;
+        if (String(currentEpisode.episodeNumber) !== String(epNumParam)) return;
         setStreamExhausted(true);
-    }, [currentEpisode, currentStream, streamLoading]);
+    }, [currentEpisode, currentStream, streamLoading, epNumParam]);
 
     const flushWatchTime = useCallback(() => {
         if (!selectedAnime) return;
@@ -291,6 +289,16 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         });
         lastSavedProgressRef.current = { at: Date.now(), second };
     }, [selectedAnime, currentEpisode, saveProgress]);
+
+    const resetEpisodePlaybackState = useCallback((keepResumeFromCurrent = false) => {
+        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
+        setStartAtOverrideSeconds(keepResumeFromCurrent && second > 0 ? second : null);
+        setIsPlayerReady(false);
+        setStreamExhausted(false);
+        streamErrorRetryRef.current = { url: '', at: 0 };
+        lastPlaybackSecondRef.current = keepResumeFromCurrent ? lastPlaybackSecondRef.current : null;
+        lastDurationSecondRef.current = keepResumeFromCurrent ? lastDurationSecondRef.current : 0;
+    }, []);
 
     // Flush watch-time when stream/episode changes or unmounting.
     useEffect(() => {
@@ -356,15 +364,14 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     // --- Actions ---
 
     const handleEpisodeClick = (ep: Episode) => {
+        persistLatestProgress();
         autoLoadAttemptKeyRef.current = '';
         const episodeNumber = parseEpisodeNumber(ep.episodeNumber);
         if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
             markEpisodeComplete(episodeNumber);
         }
         bustEpisodeCache(ep.session);
-        setStartAtOverrideSeconds(null);
-        setIsPlayerReady(false);
-        setStreamExhausted(false);
+        resetEpisodePlaybackState(false);
         setSearchParams({ ep: String(ep.episodeNumber) });
         loadStream(ep);
     };
@@ -375,42 +382,25 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         if (currentEpisode) {
             autoLoadAttemptKeyRef.current = '';
             bustEpisodeCache(currentEpisode.session);
-            const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
-            setStartAtOverrideSeconds(second > 0 ? second : null);
-            setIsPlayerReady(false);
-            setStreamExhausted(false);
+            resetEpisodePlaybackState(true);
             loadStream(currentEpisode);
         }
     };
 
     const handleQualityChange = (index: number) => {
-        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
-        if (second > 0) setStartAtOverrideSeconds(second);
-        setIsPlayerReady(false);
+        resetEpisodePlaybackState(true);
         applyQualityChange(index);
     };
 
     const setAutoQuality = () => {
-        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
-        if (second > 0) setStartAtOverrideSeconds(second);
-        setIsPlayerReady(false);
+        resetEpisodePlaybackState(true);
         applyAutoQuality();
     };
 
     const setSelectedAudio = (audio: 'sub' | 'dub') => {
         autoLoadAttemptKeyRef.current = '';
-        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
-        if (second > 0) setStartAtOverrideSeconds(second);
-        setIsPlayerReady(false);
+        resetEpisodePlaybackState(true);
         applySelectedAudio(audio);
-    };
-
-    const setSelectedProvider = (provider: 'vidsrc' | 'megacloud') => {
-        autoLoadAttemptKeyRef.current = '';
-        const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
-        if (second > 0) setStartAtOverrideSeconds(second);
-        setIsPlayerReady(false);
-        applySelectedProvider(provider);
     };
 
     const handlePrevEp = () => {
@@ -453,9 +443,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         isExpanded,
         isAutoQuality,
         selectedAudio,
-        selectedProvider,
         availableAudios,
-        availableProviders,
         showQualityMenu,
         selectedStreamIndex,
 
@@ -470,7 +458,6 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         handleQualityChange,
         setAutoQuality,
         setSelectedAudio,
-        setSelectedProvider,
         handlePlaybackProgress,
         handleStreamError,
         navigate // Expose navigate for back button

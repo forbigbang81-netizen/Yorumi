@@ -264,7 +264,6 @@ export default function VideoPlayer({
                             referrerPolicy="no-referrer"
                             title="Video Player"
                             onLoad={onLoad}
-                            onError={onError}
                         />
                     </div>
                 </div>

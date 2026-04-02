@@ -40,8 +40,7 @@ export const getStreamData = async (
         sortedData.forEach((s: StreamLink) => {
             const mapped = getMappedQuality(s.quality);
             const audio = String(s.audio || 'sub').toLowerCase();
-            const provider = String(s.provider || 'unknown').toLowerCase();
-            const key = `${audio}:${provider}:${mapped}`;
+            const key = `${audio}:${mapped}`;
             if (!qualityMap.has(key)) {
                 qualityMap.set(key, s);
             }
