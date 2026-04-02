@@ -4,8 +4,8 @@ import { getBrowserInstance } from '../utils/browser';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
-const BASE_URL = 'https://animepahe.si';
-const API_URL = 'https://animepahe.si/api';
+const BASE_URL = 'https://animepahe.com';
+const API_URL = 'https://animepahe.com/api';
 
 export interface AnimeSearchResult {
     id: string;
@@ -168,7 +168,7 @@ export class AnimePaheScraper {
         const sourceHtml = String(html || '');
         const normalizedHtml = sourceHtml.toLowerCase();
         if (
-            normalizedHtml.includes('checking your browser before accessing animepahe.si') ||
+            normalizedHtml.includes('checking your browser before accessing animepahe.com') ||
             normalizedHtml.includes('ddos-guard') ||
             normalizedHtml.includes('why do i have to complete a captcha')
         ) {
