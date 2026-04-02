@@ -7,7 +7,6 @@ import { usePlayer } from '../features/player/hooks/usePlayer';
 import EpisodeList from '../features/player/components/EpisodeList';
 import VideoPlayer from '../features/player/components/VideoPlayer';
 import PlayerControls from '../features/player/components/PlayerControls';
-import AnimeDetailsSidebar from '../features/anime/components/AnimeDetailsSidebar';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
 
@@ -32,14 +31,14 @@ export default function WatchPage() {
     }, []);
 
     const getBackdropImage = (value: unknown): string => {
-        const record = (value && typeof value === 'object') ? value as Record<string, any> : null;
+        const record = (value && typeof value === 'object') ? value as Record<string, unknown> : null;
         return (
-            record?.anilist_banner_image ||
-            record?.bannerImage ||
-            record?.main_picture?.large ||
-            record?.main_picture?.medium ||
-            record?.images?.jpg?.large_image_url ||
-            record?.images?.jpg?.image_url ||
+            (typeof record?.anilist_banner_image === 'string' ? record.anilist_banner_image : '') ||
+            (typeof record?.bannerImage === 'string' ? record.bannerImage : '') ||
+            (((record?.main_picture as Record<string, unknown> | undefined)?.large as string | undefined) || '') ||
+            (((record?.main_picture as Record<string, unknown> | undefined)?.medium as string | undefined) || '') ||
+            ((((record?.images as Record<string, unknown> | undefined)?.jpg as Record<string, unknown> | undefined)?.large_image_url as string | undefined) || '') ||
+            ((((record?.images as Record<string, unknown> | undefined)?.jpg as Record<string, unknown> | undefined)?.image_url as string | undefined) || '') ||
             ''
         );
     };
@@ -49,6 +48,7 @@ export default function WatchPage() {
         episodes,
         currentEpisode,
         currentStream,
+
         streams,
         error,
         watchedEpisodes,
@@ -57,6 +57,7 @@ export default function WatchPage() {
         resumeAtSeconds,
         epLoading,
         streamLoading,
+        streamExhausted,
         isExpanded,
         isAutoQuality,
         selectedAudio,
@@ -79,11 +80,12 @@ export default function WatchPage() {
     } = usePlayer(id, title);
 
     const routeSession = extractAnimePaheSession(id);
+    const animeRecord = anime as Record<string, unknown> | null;
     const animeMatch = !!(
         anime && id && (
             String(anime.id) === String(id) ||
             String(anime.mal_id) === String(id) ||
-            (!!routeSession && extractAnimePaheSession((anime as any)?.scraperId) === routeSession)
+            (!!routeSession && extractAnimePaheSession(animeRecord?.scraperId) === routeSession)
         )
     );
     const isPageLoading = !anime || !animeMatch;
@@ -124,9 +126,10 @@ export default function WatchPage() {
                         watchedEpisodes={new Set<number>()}
                         isLoading={true}
                         onEpisodeClick={() => null}
+                        anime={null}
                     />
 
-                    <div className="flex-1 min-w-0 relative bg-black flex flex-col order-1 md:order-2">
+                    <div className="flex-1 min-w-0 relative bg-black flex flex-col order-1 md:order-1">
                         <div className="flex-1 flex items-center justify-center">
                             <div className="w-40 h-24 bg-white/5 rounded-xl animate-pulse" />
                         </div>
@@ -138,8 +141,8 @@ export default function WatchPage() {
     }
 
     // Use any cast to avoid type errors with mismatched interface if needed
-    const animeData: any = anime;
-    const displayTitle = getDisplayTitle(animeData as Record<string, unknown>, language);
+    const animeData = animeRecord as Record<string, unknown>;
+    const displayTitle = getDisplayTitle(animeData, language);
     const backdropImage = getBackdropImage(animeData);
 
     return (
@@ -167,27 +170,18 @@ export default function WatchPage() {
                 </h1>
             </header>
 
-            {/* 2. Main Layout (3 Columns) */}
-            <div className="flex-1 flex flex-col md:flex-row min-h-0 relative z-10 overflow-y-auto md:overflow-hidden">
-
-                {/* COLUMN 1: Episode List (Left Sidebar) */}
-                <EpisodeList
-                    episodes={episodes}
-                    currentEpNumber={epNum}
-                    watchedEpisodes={watchedEpisodes}
-                    isLoading={epLoading || !episodesResolved}
-                    onEpisodeClick={handleEpisodeClick}
-                />
-
-                {/* COLUMN 2: Player (Center) */}
-                <div className="flex-1 min-w-0 relative bg-black flex flex-col order-1 md:order-2">
+            <div className="flex-1 flex flex-col md:flex-row min-h-0 relative z-10 overflow-y-auto md:overflow-hidden gap-0">
+                <div className="flex-1 min-w-0 relative bg-black/30 flex flex-col order-1 md:order-1">
                     {/* Video Player Container */}
                     <VideoPlayer
+                        key={epNum}
                         streamUrl={currentStream?.url}
+                        episodeSession={currentEpisode?.session ?? epNum}
                         isHls={currentStream?.isHls}
                         subtitles={currentStream?.subtitles}
                         isLoading={streamLoading}
                         isExpanded={isExpanded}
+                        streamExhausted={streamExhausted}
                         hasPlayableSource={!currentEpisode || Boolean(currentStream?.url) || streamLoading}
                         onLoad={() => setIsPlayerReady(true)}
                         onError={handleStreamError}
@@ -217,14 +211,16 @@ export default function WatchPage() {
                     />
                 </div>
 
-                {/* COLUMN 3: Anime Details (Right Sidebar) */}
                 {!isExpanded && (
-                    <AnimeDetailsSidebar
+                    <EpisodeList
+                        episodes={episodes}
+                        currentEpNumber={epNum}
+                        watchedEpisodes={watchedEpisodes}
+                        isLoading={epLoading || !episodesResolved}
+                        onEpisodeClick={handleEpisodeClick}
                         anime={anime}
-                        currentId={id || ''}
                     />
                 )}
-
             </div>
         </div>
     );

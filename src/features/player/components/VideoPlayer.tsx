@@ -5,11 +5,13 @@ import type { SubtitleTrack } from '../../../types/stream';
 
 interface VideoPlayerProps {
     streamUrl?: string;
+    episodeSession?: string;
     isHls?: boolean;
     subtitles?: SubtitleTrack[];
     isLoading: boolean;
     isExpanded: boolean;
     hasPlayableSource?: boolean;
+    streamExhausted?: boolean;
     onLoad?: () => void;
     onError?: () => void;
     onProgress?: (progress: { currentTime: number; duration: number; ended?: boolean }) => void;
@@ -18,11 +20,13 @@ interface VideoPlayerProps {
 
 export default function VideoPlayer({
     streamUrl,
+    episodeSession,
     isHls = false,
     subtitles = [],
     isLoading,
     isExpanded,
     hasPlayableSource = true,
+    streamExhausted = false,
     onLoad,
     onError,
     onProgress,
@@ -251,7 +255,7 @@ export default function VideoPlayer({
                 <div className="relative w-full h-full bg-black flex items-center justify-center z-10">
                     <div className="w-full h-full max-w-full max-h-full flex items-center justify-center bg-black">
                         <iframe
-                            key={streamUrl}
+                            key={`${episodeSession ?? ''}::${streamUrl ?? ''}`}
                             src={streamUrl}
                             className="w-full h-full border-0 bg-black"
                             loading="eager"
@@ -263,6 +267,11 @@ export default function VideoPlayer({
                             onError={onError}
                         />
                     </div>
+                </div>
+            ) : streamExhausted ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">
+                    <p className="mt-4 text-red-400">Failed to load playable sources</p>
+                    <p className="text-sm text-gray-500 mt-2">Try selecting another provider or episode.</p>
                 </div>
             ) : !hasPlayableSource ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">

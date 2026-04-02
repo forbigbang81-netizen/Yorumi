@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Settings, RotateCw, Maximize, Minimize } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Settings, RotateCw, Maximize, Minimize, Mic, Subtitles } from 'lucide-react';
 import type { StreamLink } from '../../../types/stream';
 
 interface PlayerControlsProps {
@@ -42,8 +42,8 @@ export default function PlayerControls({
 }: PlayerControlsProps) {
     const selectedStream = streams[selectedStreamIndex];
     const selectedQualityLabel = isAutoQuality
-        ? `Auto ${selectedAudio === 'dub' ? 'DUB' : 'SUB'}`
-        : `${selectedStream?.quality || 'Quality'} ${selectedAudio === 'dub' ? 'DUB' : 'SUB'}`;
+        ? 'Auto'
+        : `${selectedStream?.quality || 'Quality'}`;
     const audioRows = [
         {
             id: 'sub' as const,
@@ -91,8 +91,32 @@ export default function PlayerControls({
                     <ChevronRight className="w-4 h-4" />
                 </button>
 
+                {/* Sub/Dub Toggle */}
+                <button
+                    onClick={() => {
+                        const targetAudio = selectedAudio === 'sub' ? 'dub' : 'sub';
+                        if (availableAudios.includes(targetAudio)) {
+                            onAudioChange(targetAudio);
+                        }
+                    }}
+                    disabled={availableAudios.length <= 1}
+                    className="flex-shrink-0 ml-auto h-10 px-4 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-medium flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed z-10"
+                >
+                    {selectedAudio === 'dub' ? (
+                        <>
+                            <Mic className="w-4 h-4" />
+                            <span className="hidden sm:inline">Dub</span>
+                        </>
+                    ) : (
+                        <>
+                            <Subtitles className="w-4 h-4" />
+                            <span className="hidden sm:inline">Sub</span>
+                        </>
+                    )}
+                </button>
+
                 {/* Quality Selector */}
-                <div className="relative flex-shrink-0 ml-auto z-50">
+                <div className="relative flex-shrink-0 z-50">
                     <button
                         onClick={() => setShowQualityMenu(!showQualityMenu)}
                         className="h-10 px-4 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-medium flex items-center gap-2 transition-colors relative z-10"

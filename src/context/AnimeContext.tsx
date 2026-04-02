@@ -5,6 +5,7 @@ import { useContinueWatching } from '../hooks/useContinueWatching';
 import { storage } from '../utils/storage';
 import { preloadLogos } from '../components/anime/AnimeLogoImage';
 import { useAuth } from './AuthContext';
+import { getDisplayImageUrl } from '../utils/image';
 
 interface AnimeContextType {
     // State
@@ -251,6 +252,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 duration: typeof item?.duration === 'string'
                     ? item.duration
                     : (typeof item?.duration === 'number' ? String(item.duration) : undefined),
+                snapshot: typeof item?.snapshot === 'string'
+                    ? getDisplayImageUrl(item.snapshot)
+                    : undefined,
             });
             seen.add(session);
         });

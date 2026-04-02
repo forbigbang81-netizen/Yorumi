@@ -47,6 +47,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         tryNextStream,
         clearStreams,
         loadStream,
+        bustEpisodeCache,
         prefetchStream
     } = streamsHook;
 
@@ -55,6 +56,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     const [isPlayerReady, setIsPlayerReady] = useState(false);
     const [hasSeenEpisodeFetchStart, setHasSeenEpisodeFetchStart] = useState(false);
     const [episodesResolved, setEpisodesResolved] = useState(false);
+    const [streamExhausted, setStreamExhausted] = useState(false);
     const [startAtOverrideSeconds, setStartAtOverrideSeconds] = useState<number | null>(null);
     const epNumParam = searchParams.get('ep') || '1';
     const resumeAtSeconds = (() => {
@@ -71,7 +73,6 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     const lastSavedProgressRef = useRef<{ at: number; second: number }>({ at: 0, second: -1 });
     const streamErrorRetryRef = useRef<{ url: string; at: number }>({ url: '', at: 0 });
     const autoLoadAttemptKeyRef = useRef<string>('');
-    const emptySourceRetryRef = useRef<{ key: string; count: number }>({ key: '', count: 0 });
     const extractAnimePaheSession = (value: unknown): string => {
         const raw = String(value || '').trim();
         const normalized = raw.startsWith('s:') ? raw.slice(2) : raw;
@@ -102,22 +103,18 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         setHasSeenEpisodeFetchStart(false);
         setEpisodesResolved(false);
         setIsPlayerReady(false);
+        setStreamExhausted(false);
         setStartAtOverrideSeconds(null);
         watchSessionStartedAtRef.current = null;
         lastPlaybackSecondRef.current = null;
         lastDurationSecondRef.current = 0;
         lastSavedProgressRef.current = { at: 0, second: -1 };
         autoLoadAttemptKeyRef.current = '';
-        emptySourceRetryRef.current = { key: '', count: 0 };
     }, [animeId]);
 
     useEffect(() => {
         autoLoadAttemptKeyRef.current = '';
     }, [scraperSession]);
-
-    useEffect(() => {
-        emptySourceRetryRef.current = { key: '', count: 0 };
-    }, [currentEpisode?.session]);
 
     useEffect(() => {
         const currentId = String(animeId || '');
@@ -248,28 +245,11 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         );
     }, [currentEpisode?.session, episodes, prefetchStream, scraperSession]);
 
+    // When loading finishes with no stream result → immediately show exhausted (no retry loop).
     useEffect(() => {
         if (!currentEpisode || currentStream || streamLoading) return;
-
-        const retryKey = `${String(animeId || '')}:${String(currentEpisode.session || currentEpisode.episodeNumber || '')}`;
-        if (emptySourceRetryRef.current.key !== retryKey) {
-            emptySourceRetryRef.current = { key: retryKey, count: 0 };
-        }
-        if (emptySourceRetryRef.current.count >= 3) {
-            return;
-        }
-
-        const timer = window.setTimeout(() => {
-            emptySourceRetryRef.current = {
-                key: retryKey,
-                count: emptySourceRetryRef.current.count + 1
-            };
-            setIsPlayerReady(false);
-            loadStream(currentEpisode);
-        }, 600);
-
-        return () => window.clearTimeout(timer);
-    }, [animeId, currentEpisode, currentStream, streamLoading, loadStream]);
+        setStreamExhausted(true);
+    }, [currentEpisode, currentStream, streamLoading]);
 
     const flushWatchTime = useCallback(() => {
         if (!selectedAnime) return;
@@ -381,8 +361,10 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
             markEpisodeComplete(episodeNumber);
         }
+        bustEpisodeCache(ep.session);
         setStartAtOverrideSeconds(null);
         setIsPlayerReady(false);
+        setStreamExhausted(false);
         setSearchParams({ ep: String(ep.episodeNumber) });
         loadStream(ep);
     };
@@ -392,9 +374,11 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     const reloadPlayer = () => {
         if (currentEpisode) {
             autoLoadAttemptKeyRef.current = '';
+            bustEpisodeCache(currentEpisode.session);
             const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
             setStartAtOverrideSeconds(second > 0 ? second : null);
             setIsPlayerReady(false);
+            setStreamExhausted(false);
             loadStream(currentEpisode);
         }
     };
@@ -463,6 +447,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         epLoading,
         streamLoading,
         isPlayerReady,
+        streamExhausted,
 
         // UI State
         isExpanded,

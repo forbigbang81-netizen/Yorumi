@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { LayoutList, LayoutGrid, Search, ChevronDown } from 'lucide-react';
-import type { Episode } from '../../../types/anime';
+import { LayoutList, LayoutGrid, Search, ArrowUpDown } from 'lucide-react';
+import type { Anime, Episode } from '../../../types/anime';
 
 interface EpisodeListProps {
     episodes: Episode[];
@@ -8,6 +8,7 @@ interface EpisodeListProps {
     watchedEpisodes: Set<number>;
     isLoading: boolean;
     onEpisodeClick: (ep: Episode) => void;
+    anime?: Anime | null;
 }
 
 export default function EpisodeList({
@@ -15,12 +16,12 @@ export default function EpisodeList({
     currentEpNumber,
     watchedEpisodes,
     isLoading,
-    onEpisodeClick
+    onEpisodeClick,
+    anime
 }: EpisodeListProps) {
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [searchEp, setSearchEp] = useState('');
-    const [selectedRange, setSelectedRange] = useState<string>('1-100');
-    const [showRangeMenu, setShowRangeMenu] = useState(false);
+    const [sortAsc, setSortAsc] = useState(true);
 
     // Auto-scroll to active episode
     const activeEpRef = useRef<HTMLButtonElement>(null);
@@ -31,65 +32,81 @@ export default function EpisodeList({
         }
     }, [currentEpNumber, viewMode]);
 
-    // Generate Ranges
-    const ranges: string[] = [];
-    if (episodes.length > 100) {
-        for (let i = 0; i < episodes.length; i += 100) {
-            const start = i + 1;
-            const end = Math.min(i + 100, episodes.length);
-            ranges.push(`${start}-${end}`);
+    // Filter + sort episodes
+    const filteredEpisodes = episodes
+        .filter(ep =>
+            (ep.title?.toLowerCase() || '').includes(searchEp.toLowerCase()) ||
+            ep.episodeNumber.toString().includes(searchEp)
+        )
+        .sort((a, b) => {
+            const diff = parseFloat(a.episodeNumber) - parseFloat(b.episodeNumber);
+            return sortAsc ? diff : -diff;
+        });
+
+    const fallbackThumbnail =
+        anime?.images?.jpg?.large_image_url ||
+        anime?.images?.jpg?.image_url ||
+        anime?.anilist_cover_image ||
+        '';
+
+    const nextEpisode = (() => {
+        const currentNum = parseFloat(currentEpNumber);
+        if (!Number.isFinite(currentNum)) return null;
+        return episodes.find(ep => parseFloat(ep.episodeNumber) === currentNum + 1) || null;
+    })();
+
+    const getEpisodeMeta = (ep: Episode) => {
+        const episodeNumber = parseFloat(String(ep.episodeNumber));
+        const metadata = anime?.episodeMetadata || [];
+
+        if (!Number.isFinite(episodeNumber) || metadata.length === 0) {
+            return null;
         }
-    }
 
-    // Filter Episodes
-    const filteredEpisodes = episodes.filter(ep =>
-        (ep.title?.toLowerCase() || '').includes(searchEp.toLowerCase()) ||
-        ep.episodeNumber.toString().includes(searchEp)
-    ).filter(ep => {
-        if (searchEp) return true; // Ignore range if searching
-        if (ranges.length === 0) return true; // No ranges
-
-        const [start, end] = selectedRange.split('-').map(Number);
-        const epNumVal = parseInt(ep.episodeNumber.toString());
-        if (isNaN(epNumVal)) return true;
-        return epNumVal >= start && epNumVal <= end;
-    });
+        return metadata.find((item) => {
+            const match = item.title?.match(/Episode\s+(\d+)/i);
+            return match && parseFloat(match[1]) === episodeNumber;
+        }) || metadata[episodeNumber - 1] || null;
+    };
 
     return (
-        <aside className="w-full md:w-[350px] shrink-0 flex flex-col h-[500px] md:h-full border-r border-white/10 bg-black/20 overflow-hidden order-2 md:order-1">
-            <div className="p-4 border-b border-white/5">
-                <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+        <aside className="w-full md:w-[380px] xl:w-[420px] shrink-0 flex flex-col h-[480px] md:h-full overflow-hidden order-2 md:order-2 rounded-t-[28px] md:rounded-none md:border-l border-white/10 bg-[linear-gradient(180deg,rgba(12,12,16,0.96),rgba(7,7,10,0.92))] backdrop-blur-xl shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
+            <div className="px-4 pt-4 pb-3 border-b border-white/5 flex flex-col gap-3">
+                {/* Title row */}
+                <div>
+                    <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
+                        {nextEpisode ? `Up Next - Episode ${nextEpisode.episodeNumber}` : 'Up Next'}
+                    </p>
+                    <h3 className="mt-0.5 text-sm font-semibold text-white">
                         Episodes ({episodes.length})
-                        {ranges.length > 1 && (
-                            <div className="relative">
-                                <button
-                                    onClick={() => setShowRangeMenu(!showRangeMenu)}
-                                    className="ml-2 flex items-center gap-1 text-xs bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded text-white transition-colors"
-                                >
-                                    {selectedRange}
-                                    <ChevronDown className="w-3 h-3" />
-                                </button>
-                                {showRangeMenu && (
-                                    <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setShowRangeMenu(false)} />
-                                        <div className="absolute top-full left-0 mt-1 bg-[#1a1a1a] border border-white/10 rounded-lg p-1 min-w-[100px] shadow-xl z-50 max-h-[200px] overflow-y-auto">
-                                            {ranges.map((range) => (
-                                                <button
-                                                    key={range}
-                                                    onClick={() => { setSelectedRange(range); setShowRangeMenu(false); }}
-                                                    className={`w-full text-left px-3 py-1.5 text-xs rounded-md transition-colors ${selectedRange === range ? 'bg-yorumi-accent/20 text-yorumi-accent' : 'text-gray-300 hover:bg-white/10'}`}
-                                                >
-                                                    {range}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        )}
                     </h3>
-                    <div className="flex bg-black/40 rounded-lg p-0.5 border border-white/10">
+                </div>
+
+                {/* Toolbar row: search + sort + view toggle */}
+                <div className="flex items-center gap-2">
+                    {/* Search */}
+                    <div className="relative flex-1">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                        <input
+                            type="text"
+                            placeholder="Search Episode"
+                            value={searchEp}
+                            onChange={(e) => setSearchEp(e.target.value)}
+                            className="w-full bg-black/40 rounded-lg pl-9 pr-3 py-2 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:bg-black/60 transition-colors"
+                        />
+                    </div>
+
+                    {/* Sort toggle */}
+                    <button
+                        onClick={() => setSortAsc(v => !v)}
+                        title={sortAsc ? 'Sort descending' : 'Sort ascending'}
+                        className="flex-shrink-0 p-2 rounded-lg bg-black/40 text-gray-400 hover:text-white hover:bg-black/60 transition-colors"
+                    >
+                        <ArrowUpDown className="w-4 h-4" />
+                    </button>
+
+                    {/* List / Grid toggle */}
+                    <div className="flex flex-shrink-0 bg-black/40 rounded-lg p-0.5">
                         <button
                             onClick={() => setViewMode('list')}
                             className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}
@@ -103,16 +120,6 @@ export default function EpisodeList({
                             <LayoutGrid className="w-4 h-4" />
                         </button>
                     </div>
-                </div>
-                <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                    <input
-                        type="text"
-                        placeholder="Number of Ep"
-                        value={searchEp}
-                        onChange={(e) => setSearchEp(e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-white/20"
-                    />
                 </div>
             </div>
 
@@ -145,19 +152,21 @@ export default function EpisodeList({
                         {filteredEpisodes.map((ep) => {
                             const isCurrent = ep.episodeNumber == currentEpNumber;
                             const isWatched = watchedEpisodes.has(parseFloat(ep.episodeNumber));
+                            const meta = getEpisodeMeta(ep);
                             const cleanTitle = ep.title && ep.title.trim().toLowerCase() !== 'untitled' ? ep.title : null;
-                            const displayTitle = cleanTitle || `Episode ${ep.episodeNumber}`;
+                            const displayTitle = meta?.title?.replace(/^Episode \d+[\s-]*:?/i, '').trim() || cleanTitle || `Episode ${ep.episodeNumber}`;
+                            const previewImage = ep.snapshot || meta?.thumbnail || fallbackThumbnail;
 
                             return (
                                 <button
-                                    key={ep.episodeNumber}
+                                    key={ep.session || ep.episodeNumber}
                                     ref={isCurrent ? activeEpRef : null}
                                     onClick={() => onEpisodeClick(ep)}
                                     className={`
                                         group relative transition-all duration-200
                                         ${viewMode === 'grid'
                                             ? `aspect-square rounded-md flex items-center justify-center border ${isCurrent ? 'bg-yorumi-accent text-white border-yorumi-accent font-bold' : isWatched ? 'bg-white/5 text-gray-600 border-white/10 opacity-50' : 'bg-white/10 border-white/5 hover:bg-white/20 text-gray-400 hover:text-white'}`
-                                            : `w-full px-5 py-3 text-left flex flex-col justify-center ${isCurrent ? 'bg-white/10' : isWatched ? 'opacity-50' : 'hover:bg-white/5'}`
+                                            : `w-full px-4 py-3 text-left flex items-center gap-3 ${isCurrent ? 'bg-[#12324a]' : isWatched ? 'opacity-60' : 'hover:bg-white/[0.045]'}`
                                         }
                                     `}
                                 >
@@ -165,19 +174,39 @@ export default function EpisodeList({
                                         <span className="text-sm">{ep.episodeNumber}</span>
                                     ) : (
                                         <>
-                                            <div className="flex items-center justify-between w-full mb-0.5">
-                                                <span className={`text-sm font-bold ${isCurrent ? 'text-yorumi-accent' : isWatched ? 'text-gray-600' : 'text-gray-400 group-hover:text-white'}`}>
-                                                    EP {ep.episodeNumber}
+                                            <div className="relative h-20 w-[136px] shrink-0 overflow-hidden rounded-2xl bg-white/5">
+                                                {previewImage ? (
+                                                    <img
+                                                        src={previewImage}
+                                                        alt={displayTitle}
+                                                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                        loading="lazy"
+                                                    />
+                                                ) : (
+                                                    <div className="h-full w-full bg-white/5" />
+                                                )}
+                                                <span className="absolute bottom-2 left-2 inline-flex min-w-[44px] items-center justify-center rounded-lg bg-black/70 px-2 py-1 text-xs font-bold text-white">
+                                                    Ep {ep.episodeNumber}
                                                 </span>
-                                                {isCurrent && (
-                                                    <span className="w-8 h-8 rounded-full bg-yorumi-accent flex items-center justify-center">
-                                                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                            </div>
+
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <span className={`block text-lg font-semibold leading-tight ${isCurrent ? 'text-white' : isWatched ? 'text-gray-300' : 'text-gray-100'}`}>
+                                                            Episode {ep.episodeNumber}
+                                                        </span>
+                                                        <span className={`mt-1 block truncate text-sm ${isCurrent ? 'text-blue-50/95' : 'text-gray-400'}`}>
+                                                            {displayTitle}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                {ep.duration && (
+                                                    <span className="mt-2 block text-xs uppercase tracking-[0.18em] text-gray-500">
+                                                        {ep.duration}
                                                     </span>
                                                 )}
                                             </div>
-                                            <span className={`text-sm truncate w-full ${isCurrent ? 'text-white' : 'text-gray-500'}`}>
-                                                {displayTitle}
-                                            </span>
                                         </>
                                     )}
                                 </button>

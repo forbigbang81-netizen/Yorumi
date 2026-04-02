@@ -243,6 +243,11 @@ export function useStreams(scraperSession: string | null) {
         streamCache.current.clear();
     }, []);
 
+    // Invalidate cache for a specific episode so the next loadStream call fetches fresh.
+    const bustEpisodeCache = useCallback((session: string) => {
+        streamCache.current.delete(session);
+    }, []);
+
     return {
         // State
         currentEpisode,
@@ -268,5 +273,6 @@ export function useStreams(scraperSession: string | null) {
         tryNextStream,
         getMappedQuality,
         clearStreams,
+        bustEpisodeCache,
     };
 }

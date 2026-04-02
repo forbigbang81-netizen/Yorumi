@@ -87,4 +87,5 @@ export interface Episode {
     episodeNumber: string;
     duration?: string;
     title?: string;
+    snapshot?: string;
 }
