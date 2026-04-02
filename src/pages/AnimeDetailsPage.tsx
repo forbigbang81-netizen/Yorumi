@@ -208,6 +208,23 @@ export default function AnimeDetailsPage() {
         return <DetailsPageSkeleton />;
     }
 
+    const hasResolvedTitle = Boolean(
+        selectedAnime.title?.trim() ||
+        selectedAnime.title_english?.trim() ||
+        selectedAnime.title_romaji?.trim() ||
+        selectedAnime.title_japanese?.trim()
+    );
+    const hasResolvedArtwork = Boolean(
+        selectedAnime.images?.jpg?.large_image_url?.trim() ||
+        selectedAnime.images?.jpg?.image_url?.trim() ||
+        selectedAnime.anilist_banner_image?.trim()
+    );
+    const shouldShowPrimarySkeleton = detailsLoading && (!hasResolvedTitle || !hasResolvedArtwork);
+
+    if (shouldShowPrimarySkeleton) {
+        return <DetailsPageSkeleton />;
+    }
+
     const isUnreleased = selectedAnime.status === 'NOT_YET_RELEASED';
     const hasEpisodes = episodes.length > 0;
     const hasCharacters = Boolean(selectedAnime.characters?.edges?.length);
