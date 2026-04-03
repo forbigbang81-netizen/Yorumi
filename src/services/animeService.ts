@@ -18,6 +18,15 @@ const normalizeProxyUrl = (url?: string) => {
     if (url.startsWith('/api/')) return `${API_ORIGIN}${url}`;
     return url;
 };
+const getExpectedEpisodeCount = (anime?: Partial<Anime> | null) =>
+    Number(anime?.latestEpisode || anime?.episodes || 0);
+const hasSufficientEpisodePayload = (anime: Partial<Anime> | null | undefined, payload: any) => {
+    const episodes = Array.isArray(payload?.episodes) ? payload.episodes : [];
+    if (episodes.length === 0) return false;
+    const expectedEpisodes = getExpectedEpisodeCount(anime);
+    if (expectedEpisodes > 0 && episodes.length < expectedEpisodes) return false;
+    return true;
+};
 
 // Helper to map AniList response to our Anime interface format
 const mapAnilistToAnime = (item: any) => {
@@ -541,9 +550,10 @@ export const animeService = {
         const cacheKey = getAnimeDetailsFastCacheKey(id);
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) {
+            const cachedAnime = (cached as any)?.data as Anime | null | undefined;
             const cachedEpisodes = Array.isArray((cached as any)?.episodes) ? (cached as any).episodes : [];
             const cachedSession = String((cached as any)?.scraperSession || '').trim();
-            if (cachedEpisodes.length > 0 || cachedSession) {
+            if (hasSufficientEpisodePayload(cachedAnime, { episodes: cachedEpisodes }) || cachedSession) {
                 return cached;
             }
         }
@@ -567,7 +577,7 @@ export const animeService = {
                     episodes: Array.isArray(payload?.episodes) ? payload.episodes : [],
                     scraperSession: payload?.scraperSession ? String(payload.scraperSession) : null,
                 };
-                if (result.episodes.length > 0 || result.scraperSession) {
+                if (hasSufficientEpisodePayload(mappedAnime, result) || result.scraperSession) {
                     setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;
@@ -641,10 +651,17 @@ export const animeService = {
 
 
     // Get episodes from scraper. Backend/Redis is the primary cache layer.
-    async getEpisodes(session: string) {
+    async getEpisodes(session: string, options?: { expectedEpisodes?: number }) {
         const cacheKey = `episodes:v4:${session}`;
+        const expectedEpisodes = Number(options?.expectedEpisodes || 0);
+        const hasEnoughEpisodes = (payload: any) => {
+            const episodes = Array.isArray(payload?.episodes) ? payload.episodes : [];
+            if (episodes.length === 0) return false;
+            if (expectedEpisodes > 0 && episodes.length < expectedEpisodes) return false;
+            return true;
+        };
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
-        if (cached) return cached;
+        if (cached && hasEnoughEpisodes(cached)) return cached;
         if (inFlightRequests.has(cacheKey)) {
             return inFlightRequests.get(cacheKey);
         }
@@ -661,7 +678,9 @@ export const animeService = {
                 if (!docSnap || !docSnap.exists()) return null;
                 const local = docSnap.data();
                 if (!Array.isArray(local?.episodes) || local.episodes.length === 0) return null;
-                return { episodes: local.episodes };
+                const payload = { episodes: local.episodes };
+                if (!hasEnoughEpisodes(payload)) return null;
+                return payload;
             } catch (error) {
                 console.warn("[AnimeService] Firebase read error:", error);
                 return null;

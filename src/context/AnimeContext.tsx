@@ -302,6 +302,17 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    const getExpectedEpisodeCount = (anime: Anime) => {
+        return Number(anime.latestEpisode || anime.episodes || 0);
+    };
+
+    const hasEnoughEpisodes = (anime: Anime, episodeList: Episode[]) => {
+        if (!Array.isArray(episodeList) || episodeList.length === 0) return false;
+        const expectedEpisodes = getExpectedEpisodeCount(anime);
+        if (expectedEpisodes > 0 && episodeList.length < expectedEpisodes) return false;
+        return true;
+    };
+
     const hydrateFastDetails = (fastData: any, fallbackAnime: Anime): Anime => {
         const hydratedAnime = (fastData?.data ? { ...fallbackAnime, ...fastData.data } : { ...fallbackAnime }) as Anime;
         const fastSession = String(fastData?.scraperSession || '').trim();
@@ -315,12 +326,12 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (!Array.isArray(fastData?.episodes) || fastData.episodes.length === 0) return false;
 
         const normalizedFastEpisodes = normalizeEpisodesList(fastData.episodes);
-        const expectedEpisodes = Number(targetAnime.episodes || 0);
+        const expectedEpisodes = getExpectedEpisodeCount(targetAnime);
         const nextEpisodes = (expectedEpisodes > 0 && normalizedFastEpisodes.length > expectedEpisodes)
             ? normalizedFastEpisodes.slice(0, expectedEpisodes)
             : normalizedFastEpisodes;
 
-        if (nextEpisodes.length === 0) return false;
+        if (!hasEnoughEpisodes(targetAnime, nextEpisodes)) return false;
 
         setEpisodes(nextEpisodes);
         if (fastData?.scraperSession) {
@@ -875,13 +886,19 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         if (session) {
             if (episodesCache.current.has(session)) {
-                return { session, eps: episodesCache.current.get(session)! };
+                const cachedEpisodes = episodesCache.current.get(session)!;
+                if (hasEnoughEpisodes(anime, cachedEpisodes)) {
+                    return { session, eps: cachedEpisodes };
+                }
+                episodesCache.current.delete(session);
             } else {
                 try {
-                    const epData = await animeService.getEpisodes(session);
+                    const epData = await animeService.getEpisodes(session, {
+                        expectedEpisodes: getExpectedEpisodeCount(anime),
+                    });
                     const rawEpisodes = epData?.episodes || epData?.ep_details || (Array.isArray(epData) ? epData : []);
                     const normalizedEpisodes = normalizeEpisodesList(rawEpisodes);
-                    const expectedEpisodes = Number(anime.episodes || 0);
+                    const expectedEpisodes = getExpectedEpisodeCount(anime);
                     const newEpisodes = (expectedEpisodes > 0 && normalizedEpisodes.length > expectedEpisodes)
                         ? normalizedEpisodes.slice(0, expectedEpisodes)
                         : normalizedEpisodes;
@@ -898,13 +915,15 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                         }
                         const remappedSession = await resolveSessionBySearch();
                         if (remappedSession && remappedSession !== session) {
-                            const remappedData = await animeService.getEpisodes(remappedSession);
+                            const remappedData = await animeService.getEpisodes(remappedSession, {
+                                expectedEpisodes: getExpectedEpisodeCount(anime),
+                            });
                             const remappedRawEpisodes = remappedData?.episodes || remappedData?.ep_details || (Array.isArray(remappedData) ? remappedData : []);
                             const remappedNormalizedEpisodes = normalizeEpisodesList(remappedRawEpisodes);
                             const remappedEpisodes = (expectedEpisodes > 0 && remappedNormalizedEpisodes.length > expectedEpisodes)
                                 ? remappedNormalizedEpisodes.slice(0, expectedEpisodes)
                                 : remappedNormalizedEpisodes;
-                            if (remappedEpisodes.length > 0) {
+                            if (hasEnoughEpisodes(anime, remappedEpisodes)) {
                                 episodesCache.current.set(remappedSession, remappedEpisodes);
                                 return { session: remappedSession, eps: remappedEpisodes };
                             }
@@ -951,7 +970,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
                     }
 
-                    if (newEpisodes.length > 0) {
+                    if (hasEnoughEpisodes(anime, newEpisodes)) {
                         episodesCache.current.set(session, newEpisodes);
                         // Persist to sessionStorage for instant back-navigation
                         if (cacheKey) writeEpisodeSessionCache(cacheKey, session, newEpisodes);
@@ -974,12 +993,17 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (cacheKey && scraperSessionCache.current.has(cacheKey)) {
             const session = scraperSessionCache.current.get(cacheKey)!;
             if (episodesCache.current.has(session)) {
-                if (isStale()) return;
-                setEpisodes(episodesCache.current.get(session)!);
-                setScraperSession(session);
-                setEpLoading(false);
-                setEpisodesResolved(true);
-                return;
+                const cachedEpisodes = episodesCache.current.get(session)!;
+                if (!hasEnoughEpisodes(anime, cachedEpisodes)) {
+                    episodesCache.current.delete(session);
+                } else {
+                    if (isStale()) return;
+                    setEpisodes(cachedEpisodes);
+                    setScraperSession(session);
+                    setEpLoading(false);
+                    setEpisodesResolved(true);
+                    return;
+                }
             }
         }
 
@@ -987,14 +1011,22 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (cacheKey) {
             const sessionCached = readEpisodeSessionCache(cacheKey);
             if (sessionCached) {
-                if (isStale()) return;
-                scraperSessionCache.current.set(cacheKey, sessionCached.session);
-                episodesCache.current.set(sessionCached.session, sessionCached.episodes);
-                setEpisodes(sessionCached.episodes);
-                setScraperSession(sessionCached.session);
-                setEpLoading(false);
-                setEpisodesResolved(true);
-                return;
+                if (!hasEnoughEpisodes(anime, sessionCached.episodes)) {
+                    try {
+                        sessionStorage.removeItem(`${EPISODE_CACHE_PREFIX}:${cacheKey}`);
+                    } catch {
+                        // Ignore sessionStorage errors
+                    }
+                } else {
+                    if (isStale()) return;
+                    scraperSessionCache.current.set(cacheKey, sessionCached.session);
+                    episodesCache.current.set(sessionCached.session, sessionCached.episodes);
+                    setEpisodes(sessionCached.episodes);
+                    setScraperSession(sessionCached.session);
+                    setEpLoading(false);
+                    setEpisodesResolved(true);
+                    return;
+                }
             }
         }
 

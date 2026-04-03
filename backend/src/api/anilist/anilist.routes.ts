@@ -71,7 +71,7 @@ const rankAgainstAnime = (details: any, candidate: any) => {
     const titleScore = titles.reduce((best, title) => Math.max(best, rankCandidate(title, candidate)), 0);
     let score = titleScore;
 
-    const expectedEpisodes = Number(details?.episodes || 0);
+    const expectedEpisodes = Number(details?.nextAiringEpisode?.episode ? details.nextAiringEpisode.episode - 1 : (details?.episodes || 0));
     const candidateEpisodes = Number(candidate?.episodes || 0);
     if (expectedEpisodes > 0 && candidateEpisodes > 0) {
         const diff = Math.abs(candidateEpisodes - expectedEpisodes);
@@ -114,6 +114,14 @@ const findRankedScraperCandidates = async (details: any) => {
         }))
         .filter((entry) => entry.score > 0)
         .sort((a, b) => b.score - a.score);
+};
+const getExpectedEpisodeCount = (details: any) =>
+    Number(details?.nextAiringEpisode?.episode ? details.nextAiringEpisode.episode - 1 : (details?.episodes || 0));
+const hasSufficientEpisodes = (details: any, episodes: any[]) => {
+    if (!Array.isArray(episodes) || episodes.length === 0) return false;
+    const expectedEpisodes = getExpectedEpisodeCount(details);
+    if (expectedEpisodes > 0 && episodes.length < expectedEpisodes) return false;
+    return true;
 };
 
 const getFreshHomeFastFromMemory = () => {
@@ -434,10 +442,13 @@ router.get('/anime/:id/fast', async (req, res) => {
         if (!id.startsWith('s:')) {
             try {
                 const composedCached = await redis.get<any>(composedCacheKey).catch(() => null);
-                if (composedCached && Array.isArray(composedCached.episodes) && composedCached.episodes.length > 0) {
+                if (composedCached && hasSufficientEpisodes(composedCached.anime, composedCached.episodes)) {
                     res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
                     res.json(composedCached);
                     return;
+                }
+                if (composedCached) {
+                    redis.del(composedCacheKey).catch(() => undefined);
                 }
             } catch { /* fall through */ }
         }
@@ -520,25 +531,28 @@ router.get('/anime/:id/fast', async (req, res) => {
             episodes = Array.isArray(ep?.episodes) ? ep.episodes : [];
         }
 
-        if (episodes.length === 0 && animeDetails && !id.startsWith('s:')) {
+        if (!hasSufficientEpisodes(animeDetails, episodes) && animeDetails && !id.startsWith('s:')) {
             const numericId = parseInt(id, 10);
             if (!Number.isNaN(numericId)) {
                 if (rankedCandidates.length === 0) {
                     rankedCandidates = await findRankedScraperCandidates(animeDetails);
                 }
-                const fallbackCandidate = rankedCandidates.find(
-                    ({ candidate }) => String(candidate?.session || '') !== String(resolvedSession || '')
-                )?.candidate;
-                if (fallbackCandidate?.session) {
-                    resolvedSession = String(fallbackCandidate.session);
+                for (const { candidate } of rankedCandidates) {
+                    const candidateSession = String(candidate?.session || '');
+                    if (!candidateSession || candidateSession === String(resolvedSession || '')) continue;
+
+                    const retry = await scraperService.getEpisodes(candidateSession).catch(() => ({ episodes: [] }));
+                    const retryEpisodes = Array.isArray(retry?.episodes) ? retry.episodes : [];
+                    if (!hasSufficientEpisodes(animeDetails, retryEpisodes)) continue;
+
+                    resolvedSession = candidateSession;
+                    episodes = retryEpisodes;
                     await mappingService.saveMapping(
                         String(numericId),
                         resolvedSession,
-                        String(fallbackCandidate.title || animeDetails?.title?.english || animeDetails?.title?.romaji || '')
+                        String(candidate.title || animeDetails?.title?.english || animeDetails?.title?.romaji || '')
                     ).catch(() => undefined);
-
-                    const retry = await scraperService.getEpisodes(resolvedSession).catch(() => ({ episodes: [] }));
-                    episodes = Array.isArray(retry?.episodes) ? retry.episodes : [];
+                    break;
                 }
             }
         }
@@ -550,7 +564,7 @@ router.get('/anime/:id/fast', async (req, res) => {
         };
 
         // Cache composed response in Redis for 3 minutes
-        if (!id.startsWith('s:') && episodes.length > 0) {
+        if (!id.startsWith('s:') && hasSufficientEpisodes(animeDetails, episodes)) {
             redis.set(composedCacheKey, result, { ex: 180 }).catch(() => undefined);
         }
 
