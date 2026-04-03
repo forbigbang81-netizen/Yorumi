@@ -59,6 +59,7 @@ export class AnimePaheScraper {
         'Accept-Language': 'en-US,en;q=0.9',
         'Referer': BASE_URL,
     };
+    private readonly EPISODE_FETCH_CONCURRENCY = 6;
 
     private async getBrowser(): Promise<Browser> {
         if (!this.browser) {
@@ -301,14 +302,37 @@ export class AnimePaheScraper {
         };
         const isCompletePayload = (episodes: Episode[], lastPage: number) =>
             episodes.length >= getMinimumExpectedEpisodes(lastPage);
+        const fetchRemainingPages = async <T>(
+            startPage: number,
+            lastPage: number,
+            fetcher: (page: number) => Promise<T | null>
+        ) => {
+            const results: Array<{ page: number; payload: T | null }> = [];
+            for (let chunkStart = startPage; chunkStart <= lastPage; chunkStart += this.EPISODE_FETCH_CONCURRENCY) {
+                const chunkPages = Array.from(
+                    { length: Math.min(this.EPISODE_FETCH_CONCURRENCY, lastPage - chunkStart + 1) },
+                    (_, index) => chunkStart + index
+                );
+                const chunkResults = await Promise.all(
+                    chunkPages.map(async (currentPage) => ({
+                        page: currentPage,
+                        payload: await fetcher(currentPage)
+                    }))
+                );
+                results.push(...chunkResults);
+            }
+            return results.sort((a, b) => a.page - b.page);
+        };
         const fetchEpisodesViaApi = async () => {
             const first = await this.fetchApiJson(buildEpisodesApiUrl(pageNum));
             if (!first || !Array.isArray(first?.data)) return null;
 
             const lastPage = Number(first?.last_page || 1);
             const pages = [first];
-            for (let currentPage = pageNum + 1; currentPage <= lastPage; currentPage += 1) {
-                const next = await this.fetchApiJson(buildEpisodesApiUrl(currentPage));
+            const remaining = await fetchRemainingPages(pageNum + 1, lastPage, async (currentPage) =>
+                await this.fetchApiJson(buildEpisodesApiUrl(currentPage))
+            );
+            for (const { payload: next } of remaining) {
                 if (!next || !Array.isArray(next?.data)) {
                     return {
                         episodes: dedupeAndSortEpisodes(
@@ -401,44 +425,71 @@ export class AnimePaheScraper {
 
                 const lastPage = Number(first.parsed.last_page || 1);
                 const pages = [first.parsed];
-
-                for (let currentPage = 2; currentPage <= lastPage; currentPage += 1) {
-                    const nextResponse = await fetch(`/api?m=release&id=${encodeURIComponent(sessionId)}&sort=episode_asc&page=${currentPage}`, {
-                        credentials: 'include',
-                        headers: {
-                            'Accept': 'application/json, text/plain, */*'
-                        }
-                    });
-                    const nextText = await nextResponse.text();
-                    let nextParsed = null;
-                    try {
-                        nextParsed = JSON.parse(nextText);
-                    } catch {
-                        return {
-                            ok: false,
-                            first,
-                            failedPage: currentPage,
-                            failed: {
-                                ok: false,
-                                status: nextResponse.status,
-                                text: nextText
+                const concurrency = 6;
+                for (let chunkStart = 2; chunkStart <= lastPage; chunkStart += concurrency) {
+                    const chunkPages = Array.from(
+                        { length: Math.min(concurrency, lastPage - chunkStart + 1) },
+                        (_, index) => chunkStart + index
+                    );
+                    const chunkResults = await Promise.all(
+                        chunkPages.map(async (currentPage) => {
+                            const nextResponse = await fetch(`/api?m=release&id=${encodeURIComponent(sessionId)}&sort=episode_asc&page=${currentPage}`, {
+                                credentials: 'include',
+                                headers: {
+                                    'Accept': 'application/json, text/plain, */*'
+                                }
+                            });
+                            const nextText = await nextResponse.text();
+                            let nextParsed = null;
+                            try {
+                                nextParsed = JSON.parse(nextText);
+                            } catch {
+                                return {
+                                    page: currentPage,
+                                    ok: false,
+                                    failed: {
+                                        ok: false,
+                                        status: nextResponse.status,
+                                        text: nextText
+                                    }
+                                };
                             }
-                        };
-                    }
 
-                    if (!nextResponse.ok || !nextParsed?.data) {
-                        return {
-                            ok: false,
-                            first,
-                            failedPage: currentPage,
-                            failed: {
-                                ok: nextResponse.ok,
-                                status: nextResponse.status,
+                            if (!nextResponse.ok || !nextParsed?.data) {
+                                return {
+                                    page: currentPage,
+                                    ok: false,
+                                    failed: {
+                                        ok: nextResponse.ok,
+                                        status: nextResponse.status,
+                                        parsed: nextParsed
+                                    }
+                                };
+                            }
+
+                            return {
+                                page: currentPage,
+                                ok: true,
                                 parsed: nextParsed
-                            }
+                            };
+                        })
+                    );
+
+                    const failed = chunkResults.find((entry) => !entry.ok);
+                    if (failed) {
+                        return {
+                            ok: false,
+                            first,
+                            failedPage: failed.page,
+                            failed: failed.failed
                         };
                     }
-                    pages.push(nextParsed);
+
+                    chunkResults
+                        .sort((a, b) => a.page - b.page)
+                        .forEach((entry) => {
+                            if (entry.ok && entry.parsed) pages.push(entry.parsed);
+                        });
                 }
 
                 return { ok: true, pages, lastPage };

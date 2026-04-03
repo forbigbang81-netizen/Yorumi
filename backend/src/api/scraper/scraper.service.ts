@@ -1,5 +1,5 @@
 import { AnimePaheScraper } from '../../scraper/animepahe';
-import { cacheGet, cacheSet } from '../../utils/redis-cache';
+import { acquireLock, cacheGet, cacheSet, releaseLock } from '../../utils/redis-cache';
 
 export class ScraperService {
     private fastScraper: AnimePaheScraper;
@@ -115,16 +115,51 @@ export class ScraperService {
             const minimumExpectedEpisodes = lastPage <= 1 ? 1 : ((Math.floor(lastPage) - 1) * 30) + 1;
             return episodes.length >= minimumExpectedEpisodes;
         };
+        const fullCacheKey = `episodes:full:v1:${session}`;
+        const lockKey = `lock:episodes:${session}`;
+        const fullTtlMs = 24 * 60 * 60 * 1000;
+        const shortTtlMs = 60 * 60 * 1000;
+
+        const fullCached = await cacheGet<any>(fullCacheKey);
+        if (fullCached && isCompleteEpisodePayload(fullCached)) {
+            this.cache.set(`episodes:v7:${session}`, { expiresAt: Date.now() + shortTtlMs, value: fullCached });
+            return fullCached;
+        }
 
         return this.getOrLoad(
             `episodes:v7:${session}`,
-            15 * 60 * 1000,
+            shortTtlMs,
             async () => {
-                const fast = await this.fastScraper.getEpisodes(session);
-                if (Array.isArray(fast.episodes) && fast.episodes.length > 0) {
-                    return fast;
+                const hasLock = await acquireLock(lockKey, 120);
+                if (!hasLock) {
+                    for (let attempt = 0; attempt < 10; attempt += 1) {
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
+                        const waitedCache = await cacheGet<any>(fullCacheKey);
+                        if (waitedCache && isCompleteEpisodePayload(waitedCache)) {
+                            return waitedCache;
+                        }
+                    }
+                    const staleCached = await cacheGet<any>(`episodes:v7:${session}`);
+                    if (staleCached && isCompleteEpisodePayload(staleCached)) {
+                        return staleCached;
+                    }
+                    return { episodes: [], lastPage: 1 };
                 }
-                return { episodes: [], lastPage: 1 };
+
+                try {
+                    const fast = await this.fastScraper.getEpisodes(session);
+                    if (Array.isArray(fast.episodes) && fast.episodes.length > 0) {
+                        if (isCompleteEpisodePayload(fast)) {
+                            cacheSet(fullCacheKey, fast, Math.ceil(fullTtlMs / 1000)).catch((error) => {
+                                console.warn(`[ScraperService] Redis full episode cache set failed for "${fullCacheKey}"`, error);
+                            });
+                        }
+                        return fast;
+                    }
+                    return { episodes: [], lastPage: 1 };
+                } finally {
+                    releaseLock(lockKey).catch(() => undefined);
+                }
             },
             {
                 shouldCache: isCompleteEpisodePayload,
