@@ -1,5 +1,5 @@
 import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, isFirebaseEnabled } from './firebase';
 
 export interface PublicUserProfile {
     uid: string;
@@ -34,6 +34,7 @@ export const userSearchService = {
      * Uses the `searchName` field (lowercased) for Firestore range queries.
      */
     searchUsers: async (queryStr: string, maxResults = 12): Promise<PublicUserProfile[]> => {
+        if (!isFirebaseEnabled || !db) return [];
         try {
             const normalised = queryStr.trim().toLowerCase();
             if (normalised.length < 2) return [];
@@ -83,6 +84,7 @@ export const userSearchService = {
      * Get a list of users for the discovery page when not searching.
      */
     getDiscoverUsers: async (maxResults = 20): Promise<PublicUserProfile[]> => {
+        if (!isFirebaseEnabled || !db) return [];
         try {
             const usersRef = collection(db, 'users');
             const q = query(
@@ -126,6 +128,7 @@ export const userSearchService = {
      * independently and fail gracefully if permissions are missing.
      */
     getUserProfile: async (uid: string): Promise<PublicUserProfile | null> => {
+        if (!isFirebaseEnabled || !db) return null;
         try {
             // Main user document — this MUST succeed
             const docRef = doc(db, 'users', uid);

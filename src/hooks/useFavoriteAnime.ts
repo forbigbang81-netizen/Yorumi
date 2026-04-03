@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { db, isFirebaseEnabled } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 
 export interface FavoriteAnimeItem {
@@ -17,7 +17,7 @@ export function useFavoriteAnime() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user) {
+        if (!user || !isFirebaseEnabled || !db) {
             setFavorites([]);
             setLoading(false);
             return;
@@ -40,7 +40,7 @@ export function useFavoriteAnime() {
     }, [user]);
 
     const addFavorite = useCallback(async (item: Omit<FavoriteAnimeItem, 'addedAt'>) => {
-        if (!user) return;
+        if (!user || !db) return;
         await setDoc(doc(db, 'users', user.uid, 'favoriteAnime', item.id), {
             ...item,
             addedAt: Date.now()
@@ -48,7 +48,7 @@ export function useFavoriteAnime() {
     }, [user]);
 
     const removeFavorite = useCallback(async (id: string) => {
-        if (!user) return;
+        if (!user || !db) return;
         await deleteDoc(doc(db, 'users', user.uid, 'favoriteAnime', id));
     }, [user]);
 

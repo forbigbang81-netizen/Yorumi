@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { doc, onSnapshot, runTransaction } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { db, isFirebaseEnabled } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 
 export interface ActivityData {
@@ -13,7 +13,7 @@ export function useActivityHistory() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user) {
+        if (!user || !isFirebaseEnabled || !db) {
             setActivityData({});
             setLoading(false);
             return;
@@ -38,7 +38,7 @@ export function useActivityHistory() {
     }, [user]);
 
     const recordActivity = useCallback(async (activityKey?: string) => {
-        if (!user) return;
+        if (!user || !db) return;
 
         const date = new Date();
         const year = date.getFullYear();

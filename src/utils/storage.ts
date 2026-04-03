@@ -1,5 +1,5 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, increment, orderBy, query, setDoc, deleteField } from 'firebase/firestore';
-import { auth, db } from '../services/firebase';
+import { auth, db, isFirebaseEnabled } from '../services/firebase';
 
 export interface WatchProgress {
     animeId: string;
@@ -99,7 +99,7 @@ const USER_SUBCOLLECTIONS = {
 const storageMemoryCache = new Map<string, string>();
 
 const getScopedStorageKey = (key: string) => {
-    const uid = auth.currentUser?.uid;
+    const uid = auth?.currentUser?.uid;
     return uid ? `${key}_${uid}` : key;
 };
 
@@ -583,14 +583,14 @@ export const storage = {
 };
 
 const getUserRef = () => {
-    const user = auth.currentUser;
-    if (!user) return null;
+    const user = auth?.currentUser;
+    if (!user || !db) return null;
     return doc(db, 'users', user.uid);
 };
 
 const getUserCollectionRef = (collectionName: typeof USER_SUBCOLLECTIONS[keyof typeof USER_SUBCOLLECTIONS]) => {
-    const user = auth.currentUser;
-    if (!user) return null;
+    const user = auth?.currentUser;
+    if (!user || !db) return null;
     return collection(db, 'users', user.uid, collectionName);
 };
 
@@ -653,6 +653,7 @@ const getOrderedUserSubcollection = async <T>(
 export const syncStorage = {
     // Sync Local -> Cloud
     pushToCloud: async () => {
+        if (!isFirebaseEnabled || !auth || !db) return;
         const userRef = getUserRef();
         if (!userRef) return;
         const episodeHistory = storage.getEpisodeHistory();
@@ -685,6 +686,7 @@ export const syncStorage = {
 
     // Sync Cloud -> Local (Merge)
     pullFromCloud: async () => {
+        if (!isFirebaseEnabled || !auth || !db) return;
         const userRef = getUserRef();
         if (!userRef) return;
 
@@ -900,7 +902,7 @@ const flushCloudSync = async () => {
 };
 
 const scheduleCloudSync = () => {
-    if (!auth.currentUser) return;
+    if (!auth?.currentUser) return;
 
     if (cloudSyncTimer) {
         clearTimeout(cloudSyncTimer);
@@ -930,7 +932,7 @@ const flushWatchTimeTotalIncrement = async () => {
 };
 
 const scheduleWatchTimeTotalIncrement = (seconds: number) => {
-    if (!auth.currentUser) return;
+    if (!auth?.currentUser) return;
 
     const normalized = Math.floor(Number(seconds) || 0);
     if (normalized <= 0) return;
@@ -960,7 +962,7 @@ storage.saveProgress = (progress) => {
             mediaStatus: progress.mediaStatus
         }
     });
-    if (auth.currentUser) {
+    if (auth?.currentUser) {
         const latest = storage.getContinueWatching().find((item) => item.animeId === progress.animeId);
         if (latest) {
             void setUserSubcollectionDoc(USER_SUBCOLLECTIONS.CONTINUE_WATCHING, latest.animeId, latest);
@@ -972,7 +974,7 @@ storage.saveProgress = (progress) => {
 const originalAddToWatchList = storage.addToWatchList;
 storage.addToWatchList = (item, status) => {
     originalAddToWatchList(item, status);
-    if (auth.currentUser) {
+    if (auth?.currentUser) {
         const latest = storage.getWatchList().find((entry) => entry.id === item.id);
         if (latest) {
             void setUserSubcollectionDoc(USER_SUBCOLLECTIONS.WATCH_LIST, latest.id, latest);
@@ -983,7 +985,7 @@ storage.addToWatchList = (item, status) => {
 const originalRemoveFromWatchList = storage.removeFromWatchList;
 storage.removeFromWatchList = (id) => {
     originalRemoveFromWatchList(id);
-    if (auth.currentUser) {
+    if (auth?.currentUser) {
         void deleteUserSubcollectionDoc(USER_SUBCOLLECTIONS.WATCH_LIST, id);
     }
 };
@@ -991,7 +993,7 @@ storage.removeFromWatchList = (id) => {
 const originalAddToReadList = storage.addToReadList;
 storage.addToReadList = (item, status) => {
     originalAddToReadList(item, status);
-    if (auth.currentUser) {
+    if (auth?.currentUser) {
         const latest = storage.getReadList().find((entry) => entry.id === item.id);
         if (latest) {
             void setUserSubcollectionDoc(USER_SUBCOLLECTIONS.READ_LIST, latest.id, latest);
@@ -1011,7 +1013,7 @@ storage.saveReadingProgress = (progress) => {
             mediaStatus: progress.mediaStatus
         }
     });
-    if (auth.currentUser) {
+    if (auth?.currentUser) {
         const latest = storage.getContinueReading().find((item) => item.mangaId === progress.mangaId);
         if (latest) {
             void setUserSubcollectionDoc(USER_SUBCOLLECTIONS.CONTINUE_READING, latest.mangaId, latest);
@@ -1023,7 +1025,7 @@ storage.saveReadingProgress = (progress) => {
 const originalRemoveFromReadList = storage.removeFromReadList;
 storage.removeFromReadList = (id) => {
     originalRemoveFromReadList(id);
-    if (auth.currentUser) {
+    if (auth?.currentUser) {
         void deleteUserSubcollectionDoc(USER_SUBCOLLECTIONS.READ_LIST, id);
     }
 };
@@ -1031,25 +1033,25 @@ storage.removeFromReadList = (id) => {
 const originalMarkEpisodeAsWatched = storage.markEpisodeAsWatched;
 storage.markEpisodeAsWatched = (animeId, episodeNumber) => {
     originalMarkEpisodeAsWatched(animeId, episodeNumber);
-    if (auth.currentUser) scheduleCloudSync();
+    if (auth?.currentUser) scheduleCloudSync();
 };
 
 const originalSetEpisodeHistory = storage.setEpisodeHistory;
 storage.setEpisodeHistory = (history) => {
     originalSetEpisodeHistory(history);
-    if (auth.currentUser) scheduleCloudSync();
+    if (auth?.currentUser) scheduleCloudSync();
 };
 
 const originalMarkChapterAsRead = storage.markChapterAsRead;
 storage.markChapterAsRead = (mangaId, chapterId) => {
     originalMarkChapterAsRead(mangaId, chapterId);
-    if (auth.currentUser) scheduleCloudSync();
+    if (auth?.currentUser) scheduleCloudSync();
 };
 
 const originalAddAnimeWatchTime = storage.addAnimeWatchTime;
 storage.addAnimeWatchTime = (animeId, seconds) => {
     originalAddAnimeWatchTime(animeId, seconds);
-    if (auth.currentUser) scheduleCloudSync();
+    if (auth?.currentUser) scheduleCloudSync();
 };
 
 const originalAddAnimeWatchTimeTotal = storage.addAnimeWatchTimeTotal;
@@ -1061,19 +1063,19 @@ storage.addAnimeWatchTimeTotal = (seconds) => {
 const originalSetAnimeGenreCache = storage.setAnimeGenreCache;
 storage.setAnimeGenreCache = (cache) => {
     originalSetAnimeGenreCache(cache);
-    if (auth.currentUser) scheduleCloudSync();
+    if (auth?.currentUser) scheduleCloudSync();
 };
 
 const originalSetMangaGenreCache = storage.setMangaGenreCache;
 storage.setMangaGenreCache = (cache) => {
     originalSetMangaGenreCache(cache);
-    if (auth.currentUser) scheduleCloudSync();
+    if (auth?.currentUser) scheduleCloudSync();
 };
 
 const originalRemoveFromContinueWatching = storage.removeFromContinueWatching;
 storage.removeFromContinueWatching = (id) => {
     originalRemoveFromContinueWatching(id);
-    if (auth.currentUser) {
+    if (auth?.currentUser) {
         void deleteUserSubcollectionDoc(USER_SUBCOLLECTIONS.CONTINUE_WATCHING, id);
     }
 };
@@ -1081,7 +1083,7 @@ storage.removeFromContinueWatching = (id) => {
 const originalRemoveFromContinueReading = storage.removeFromContinueReading;
 storage.removeFromContinueReading = (id) => {
     originalRemoveFromContinueReading(id);
-    if (auth.currentUser) {
+    if (auth?.currentUser) {
         void deleteUserSubcollectionDoc(USER_SUBCOLLECTIONS.CONTINUE_READING, id);
     }
 };

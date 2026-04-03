@@ -2,7 +2,7 @@
 import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import axios from "axios";
 import type { Anime } from "../types/anime";
-import { db } from "./firebase";
+import { db, isFirebaseEnabled } from "./firebase";
 import { API_BASE } from "../config/api";
 import { getDisplayImageUrl } from "../utils/image";
 
@@ -667,9 +667,10 @@ export const animeService = {
         }
 
         const CACHE_COLLECTION = "anime_episodes_v4";
-        const docRef = doc(db, CACHE_COLLECTION, session);
+        const docRef = db ? doc(db, CACHE_COLLECTION, session) : null;
 
         const readFirebaseEpisodes = async (timeoutMs: number): Promise<{ episodes: any[] } | null> => {
+            if (!isFirebaseEnabled || !docRef) return null;
             try {
                 const docSnap = await Promise.race([
                     getDoc(docRef),
@@ -695,12 +696,14 @@ export const animeService = {
             if (data?.episodes && Array.isArray(data.episodes) && data.episodes.length > 0) {
                 setCache(cacheKey, data, DETAIL_CACHE_TTL);
                 // Persist cache asynchronously; don't block the UI.
-                setDoc(docRef, {
-                    episodes: data.episodes,
-                    lastUpdated: Date.now()
-                }).catch((error) => {
-                    console.warn("[AnimeService] Firebase write error:", error);
-                });
+                if (docRef) {
+                    setDoc(docRef, {
+                        episodes: data.episodes,
+                        lastUpdated: Date.now()
+                    }).catch((error) => {
+                        console.warn("[AnimeService] Firebase write error:", error);
+                    });
+                }
             }
 
             return data;
@@ -742,6 +745,7 @@ export const animeService = {
         const key = String(malId);
         const cached = mappingCache.get(key);
         if (cached) return cached;
+        if (!isFirebaseEnabled || !db) return null;
 
         const docRef = doc(db, "anime_mappings", key);
         try {
@@ -768,6 +772,7 @@ export const animeService = {
         if (!session) return;
         const key = String(malId);
         mappingCache.set(key, session);
+        if (!isFirebaseEnabled || !db) return;
         const docRef = doc(db, "anime_mappings", key);
         try {
             await setDoc(docRef, {
@@ -783,6 +788,7 @@ export const animeService = {
     async clearAnimeMapping(malId: string | number) {
         const key = String(malId);
         mappingCache.delete(key);
+        if (!isFirebaseEnabled || !db) return;
         const docRef = doc(db, "anime_mappings", key);
         try {
             await deleteDoc(docRef);

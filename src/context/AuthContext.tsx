@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { type User, signInWithPopup, signOut, onAuthStateChanged, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, googleProvider, db } from '../services/firebase';
+import { auth, googleProvider, db, isFirebaseEnabled } from '../services/firebase';
 import { getDeterministicAvatar } from '../utils/avatars';
 import { clearLegacyUnscopedProgressStorage, syncStorage } from '../utils/storage';
 import { DEFAULT_BANNER_URL, resolveStaticAssetUrl } from '../config/cloudinaryAssets';
@@ -32,6 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchUserProfile = async (uid: string) => {
+        if (!db) return { avatar: null, banner: null, profileCardBackground: null };
         try {
             const docRef = doc(db, 'users', uid);
             const docSnap = await getDoc(docRef);
@@ -50,6 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const saveUserProfile = async (uid: string, values: { avatar?: string; banner?: string; profileCardBackground?: string; displayName?: string; email?: string; searchName?: string; creationTime?: string }) => {
+        if (!db) return;
         try {
             const docRef = doc(db, 'users', uid);
             await setDoc(docRef, values, { merge: true });
@@ -59,6 +61,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     useEffect(() => {
+        if (!isFirebaseEnabled || !auth) {
+            setUser(null);
+            setAvatar(null);
+            setBanner(null);
+            setProfileCardBackground(null);
+            setIsLoading(false);
+            return () => undefined;
+        }
+
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             setUser(currentUser);
 
@@ -169,6 +180,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     const login = async () => {
+        if (!auth || !googleProvider) return;
         try {
             await signInWithPopup(auth, googleProvider);
         } catch (error) {
@@ -177,6 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const logout = async () => {
+        if (!auth) return;
         try {
             await signOut(auth);
             setAvatar(null);
@@ -186,7 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const updateName = async (name: string) => {
-        if (auth.currentUser) {
+        if (auth?.currentUser) {
             try {
                 await updateProfile(auth.currentUser, { displayName: name });
                 setUser({ ...auth.currentUser, displayName: name });
@@ -205,7 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateAvatar = async (newAvatarPath: string) => {
         setAvatar(newAvatarPath);
 
-        if (auth.currentUser) {
+        if (auth?.currentUser) {
             // Save to DB
             await saveUserProfile(auth.currentUser.uid, { avatar: newAvatarPath });
             // Keep legacy sync for now
@@ -216,7 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateBanner = async (newBannerPath: string) => {
         setBanner(newBannerPath);
 
-        if (auth.currentUser) {
+        if (auth?.currentUser) {
             await saveUserProfile(auth.currentUser.uid, { banner: newBannerPath });
             localStorage.setItem(`banner_${auth.currentUser.uid}`, newBannerPath);
         }
@@ -225,7 +238,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateProfileCardBackground = async (newBackgroundPath: string) => {
         setProfileCardBackground(newBackgroundPath);
 
-        if (auth.currentUser) {
+        if (auth?.currentUser) {
             await saveUserProfile(auth.currentUser.uid, { profileCardBackground: newBackgroundPath });
             localStorage.setItem(`profile_card_bg_${auth.currentUser.uid}`, newBackgroundPath);
         }
