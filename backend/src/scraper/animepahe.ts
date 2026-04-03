@@ -61,6 +61,37 @@ export class AnimePaheScraper {
     };
     private readonly EPISODE_FETCH_CONCURRENCY = 6;
 
+    private async waitForChallengeBypass(page: Page, timeoutMs: number = 60000) {
+        const startedAt = Date.now();
+
+        while (Date.now() - startedAt < timeoutMs) {
+            try {
+                const challengeState = await page.evaluate(() => {
+                    const title = String(document.title || '');
+                    const bodyText = String(document.body?.innerText || '');
+                    const normalized = `${title}\n${bodyText}`.toLowerCase();
+                    const blocked =
+                        normalized.includes('checking your browser before accessing animepahe.com') ||
+                        normalized.includes('ddos-guard');
+                    return {
+                        blocked,
+                        title,
+                    };
+                });
+
+                if (!challengeState.blocked) {
+                    return true;
+                }
+            } catch {
+                // Keep polling until timeout
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+
+        return false;
+    }
+
     private async getBrowser(): Promise<Browser> {
         if (!this.browser) {
             this.browser = await getBrowserInstance();
@@ -73,6 +104,23 @@ export class AnimePaheScraper {
             const response = await axios.get(url, {
                 headers: this.requestHeaders,
                 timeout: 10000,
+                responseType: 'json',
+            });
+            return response.data ?? null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    private async fetchApiJsonWithCookies(url: string, cookieHeader: string, referer?: string): Promise<any | null> {
+        try {
+            const response = await axios.get(url, {
+                headers: {
+                    ...this.requestHeaders,
+                    ...(referer ? { Referer: referer } : {}),
+                    ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+                },
+                timeout: 15000,
                 responseType: 'json',
             });
             return response.data ?? null;
@@ -256,14 +304,7 @@ export class AnimePaheScraper {
                 });
 
                 await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                try {
-                    await page.waitForFunction(
-                        () => !/checking your browser/i.test(document.title) && !/ddos-guard/i.test(document.body.innerText),
-                        { timeout: 12000 }
-                    );
-                } catch {
-                    await new Promise((resolve) => setTimeout(resolve, 8000));
-                }
+                await this.waitForChallengeBypass(page);
                 const html = await page.content();
                 return this.parseAnimeInfoFromHtml(html);
             } catch (fallbackError) {
@@ -278,6 +319,7 @@ export class AnimePaheScraper {
     async getEpisodes(animeSessionId: string, pageNum: number = 1): Promise<{ episodes: Episode[], lastPage: number }> {
         const buildEpisodesApiUrl = (page: number) =>
             `${API_URL}?m=release&id=${animeSessionId}&sort=episode_asc&page=${page}`;
+        const animeUrl = `${BASE_URL}/anime/${animeSessionId}`;
         const mapApiEpisodes = (items: any[]): Episode[] => items.map((item: any) => ({
             id: item.id.toString(),
             session: item.session,
@@ -353,6 +395,89 @@ export class AnimePaheScraper {
                 complete: true,
             };
         };
+        const fetchEpisodesViaSolvedBrowserCookies = async () => {
+            const browser = await this.getBrowser();
+            const page = await browser.newPage();
+            await page.setUserAgent(this.requestHeaders['User-Agent']);
+
+            try {
+                await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await this.waitForChallengeBypass(page, 70000);
+
+                let first: any | null = null;
+                let cookieHeader = '';
+                const apiWaitStartedAt = Date.now();
+                while (Date.now() - apiWaitStartedAt < 90000) {
+                    const cookies = await page.cookies();
+                    cookieHeader = cookies
+                        .map((cookie) => `${cookie.name}=${cookie.value}`)
+                        .join('; ')
+                        .trim();
+
+                    if (cookieHeader) {
+                        first = await this.fetchApiJsonWithCookies(buildEpisodesApiUrl(pageNum), cookieHeader, animeUrl);
+                        if (first && Array.isArray(first?.data)) {
+                            break;
+                        }
+                    }
+
+                    await new Promise((resolve) => setTimeout(resolve, 3000));
+                }
+
+                if (!first || !Array.isArray(first?.data)) return null;
+
+                const lastPage = Number(first?.last_page || 1);
+                const pages = [first];
+
+                for (let currentPage = pageNum + 1; currentPage <= lastPage; currentPage += 1) {
+                    let next: any | null = null;
+
+                    for (let attempt = 0; attempt < 3; attempt += 1) {
+                        const latestCookies = await page.cookies();
+                        const latestCookieHeader = latestCookies
+                            .map((cookie) => `${cookie.name}=${cookie.value}`)
+                            .join('; ')
+                            .trim();
+
+                        next = await this.fetchApiJsonWithCookies(
+                            buildEpisodesApiUrl(currentPage),
+                            latestCookieHeader || cookieHeader,
+                            animeUrl
+                        );
+
+                        if (next && Array.isArray(next?.data)) {
+                            break;
+                        }
+
+                        await new Promise((resolve) => setTimeout(resolve, 2000));
+                    }
+
+                    if (!next || !Array.isArray(next?.data)) {
+                        return {
+                            episodes: dedupeAndSortEpisodes(
+                                pages.flatMap((payload: any) => Array.isArray(payload?.data) ? mapApiEpisodes(payload.data) : [])
+                            ),
+                            lastPage,
+                            complete: false,
+                        };
+                    }
+
+                    pages.push(next);
+                }
+
+                return {
+                    episodes: dedupeAndSortEpisodes(
+                        pages.flatMap((payload: any) => Array.isArray(payload?.data) ? mapApiEpisodes(payload.data) : [])
+                    ),
+                    lastPage,
+                    complete: true,
+                };
+            } catch (error) {
+                return null;
+            } finally {
+                await page.close();
+            }
+        };
 
         const apiResult = await fetchEpisodesViaApi();
         if (apiResult?.episodes.length) {
@@ -360,6 +485,14 @@ export class AnimePaheScraper {
                 return { episodes: apiResult.episodes, lastPage: apiResult.lastPage };
             }
             console.warn(`AnimePahe API returned partial episode list for ${animeSessionId}: ${apiResult.episodes.length}/${apiResult.lastPage} pages`);
+        }
+
+        const solvedCookieResult = await fetchEpisodesViaSolvedBrowserCookies();
+        if (solvedCookieResult?.episodes.length) {
+            if (solvedCookieResult.complete && isCompletePayload(solvedCookieResult.episodes, solvedCookieResult.lastPage)) {
+                return { episodes: solvedCookieResult.episodes, lastPage: solvedCookieResult.lastPage };
+            }
+            console.warn(`AnimePahe solved-cookie episode fetch incomplete for ${animeSessionId}: ${solvedCookieResult.episodes.length}/${solvedCookieResult.lastPage} pages`);
         }
 
         // Puppeteer-first: AnimePahe's API is frequently challenge-protected for long-running series.
@@ -381,16 +514,8 @@ export class AnimePaheScraper {
                 }
             });
 
-            const animeUrl = `${BASE_URL}/anime/${animeSessionId}`;
             await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            try {
-                await page.waitForFunction(
-                    () => !/checking your browser/i.test(document.title) && !/ddos-guard/i.test(document.body.innerText),
-                    { timeout: 12000 }
-                );
-            } catch {
-                await new Promise((resolve) => setTimeout(resolve, 8000));
-            }
+            await this.waitForChallengeBypass(page, 70000);
 
             const browserApiResponse = await page.evaluate(async (sessionId) => {
                 const firstResponse = await fetch(`/api?m=release&id=${encodeURIComponent(sessionId)}&sort=episode_asc&page=1`, {
@@ -540,36 +665,118 @@ export class AnimePaheScraper {
             });
 
             await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await new Promise((resolve) => setTimeout(resolve, 10000));
-            const html = await page.content();
-            const $ = cheerio.load(html);
-            const episodes: Episode[] = [];
+            await this.waitForChallengeBypass(page, 70000);
+            const extractEpisodesFromHtml = (html: string): Episode[] => {
+                const $ = cheerio.load(String(html || ''));
+                const episodes: Episode[] = [];
 
-            $('a.play').each((_, element) => {
-                const href = String($(element).attr('href') || '').trim();
-                if (!href.startsWith('/play/')) return;
+                $('a.play').each((_, element) => {
+                    const href = String($(element).attr('href') || '').trim();
+                    if (!href.startsWith('/play/')) return;
 
-                const title = $(element).text().trim().replace(/^Watch\s*-\s*/i, '').replace(/\s+Online$/i, '').trim();
-                const parts = href.split('/').filter(Boolean);
-                const episodeSession = parts[parts.length - 1];
-                const animeSession = parts[parts.length - 2];
-                if (!episodeSession || !animeSession) return;
+                    const title = $(element).text().trim().replace(/^Watch\s*-\s*/i, '').replace(/\s+Online$/i, '').trim();
+                    const parts = href.split('/').filter(Boolean);
+                    const episodeSession = parts[parts.length - 1];
+                    const animeSession = parts[parts.length - 2];
+                    if (!episodeSession || !animeSession) return;
 
-                const epMatch = title.match(/(\d+(?:\.\d+)?)/);
-                const episodeNumber = epMatch ? Number(epMatch[1]) : NaN;
-                if (!Number.isFinite(episodeNumber)) return;
+                    const epMatch = title.match(/(\d+(?:\.\d+)?)/);
+                    const episodeNumber = epMatch ? Number(epMatch[1]) : NaN;
+                    if (!Number.isFinite(episodeNumber)) return;
 
-                episodes.push({
-                    id: episodeSession,
-                    session: episodeSession,
-                    episodeNumber,
-                    url: href,
-                    title: `Episode ${episodeNumber}`,
+                    episodes.push({
+                        id: episodeSession,
+                        session: episodeSession,
+                        episodeNumber,
+                        url: href,
+                        title: `Episode ${episodeNumber}`,
+                    });
                 });
-            });
 
-            episodes.sort((a, b) => a.episodeNumber - b.episodeNumber);
-            return { episodes, lastPage: 1 };
+                return episodes;
+            };
+            const dedupeAndSortEpisodes = (items: Episode[]): Episode[] => {
+                const bySession = new Map<string, Episode>();
+                items.forEach((episode) => {
+                    const key = String(episode.session || episode.id || episode.episodeNumber);
+                    if (!key) return;
+                    bySession.set(key, episode);
+                });
+                return [...bySession.values()].sort((a, b) => Number(a.episodeNumber) - Number(b.episodeNumber));
+            };
+
+            const extractLastPageFromHtml = (html: string): number => {
+                const $ = cheerio.load(String(html || ''));
+                let lastPage = 1;
+
+                $('[href*="page="], [data-page]').each((_, element) => {
+                    const href = String($(element).attr('href') || '').trim();
+                    const dataPage = String($(element).attr('data-page') || '').trim();
+                    const hrefPageMatch = href.match(/[?&]page=(\d+)/i);
+                    const value = Number(hrefPageMatch?.[1] || dataPage || 0);
+                    if (Number.isFinite(value) && value > lastPage) {
+                        lastPage = Math.floor(value);
+                    }
+                });
+
+                return lastPage;
+            };
+
+            const html = await page.content();
+            const lastPage = extractLastPageFromHtml(html);
+            const pagesHtml: string[] = [html];
+
+            if (lastPage > 1) {
+                const remainingPages = await page.evaluate(
+                    async ({ sessionId, totalPages }) => {
+                        const responses: Array<{ page: number; html: string | null }> = [];
+                        const concurrency = 4;
+
+                        for (let chunkStart = 2; chunkStart <= totalPages; chunkStart += concurrency) {
+                            const chunkPages = Array.from(
+                                { length: Math.min(concurrency, totalPages - chunkStart + 1) },
+                                (_, index) => chunkStart + index
+                            );
+
+                            const chunkResults = await Promise.all(
+                                chunkPages.map(async (currentPage) => {
+                                    try {
+                                        const response = await fetch(
+                                            `/anime/${encodeURIComponent(sessionId)}?page=${currentPage}`,
+                                            {
+                                                credentials: 'include',
+                                                headers: {
+                                                    'Accept': 'text/html,application/xhtml+xml'
+                                                }
+                                            }
+                                        );
+                                        const nextHtml = await response.text();
+                                        return { page: currentPage, html: nextHtml };
+                                    } catch {
+                                        return { page: currentPage, html: null };
+                                    }
+                                })
+                            );
+
+                            responses.push(...chunkResults);
+                        }
+
+                        return responses.sort((a, b) => a.page - b.page);
+                    },
+                    { sessionId: animeSessionId, totalPages: lastPage }
+                );
+
+                for (const result of remainingPages) {
+                    if (typeof result?.html === 'string' && result.html.trim()) {
+                        pagesHtml.push(result.html);
+                    }
+                }
+            }
+
+            const episodes = dedupeAndSortEpisodes(
+                pagesHtml.flatMap((pageHtml) => extractEpisodesFromHtml(pageHtml))
+            );
+            return { episodes, lastPage };
         } catch (error) {
             console.error('Error getting AnimePahe episodes from HTML:', error);
             return { episodes: [], lastPage: 1 };

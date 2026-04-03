@@ -891,94 +891,101 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                     return { session, eps: cachedEpisodes };
                 }
                 episodesCache.current.delete(session);
-            } else {
-                try {
-                    const epData = await animeService.getEpisodes(session, {
-                        expectedEpisodes: getExpectedEpisodeCount(anime),
-                    });
-                    const rawEpisodes = epData?.episodes || epData?.ep_details || (Array.isArray(epData) ? epData : []);
-                    const normalizedEpisodes = normalizeEpisodesList(rawEpisodes);
-                    const expectedEpisodes = getExpectedEpisodeCount(anime);
-                    const newEpisodes = (expectedEpisodes > 0 && normalizedEpisodes.length > expectedEpisodes)
-                        ? normalizedEpisodes.slice(0, expectedEpisodes)
-                        : normalizedEpisodes;
-
-                    // Cached/older mappings can occasionally resolve to a valid session with no episode payload.
-                    // Re-resolve once via search before giving up, so users don't need a manual page reload.
-                    if (newEpisodes.length === 0 && sessionFromCache) {
-                        if (anime.scraperId && String(anime.scraperId).trim() === session) {
-                            delete (anime as Partial<Anime>).scraperId;
-                        }
-                        if (cacheKey) scraperSessionCache.current.delete(cacheKey);
-                        if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
-                            animeService.clearAnimeMapping(mappingKey).catch(() => undefined);
-                        }
-                        const remappedSession = await resolveSessionBySearch();
-                        if (remappedSession && remappedSession !== session) {
-                            const remappedData = await animeService.getEpisodes(remappedSession, {
-                                expectedEpisodes: getExpectedEpisodeCount(anime),
-                            });
-                            const remappedRawEpisodes = remappedData?.episodes || remappedData?.ep_details || (Array.isArray(remappedData) ? remappedData : []);
-                            const remappedNormalizedEpisodes = normalizeEpisodesList(remappedRawEpisodes);
-                            const remappedEpisodes = (expectedEpisodes > 0 && remappedNormalizedEpisodes.length > expectedEpisodes)
-                                ? remappedNormalizedEpisodes.slice(0, expectedEpisodes)
-                                : remappedNormalizedEpisodes;
-                            if (hasEnoughEpisodes(anime, remappedEpisodes)) {
-                                episodesCache.current.set(remappedSession, remappedEpisodes);
-                                return { session: remappedSession, eps: remappedEpisodes };
-                            }
-                        }
-                        return { session: null, eps: [] };
+                if (cacheKey) {
+                    try {
+                        sessionStorage.removeItem(`${EPISODE_CACHE_PREFIX}:${cacheKey}`);
+                    } catch {
+                        // Ignore sessionStorage errors
                     }
+                }
+            }
 
-                    // Enrich with metadata titles if available
-                    if (newEpisodes.length > 0) {
-                        // 1. Try AniList Metadata first (Fast, already in memory)
-                        if (anime.episodeMetadata?.length) {
-                            const metaList = anime.episodeMetadata;
-                            newEpisodes.forEach((ep: Episode) => {
-                                if (!ep.title || ep.title === 'Untitled' || !ep.title.trim()) {
-                                    const epNum = parseFloat(ep.episodeNumber);
-                                    if (!isNaN(epNum)) {
-                                        // Strategy A: Regex match "Episode X"
-                                        let meta = metaList.find(m => {
-                                            const match = m.title?.match(/Episode\s+(\d+)/i);
-                                            return match && parseFloat(match[1]) === epNum;
-                                        });
+            try {
+                const epData = await animeService.getEpisodes(session, {
+                    expectedEpisodes: getExpectedEpisodeCount(anime),
+                });
+                const rawEpisodes = epData?.episodes || epData?.ep_details || (Array.isArray(epData) ? epData : []);
+                const normalizedEpisodes = normalizeEpisodesList(rawEpisodes);
+                const expectedEpisodes = getExpectedEpisodeCount(anime);
+                const newEpisodes = (expectedEpisodes > 0 && normalizedEpisodes.length > expectedEpisodes)
+                    ? normalizedEpisodes.slice(0, expectedEpisodes)
+                    : normalizedEpisodes;
 
-                                        // Strategy B: Array Index Fallback (assuming metadata is compliant and ordered)
-                                        // AniList streamingEpisodes are usually ordered 1..N
-                                        if (!meta && metaList[epNum - 1]) {
-                                            meta = metaList[epNum - 1];
-                                        }
+                // Cached/older mappings can occasionally resolve to a valid session with no episode payload.
+                // Re-resolve once via search before giving up, so users don't need a manual page reload.
+                if (newEpisodes.length === 0 && sessionFromCache) {
+                    if (anime.scraperId && String(anime.scraperId).trim() === session) {
+                        delete (anime as Partial<Anime>).scraperId;
+                    }
+                    if (cacheKey) scraperSessionCache.current.delete(cacheKey);
+                    if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
+                        animeService.clearAnimeMapping(mappingKey).catch(() => undefined);
+                    }
+                    const remappedSession = await resolveSessionBySearch();
+                    if (remappedSession && remappedSession !== session) {
+                        const remappedData = await animeService.getEpisodes(remappedSession, {
+                            expectedEpisodes: getExpectedEpisodeCount(anime),
+                        });
+                        const remappedRawEpisodes = remappedData?.episodes || remappedData?.ep_details || (Array.isArray(remappedData) ? remappedData : []);
+                        const remappedNormalizedEpisodes = normalizeEpisodesList(remappedRawEpisodes);
+                        const remappedEpisodes = (expectedEpisodes > 0 && remappedNormalizedEpisodes.length > expectedEpisodes)
+                            ? remappedNormalizedEpisodes.slice(0, expectedEpisodes)
+                            : remappedNormalizedEpisodes;
+                        if (hasEnoughEpisodes(anime, remappedEpisodes)) {
+                            episodesCache.current.set(remappedSession, remappedEpisodes);
+                            return { session: remappedSession, eps: remappedEpisodes };
+                        }
+                    }
+                    return { session: null, eps: [] };
+                }
 
-                                        if (meta && meta.title) {
-                                            // Clean up "Episode X - Title" format
-                                            const cleanMatch = meta.title.match(/Episode\s+\d+\s*[-:]?\s*(.*)/i);
-                                            if (cleanMatch && cleanMatch[1] && cleanMatch[1].trim()) {
-                                                ep.title = cleanMatch[1].trim();
-                                            } else {
-                                                // Use full title if no prefix found or prefix is everything
-                                                ep.title = meta.title;
-                                            }
+                // Enrich with metadata titles if available
+                if (newEpisodes.length > 0) {
+                    // 1. Try AniList Metadata first (Fast, already in memory)
+                    if (anime.episodeMetadata?.length) {
+                        const metaList = anime.episodeMetadata;
+                        newEpisodes.forEach((ep: Episode) => {
+                            if (!ep.title || ep.title === 'Untitled' || !ep.title.trim()) {
+                                const epNum = parseFloat(ep.episodeNumber);
+                                if (!isNaN(epNum)) {
+                                    // Strategy A: Regex match "Episode X"
+                                    let meta = metaList.find(m => {
+                                        const match = m.title?.match(/Episode\s+(\d+)/i);
+                                        return match && parseFloat(match[1]) === epNum;
+                                    });
+
+                                    // Strategy B: Array Index Fallback (assuming metadata is compliant and ordered)
+                                    // AniList streamingEpisodes are usually ordered 1..N
+                                    if (!meta && metaList[epNum - 1]) {
+                                        meta = metaList[epNum - 1];
+                                    }
+
+                                    if (meta && meta.title) {
+                                        // Clean up "Episode X - Title" format
+                                        const cleanMatch = meta.title.match(/Episode\s+\d+\s*[-:]?\s*(.*)/i);
+                                        if (cleanMatch && cleanMatch[1] && cleanMatch[1].trim()) {
+                                            ep.title = cleanMatch[1].trim();
+                                        } else {
+                                            // Use full title if no prefix found or prefix is everything
+                                            ep.title = meta.title;
                                         }
                                     }
                                 }
-                            });
-                        }
-
-
+                            }
+                        });
                     }
 
-                    if (hasEnoughEpisodes(anime, newEpisodes)) {
-                        episodesCache.current.set(session, newEpisodes);
-                        // Persist to sessionStorage for instant back-navigation
-                        if (cacheKey) writeEpisodeSessionCache(cacheKey, session, newEpisodes);
-                        return { session, eps: newEpisodes };
-                    }
-                } catch (e) {
-                    if (cacheKey) scraperSessionCache.current.delete(cacheKey);
+
                 }
+
+                if (hasEnoughEpisodes(anime, newEpisodes)) {
+                    episodesCache.current.set(session, newEpisodes);
+                    // Persist to sessionStorage for instant back-navigation
+                    if (cacheKey) writeEpisodeSessionCache(cacheKey, session, newEpisodes);
+                    return { session, eps: newEpisodes };
+                }
+            } catch (e) {
+                if (cacheKey) scraperSessionCache.current.delete(cacheKey);
             }
         }
         return { session, eps: [] };

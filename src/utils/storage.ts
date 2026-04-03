@@ -77,6 +77,8 @@ export interface ReadListItem {
 const STORAGE_KEYS = {
     CONTINUE_WATCHING: 'yorumi_continue_watching',
     CONTINUE_READING: 'yorumi_continue_reading',
+    CONTINUE_WATCHING_PENDING_DELETES: 'yorumi_continue_watching_pending_deletes',
+    CONTINUE_READING_PENDING_DELETES: 'yorumi_continue_reading_pending_deletes',
     WATCH_LIST: 'yorumi_watch_list',
     READ_LIST: 'yorumi_read_list',
     EPISODE_HISTORY: 'yorumi_episode_history',
@@ -203,10 +205,35 @@ const emitStorageUpdated = () => {
     }
 };
 
+const getPendingDeleteIds = (key: string): string[] => {
+    try {
+        const data = getScopedItem(key);
+        const parsed = data ? JSON.parse(data) : [];
+        return Array.isArray(parsed) ? parsed.map((value) => String(value)) : [];
+    } catch {
+        return [];
+    }
+};
+
+const addPendingDeleteId = (key: string, id: string) => {
+    const normalizedId = String(id || '').trim();
+    if (!normalizedId) return;
+    const next = Array.from(new Set([...getPendingDeleteIds(key), normalizedId]));
+    setScopedItem(key, JSON.stringify(next));
+};
+
+const removePendingDeleteId = (key: string, id: string) => {
+    const normalizedId = String(id || '').trim();
+    if (!normalizedId) return;
+    const next = getPendingDeleteIds(key).filter((value) => value !== normalizedId);
+    setScopedItem(key, JSON.stringify(next));
+};
+
 export const storage = {
     // Continue Watching
     saveProgress: (progress: Omit<WatchProgress, 'lastWatched'>) => {
         try {
+            removePendingDeleteId(STORAGE_KEYS.CONTINUE_WATCHING_PENDING_DELETES, progress.animeId);
             const current = storage.getContinueWatching();
             const updated = [
                 { ...progress, lastWatched: Date.now() },
@@ -232,6 +259,7 @@ export const storage = {
 
     removeFromContinueWatching: (animeId: string) => {
         try {
+            addPendingDeleteId(STORAGE_KEYS.CONTINUE_WATCHING_PENDING_DELETES, animeId);
             const current = storage.getContinueWatching();
             const updated = current.filter(item => item.animeId !== animeId);
             setScopedItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(updated));
@@ -244,6 +272,7 @@ export const storage = {
     // Continue Reading
     saveReadingProgress: (progress: Omit<ReadProgress, 'lastRead'>) => {
         try {
+            removePendingDeleteId(STORAGE_KEYS.CONTINUE_READING_PENDING_DELETES, progress.mangaId);
             const current = storage.getContinueReading();
             const updated = [
                 { ...progress, lastRead: Date.now() },
@@ -269,6 +298,7 @@ export const storage = {
 
     removeFromContinueReading: (mangaId: string) => {
         try {
+            addPendingDeleteId(STORAGE_KEYS.CONTINUE_READING_PENDING_DELETES, mangaId);
             const current = storage.getContinueReading();
             const updated = current.filter(item => item.mangaId !== mangaId);
             setScopedItem(STORAGE_KEYS.CONTINUE_READING, JSON.stringify(updated));
@@ -736,7 +766,9 @@ export const syncStorage = {
                 }
 
                 const legacyContinueWatching = Array.isArray(data.continueWatching) ? data.continueWatching as WatchProgress[] : [];
-                const continueWatchingSource = cloudContinueWatching.length > 0 ? cloudContinueWatching : legacyContinueWatching;
+                const pendingContinueWatchingDeletes = new Set(getPendingDeleteIds(STORAGE_KEYS.CONTINUE_WATCHING_PENDING_DELETES));
+                const continueWatchingSource = (cloudContinueWatching.length > 0 ? cloudContinueWatching : legacyContinueWatching)
+                    .filter((item: WatchProgress) => !pendingContinueWatchingDeletes.has(String(item.animeId)));
                 if (continueWatchingSource.length > 0) {
                     const local = storage.getContinueWatching();
                     const merged = mergeRecentItems(
@@ -750,7 +782,9 @@ export const syncStorage = {
                 }
 
                 const legacyContinueReading = Array.isArray(data.continueReading) ? data.continueReading as ReadProgress[] : [];
-                const continueReadingSource = cloudContinueReading.length > 0 ? cloudContinueReading : legacyContinueReading;
+                const pendingContinueReadingDeletes = new Set(getPendingDeleteIds(STORAGE_KEYS.CONTINUE_READING_PENDING_DELETES));
+                const continueReadingSource = (cloudContinueReading.length > 0 ? cloudContinueReading : legacyContinueReading)
+                    .filter((item: ReadProgress) => !pendingContinueReadingDeletes.has(String(item.mangaId)));
                 if (continueReadingSource.length > 0) {
                     const local = storage.getContinueReading();
                     const merged = mergeRecentItems(

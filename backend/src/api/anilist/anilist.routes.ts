@@ -11,6 +11,9 @@ const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v1';
 const HOME_FAST_TTL_SECONDS = 120;
 let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
 let homeFastRefreshPromise: Promise<any> | null = null;
+const FORCED_ANIMEPAHE_SESSIONS: Record<number, string> = {
+    21: '086c4017-75aa-5c60-83b4-2099f9c6dfc2', // ONE PIECE
+};
 const isAnimePaheSession = (value: unknown) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 const normalizeTitleToken = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -510,7 +513,14 @@ router.get('/anime/:id/fast', async (req, res) => {
                 return;
             }
 
-            const mapped = await mappingService.getMapping(String(numericId)).catch(() => null);
+            const forcedSession = FORCED_ANIMEPAHE_SESSIONS[numericId];
+            if (forcedSession) {
+                resolvedSession = forcedSession;
+            }
+
+            const mapped = !resolvedSession
+                ? await mappingService.getMapping(String(numericId)).catch(() => null)
+                : null;
             if (mapped?.id) {
                 resolvedSession = String(mapped.id).trim();
             }

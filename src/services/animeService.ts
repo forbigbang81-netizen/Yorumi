@@ -553,7 +553,10 @@ export const animeService = {
             const cachedAnime = (cached as any)?.data as Anime | null | undefined;
             const cachedEpisodes = Array.isArray((cached as any)?.episodes) ? (cached as any).episodes : [];
             const cachedSession = String((cached as any)?.scraperSession || '').trim();
-            if (hasSufficientEpisodePayload(cachedAnime, { episodes: cachedEpisodes }) || cachedSession) {
+            if (hasSufficientEpisodePayload(cachedAnime, { episodes: cachedEpisodes })) {
+                return cached;
+            }
+            if (cachedSession && cachedEpisodes.length === 0) {
                 return cached;
             }
         }
@@ -577,7 +580,7 @@ export const animeService = {
                     episodes: Array.isArray(payload?.episodes) ? payload.episodes : [],
                     scraperSession: payload?.scraperSession ? String(payload.scraperSession) : null,
                 };
-                if (hasSufficientEpisodePayload(mappedAnime, result) || result.scraperSession) {
+                if (hasSufficientEpisodePayload(mappedAnime, result) || (result.scraperSession && result.episodes.length === 0)) {
                     setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;

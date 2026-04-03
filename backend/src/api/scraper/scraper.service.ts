@@ -115,35 +115,51 @@ export class ScraperService {
             const minimumExpectedEpisodes = lastPage <= 1 ? 1 : ((Math.floor(lastPage) - 1) * 30) + 1;
             return episodes.length >= minimumExpectedEpisodes;
         };
-        const fullCacheKey = `episodes:full:v1:${session}`;
+        const waitForFullCache = async (timeoutMs: number) => {
+            const startedAt = Date.now();
+            while (Date.now() - startedAt < timeoutMs) {
+                const waitedCache = await cacheGet<any>(fullCacheKey);
+                if (waitedCache && isCompleteEpisodePayload(waitedCache)) {
+                    return waitedCache;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+            return null;
+        };
+        const fullCacheKey = `episodes:full:v2:${session}`;
         const lockKey = `lock:episodes:${session}`;
         const fullTtlMs = 24 * 60 * 60 * 1000;
         const shortTtlMs = 60 * 60 * 1000;
+        const shortCacheKey = `episodes:v8:${session}`;
 
         const fullCached = await cacheGet<any>(fullCacheKey);
         if (fullCached && isCompleteEpisodePayload(fullCached)) {
-            this.cache.set(`episodes:v7:${session}`, { expiresAt: Date.now() + shortTtlMs, value: fullCached });
+            this.cache.set(shortCacheKey, { expiresAt: Date.now() + shortTtlMs, value: fullCached });
             return fullCached;
         }
 
         return this.getOrLoad(
-            `episodes:v7:${session}`,
+            shortCacheKey,
             shortTtlMs,
             async () => {
-                const hasLock = await acquireLock(lockKey, 120);
+                let hasLock = await acquireLock(lockKey, 90);
                 if (!hasLock) {
-                    for (let attempt = 0; attempt < 10; attempt += 1) {
-                        await new Promise((resolve) => setTimeout(resolve, 1000));
-                        const waitedCache = await cacheGet<any>(fullCacheKey);
-                        if (waitedCache && isCompleteEpisodePayload(waitedCache)) {
-                            return waitedCache;
-                        }
-                    }
-                    const staleCached = await cacheGet<any>(`episodes:v7:${session}`);
+                    const waitedCache = await waitForFullCache(25000);
+                    if (waitedCache) return waitedCache;
+
+                    hasLock = await acquireLock(lockKey, 90);
+                }
+
+                if (!hasLock) {
+                    const staleCached = await cacheGet<any>(shortCacheKey);
                     if (staleCached && isCompleteEpisodePayload(staleCached)) {
                         return staleCached;
                     }
-                    return { episodes: [], lastPage: 1 };
+                    // Last-resort fallback: scrape anyway instead of surfacing an empty episode list.
+                    const fast = await this.fastScraper.getEpisodes(session);
+                    return Array.isArray(fast.episodes) && fast.episodes.length > 0
+                        ? fast
+                        : { episodes: [], lastPage: 1 };
                 }
 
                 try {
