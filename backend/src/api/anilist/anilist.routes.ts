@@ -17,10 +17,16 @@ const FORCED_ANIMEPAHE_SESSIONS: Record<number, string> = {
 const isAnimePaheSession = (value: unknown) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 const normalizeTitleToken = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const hasExplicitSeasonMarker = (title: string) =>
+    /\bseason\s*\d+\b/i.test(String(title || '')) || /\b\d+(st|nd|rd|th)\s*season\b/i.test(String(title || ''));
 const getSeasonNumber = (title: string) => {
     const match = String(title || '').match(/\bseason\s*(\d+)\b/i) || String(title || '').match(/\b(\d+)(st|nd|rd|th)\s*season\b/i);
     return match ? parseInt(match[1], 10) : 1;
 };
+const getTargetSeasonNumber = (details: any) =>
+    buildScraperQueries(details).map((title) => getSeasonNumber(title)).find((season) => season > 1) || 1;
+const hasExplicitSequelSeason = (details: any) =>
+    buildScraperQueries(details).some((title) => hasExplicitSeasonMarker(title) && getSeasonNumber(title) > 1);
 const buildScraperQueries = (details: any): string[] => {
     const queries = new Set<string>();
     const add = (value: unknown) => {
@@ -73,6 +79,10 @@ const rankAgainstAnime = (details: any, candidate: any) => {
     const titles = buildScraperQueries(details);
     const titleScore = titles.reduce((best, title) => Math.max(best, rankCandidate(title, candidate)), 0);
     let score = titleScore;
+    const targetSeason = getTargetSeasonNumber(details);
+    const candidateTitle = String(candidate?.title || '');
+    const candidateSeason = getSeasonNumber(candidateTitle);
+    const candidateHasExplicitSeason = hasExplicitSeasonMarker(candidateTitle);
 
     const expectedEpisodes = Number(details?.nextAiringEpisode?.episode ? details.nextAiringEpisode.episode - 1 : (details?.episodes || 0));
     const candidateEpisodes = Number(candidate?.episodes || 0);
@@ -84,12 +94,19 @@ const rankAgainstAnime = (details: any, candidate: any) => {
         else score -= 35;
     }
 
+    if (targetSeason > 1) {
+        if (candidateHasExplicitSeason && candidateSeason === targetSeason) score += 120;
+        else if (candidateHasExplicitSeason && candidateSeason !== targetSeason) score -= 160;
+        else score -= 60;
+    }
+
     const animeYear = Number(details?.seasonYear || 0);
     const candidateYear = Number(candidate?.year || 0);
     if (animeYear > 0 && candidateYear > 0) {
         const diff = Math.abs(candidateYear - animeYear);
         if (diff === 0) score += 10;
-        else if (diff > 1) score -= 10;
+        else if (diff === 1) score += 4;
+        else score -= 24;
     }
 
     return score;
@@ -117,6 +134,36 @@ const findRankedScraperCandidates = async (details: any) => {
         }))
         .filter((entry) => entry.score > 0)
         .sort((a, b) => b.score - a.score);
+};
+const pickPreferredScraperCandidate = (
+    details: any,
+    rankedCandidates: Array<{ candidate: any; score: number }>,
+    currentSession?: string | null
+) => {
+    if (!Array.isArray(rankedCandidates) || rankedCandidates.length === 0) return null;
+
+    const sequelSeason = hasExplicitSequelSeason(details);
+    const targetSeason = getTargetSeasonNumber(details);
+    const targetYear = Number(details?.seasonYear || 0);
+    const refined = rankedCandidates.filter(({ candidate }) => {
+        const candidateTitle = String(candidate?.title || '');
+        const candidateYear = Number(candidate?.year || 0);
+        if (!sequelSeason) return true;
+        if (!hasExplicitSeasonMarker(candidateTitle)) return false;
+        if (getSeasonNumber(candidateTitle) !== targetSeason) return false;
+        if (targetYear > 0 && candidateYear > 0 && Math.abs(candidateYear - targetYear) > 1) return false;
+        return true;
+    });
+
+    const pool = refined.length > 0 ? refined : rankedCandidates;
+    const preferred = pool[0] || null;
+    if (!preferred) return null;
+
+    if (currentSession && String(preferred.candidate?.session || '') === String(currentSession)) {
+        return preferred;
+    }
+
+    return preferred;
 };
 const getExpectedEpisodeCount = (details: any) =>
     Number(details?.nextAiringEpisode?.episode ? details.nextAiringEpisode.episode - 1 : (details?.episodes || 0));
@@ -527,10 +574,12 @@ router.get('/anime/:id/fast', async (req, res) => {
                 resolvedSession = String(mapped.id).trim();
             }
 
-            if (!resolvedSession) {
+            const shouldForceSeasonRefresh = hasExplicitSequelSeason(animeDetails);
+            if (!resolvedSession || shouldForceSeasonRefresh) {
                 rankedCandidates = await findRankedScraperCandidates(animeDetails);
-                const best = rankedCandidates[0]?.candidate;
-                if (best?.session) {
+                const preferred = pickPreferredScraperCandidate(animeDetails, rankedCandidates, resolvedSession);
+                const best = preferred?.candidate || rankedCandidates[0]?.candidate;
+                if (best?.session && String(best.session) !== String(resolvedSession || '')) {
                     resolvedSession = String(best.session);
                     await mappingService.saveMapping(String(numericId), resolvedSession, String(best.title || animeDetails?.title?.english || animeDetails?.title?.romaji || '')).catch(() => undefined);
                 }

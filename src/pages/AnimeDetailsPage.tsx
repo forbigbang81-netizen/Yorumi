@@ -270,18 +270,8 @@ export default function AnimeDetailsPage() {
                     inFavorites={inFavorites}
                     onWatch={() => {
                         const title = slugify(selectedAnime.title || selectedAnime.title_english || 'anime');
-
-                        let targetEp: number | undefined;
-                        // Smart Logic:
-                        if (selectedAnime.status === 'Finished Airing') {
-                            targetEp = 1;
-                        } else if (selectedAnime.status === 'Currently Airing') {
-                            // Use 'latest' keyword
-                            targetEp = 'latest' as any;
-                        } else {
-                            targetEp = 1;
-                        }
-
+                        const normalizedStatus = String(selectedAnime.status || '').toUpperCase();
+                        const targetEp = normalizedStatus === 'RELEASING' ? 'latest' : 1;
                         navigate(`/anime/watch/${title}/${id}?ep=${targetEp}`);
                     }}
                     onToggleList={handleToggleList}
@@ -361,6 +351,7 @@ export default function AnimeDetailsPage() {
                     {activeTab === 'relations' && (
                         <div className="mt-6">
                             <DetailsRelations
+                                anime={selectedAnime}
                                 relations={selectedAnime.relations}
                                 onAnimeClick={(id) => navigate(`/anime/details/${id}`)}
                             />

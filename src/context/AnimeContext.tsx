@@ -312,6 +312,53 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         return Number(anime.latestEpisode || anime.episodes || 0);
     };
 
+    const getAnimeSeasonNumber = (anime: Partial<Anime> | null | undefined) => {
+        const titles = [
+            anime?.title,
+            anime?.title_english,
+            anime?.title_romaji,
+            anime?.title_japanese,
+        ]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean);
+
+        for (const title of titles) {
+            const match =
+                title.match(/\bseason\s*(\d+)\b/i) ||
+                title.match(/\b(\d+)(st|nd|rd|th)\s*season\b/i);
+            const value = Number(match?.[1] || '');
+            if (Number.isFinite(value) && value > 0) return value;
+        }
+
+        return 1;
+    };
+
+    const trimEpisodesForAnime = (anime: Anime, episodeList: Episode[]) => {
+        const expectedEpisodes = getExpectedEpisodeCount(anime);
+        if (expectedEpisodes <= 0 || episodeList.length <= expectedEpisodes) return episodeList;
+
+        const seasonNumber = getAnimeSeasonNumber(anime);
+        if (seasonNumber <= 1) {
+            return episodeList.slice(0, expectedEpisodes);
+        }
+
+        const parsedNumbers = episodeList
+            .map((episode) => {
+                const parsed = Number(episode.episodeNumber);
+                return Number.isFinite(parsed) ? parsed : NaN;
+            })
+            .filter((value) => Number.isFinite(value));
+        const maxEpisodeNumber = parsedNumbers.length > 0 ? Math.max(...parsedNumbers) : 0;
+
+        // Some sequel pages use absolute numbering (for example ep 73 instead of season-local ep 1).
+        // In that case we keep the newest window instead of slicing from the front.
+        if (maxEpisodeNumber > expectedEpisodes) {
+            return episodeList.slice(-expectedEpisodes);
+        }
+
+        return episodeList.slice(0, expectedEpisodes);
+    };
+
     const hasEnoughEpisodes = (anime: Anime, episodeList: Episode[]) => {
         if (!Array.isArray(episodeList) || episodeList.length === 0) return false;
         const expectedEpisodes = getExpectedEpisodeCount(anime);
@@ -354,10 +401,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (!Array.isArray(fastData?.episodes) || fastData.episodes.length === 0) return false;
 
         const normalizedFastEpisodes = normalizeEpisodesList(fastData.episodes);
-        const expectedEpisodes = getExpectedEpisodeCount(targetAnime);
-        const nextEpisodes = (expectedEpisodes > 0 && normalizedFastEpisodes.length > expectedEpisodes)
-            ? normalizedFastEpisodes.slice(0, expectedEpisodes)
-            : normalizedFastEpisodes;
+        const nextEpisodes = trimEpisodesForAnime(targetAnime, normalizedFastEpisodes);
 
         if (!hasEnoughEpisodes(targetAnime, nextEpisodes)) return false;
 
@@ -970,10 +1014,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 });
                 const rawEpisodes = epData?.episodes || epData?.ep_details || (Array.isArray(epData) ? epData : []);
                 const normalizedEpisodes = normalizeEpisodesList(rawEpisodes);
-                const expectedEpisodes = getExpectedEpisodeCount(anime);
-                const newEpisodes = (expectedEpisodes > 0 && normalizedEpisodes.length > expectedEpisodes)
-                    ? normalizedEpisodes.slice(0, expectedEpisodes)
-                    : normalizedEpisodes;
+                const newEpisodes = trimEpisodesForAnime(anime, normalizedEpisodes);
 
                 // Cached/older mappings can occasionally resolve to a valid session with no episode payload.
                 // Re-resolve once via search before giving up, so users don't need a manual page reload.
@@ -992,9 +1033,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                         });
                         const remappedRawEpisodes = remappedData?.episodes || remappedData?.ep_details || (Array.isArray(remappedData) ? remappedData : []);
                         const remappedNormalizedEpisodes = normalizeEpisodesList(remappedRawEpisodes);
-                        const remappedEpisodes = (expectedEpisodes > 0 && remappedNormalizedEpisodes.length > expectedEpisodes)
-                            ? remappedNormalizedEpisodes.slice(0, expectedEpisodes)
-                            : remappedNormalizedEpisodes;
+                        const remappedEpisodes = trimEpisodesForAnime(anime, remappedNormalizedEpisodes);
                         if (hasEnoughEpisodes(anime, remappedEpisodes)) {
                             episodesCache.current.set(remappedSession, remappedEpisodes);
                             return { session: remappedSession, eps: remappedEpisodes };

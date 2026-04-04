@@ -173,10 +173,21 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
 
         if (episodes.length > 0 && !currentStream && !streamLoading && animeMatch) {
             let targetEp: Episode | undefined;
+            const parsedTargetEpisode = parseEpisodeNumber(epNumParam);
 
             if (epNumParam === 'latest') {
                 const sorted = [...episodes].sort((a, b) => parseFloat(a.episodeNumber) - parseFloat(b.episodeNumber));
                 targetEp = sorted[sorted.length - 1];
+            } else if (Number.isFinite(parsedTargetEpisode) && parsedTargetEpisode > 0) {
+                const sorted = [...episodes].sort(
+                    (a, b) => parseEpisodeNumber(a.episodeNumber) - parseEpisodeNumber(b.episodeNumber)
+                );
+                targetEp =
+                    sorted.find((episode) => parseEpisodeNumber(episode.episodeNumber) === parsedTargetEpisode) ||
+                    [...sorted]
+                        .reverse()
+                        .find((episode) => parseEpisodeNumber(episode.episodeNumber) <= parsedTargetEpisode) ||
+                    sorted[sorted.length - 1];
             } else {
                 targetEp = episodes.find(e => e.episodeNumber == epNumParam) || episodes[0];
             }
