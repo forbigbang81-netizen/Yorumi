@@ -135,8 +135,9 @@ const getFreshHomeFastFromMemory = () => {
 
 const buildHomeFastPayload = async () => {
     const scraper = new HiAnimeScraper();
-    const [spotlight, trending, seasonal, monthly, topAnime, topDay, topWeek, topMonth] = await Promise.all([
+    const [spotlight, latestEpisodes, trending, seasonal, monthly, topAnime, topDay, topWeek, topMonth] = await Promise.all([
         scraper.getEnrichedSpotlight(),
+        scraper.getEnrichedLatestEpisodes(),
         anilistService.getTrendingAnime(1, 10),
         anilistService.getPopularThisSeason(1, 10),
         anilistService.getPopularThisMonth(1, 10),
@@ -148,6 +149,7 @@ const buildHomeFastPayload = async () => {
 
     return {
         spotlight: spotlight?.spotlight || [],
+        latestEpisodes: latestEpisodes?.latestEpisodes || [],
         trending,
         seasonal,
         monthly,

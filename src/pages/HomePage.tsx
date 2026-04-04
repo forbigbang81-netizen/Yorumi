@@ -71,12 +71,14 @@ export default function HomePage() {
     }, [anime.currentPage]);
 
     // Replace full-page loading with AnimeDashboard showing skeletons
-    if (anime.loading && anime.currentPage === 1 && anime.topAnime.length === 0 && anime.spotlightAnime.length === 0 && anime.trendingAnime.length === 0) {
+    if (anime.loading && anime.currentPage === 1 && anime.topAnime.length === 0 && anime.spotlightAnime.length === 0 && anime.latestUpdates.length === 0 && anime.trendingAnime.length === 0) {
         return (
             <div className={`min-h-screen pb-20 ${isCatalogFilterView ? 'pt-24' : ''}`}>
                 <AnimeDashboard
                     spotlightAnime={[]}
                     continueWatchingList={[]}
+                    latestUpdates={[]}
+                    latestUpdatesLoading={true}
                     trendingAnime={[]}
                     trendingLoading={true}
                     popularSeason={[]}
@@ -145,6 +147,21 @@ export default function HomePage() {
         );
     }
 
+    if (anime.viewMode === 'latest') {
+        return (
+            <AnimeGridPage
+                title="Latest Updates"
+                animeList={anime.viewAllAnime}
+                isLoading={anime.viewAllLoading}
+                pagination={anime.viewAllPagination}
+                onPageChange={anime.changeViewAllPage}
+                onBack={anime.closeViewAll}
+                onAnimeClick={handleAnimeClick}
+                onAnimeHover={anime.prefetchEpisodes}
+            />
+        );
+    }
+
     if (anime.viewMode === 'seasonal') {
         return (
             <AnimeGridPage
@@ -181,6 +198,8 @@ export default function HomePage() {
             <AnimeDashboard
                 spotlightAnime={anime.spotlightAnime}
                 continueWatchingList={anime.continueWatchingList}
+                latestUpdates={anime.latestUpdates}
+                latestUpdatesLoading={anime.latestUpdatesLoading}
                 trendingAnime={anime.trendingAnime}
                 trendingLoading={anime.trendingLoading}
                 popularSeason={anime.popularSeason}

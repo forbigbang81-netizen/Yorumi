@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { scraperService } from './scraper.service';
 import axios from 'axios';
+import { HiAnimeScraper } from './hianime.service';
 
 const router = Router();
 const upstreamCookieJar = new Map<string, string>();
+const hiAnimeScraper = new HiAnimeScraper();
 
 const mergeCookieHeader = (existing: string, setCookie: string[]) => {
     const jar = new Map<string, string>();
@@ -74,6 +76,18 @@ router.get('/search', async (req, res) => {
             return res.status(400).json({ error: 'Query parameter q is required' });
         }
         const result = await scraperService.search(query);
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/recently-updated', async (req, res) => {
+    try {
+        const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 18;
+        const result = await hiAnimeScraper.getEnrichedRecentlyUpdated(page, limit);
         res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
         res.json(result);
     } catch (error: any) {

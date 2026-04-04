@@ -11,6 +11,7 @@ interface AnimeContextType {
     // State
     topAnime: Anime[];
     spotlightAnime: Anime[];
+    latestUpdates: Anime[];
     trendingAnime: Anime[];
     popularSeason: Anime[];
     popularMonth: Anime[];
@@ -27,6 +28,7 @@ interface AnimeContextType {
     detailsLoading: boolean;
     loading: boolean;
     spotlightLoading: boolean;
+    latestUpdatesLoading: boolean;
     trendingLoading: boolean;
     popularSeasonLoading: boolean;
     popularMonthLoading: boolean;
@@ -44,7 +46,7 @@ interface AnimeContextType {
         current_page: number;
         has_next_page: boolean;
     };
-    viewMode: 'default' | 'trending' | 'seasonal' | 'continue_watching' | 'popular';
+    viewMode: 'default' | 'latest' | 'trending' | 'seasonal' | 'continue_watching' | 'popular';
 
     // Actions
     setEpisodeSearchQuery: (query: string) => void;
@@ -55,7 +57,7 @@ interface AnimeContextType {
     closeWatch: () => void;
     closeAllModals: () => void;
     changePage: (page: number) => void;
-    openViewAll: (type: 'trending' | 'seasonal' | 'continue_watching' | 'popular') => void;
+    openViewAll: (type: 'latest' | 'trending' | 'seasonal' | 'continue_watching' | 'popular') => void;
     closeViewAll: () => void;
     changeViewAllPage: (page: number) => void;
     prefetchEpisodes: (anime: Anime) => void;
@@ -100,6 +102,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // TTL constants for cache hydration
     const HOME_TTL_TOPTEN = 10 * 60 * 1000;
     const HOME_TTL_SPOTLIGHT = 12 * 60 * 60 * 1000;
+    const HOME_TTL_LATEST = 10 * 60 * 1000;
     const HOME_TTL_TRENDING = 10 * 60 * 1000;
     const HOME_TTL_SEASON = 10 * 60 * 1000;
     const HOME_TTL_MONTH = 10 * 60 * 1000;
@@ -107,6 +110,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // Synchronous cache hydration for instant first render
     const cachedTopTenInit = readHomeCache<{ day: Anime[]; week: Anime[]; month: Anime[] }>('top-ten', HOME_TTL_TOPTEN);
     const cachedSpotlightInit = readHomeCache<Anime[]>('spotlight', HOME_TTL_SPOTLIGHT);
+    const cachedLatestInit = readHomeCache<Anime[]>('latest-updates', HOME_TTL_LATEST);
     const cachedTrendingInit = readHomeCache<Anime[]>('trending', HOME_TTL_TRENDING);
     const cachedSeasonInit = readHomeCache<Anime[]>('popular-season', HOME_TTL_SEASON);
     const cachedMonthInit = readHomeCache<Anime[]>('popular-month', HOME_TTL_MONTH);
@@ -114,6 +118,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // Data State — pre-filled from cache when available
     const [topAnime, setTopAnime] = useState<Anime[]>([]);
     const [spotlightAnime, setSpotlightAnime] = useState<Anime[]>(cachedSpotlightInit ?? []);
+    const [latestUpdates, setLatestUpdates] = useState<Anime[]>(cachedLatestInit ?? []);
     const [trendingAnime, setTrendingAnime] = useState<Anime[]>(cachedTrendingInit ?? []);
     const [popularSeason, setPopularSeason] = useState<Anime[]>(cachedSeasonInit ?? []);
     const [popularMonth, setPopularMonth] = useState<Anime[]>(cachedMonthInit ?? []);
@@ -130,6 +135,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     // Loading States — false when cache provided data
     const [loading, setLoading] = useState(true);
     const [spotlightLoading, setSpotlightLoading] = useState(!cachedSpotlightInit?.length);
+    const [latestUpdatesLoading, setLatestUpdatesLoading] = useState(!cachedLatestInit?.length);
     const [trendingLoading, setTrendingLoading] = useState(!cachedTrendingInit?.length);
     const [popularSeasonLoading, setPopularSeasonLoading] = useState(!cachedSeasonInit?.length);
     const [popularMonthLoading, setPopularMonthLoading] = useState(!cachedMonthInit?.length);
@@ -151,7 +157,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const [episodeSearchQuery, setEpisodeSearchQuery] = useState('');
 
     // View All State
-    const [viewMode, setViewMode] = useState<'default' | 'trending' | 'seasonal' | 'continue_watching' | 'popular'>('default');
+    const [viewMode, setViewMode] = useState<'default' | 'latest' | 'trending' | 'seasonal' | 'continue_watching' | 'popular'>('default');
     const [viewAllAnime, setViewAllAnime] = useState<Anime[]>([]);
     const [viewAllLoading, setViewAllLoading] = useState(false);
     const [viewAllPagination, setViewAllPagination] = useState({
@@ -363,6 +369,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const fetchHomeData = async () => {
         const HOME_TTL = {
             spotlight: 12 * 60 * 60 * 1000,
+            latestUpdates: 10 * 60 * 1000,
             trending: 10 * 60 * 1000,
             popularSeason: 10 * 60 * 1000,
             popularMonth: 10 * 60 * 1000,
@@ -376,6 +383,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 setSpotlightLoading(false);
                 writeHomeCache('spotlight', fast.spotlightAnime);
                 preloadLogos(fast.spotlightAnime.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                applied = true;
+            }
+            if (Array.isArray(fast?.latestUpdates) && fast.latestUpdates.length > 0) {
+                setLatestUpdates(fast.latestUpdates);
+                setLatestUpdatesLoading(false);
+                writeHomeCache('latest-updates', fast.latestUpdates);
+                preloadLogos(fast.latestUpdates.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
                 applied = true;
             }
             if (Array.isArray(fast?.trendingAnime) && fast.trendingAnime.length > 0) {
@@ -423,6 +437,12 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             setSpotlightAnime(cachedSpotlight);
             setSpotlightLoading(false);
             preloadLogos(cachedSpotlight.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+        }
+        const cachedLatest = readHomeCache<Anime[]>('latest-updates', HOME_TTL.latestUpdates);
+        if (cachedLatest?.length) {
+            setLatestUpdates(cachedLatest);
+            setLatestUpdatesLoading(false);
+            preloadLogos(cachedLatest.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
         }
         const cachedTrending = readHomeCache<Anime[]>('trending', HOME_TTL.trending);
         if (cachedTrending?.length) {
@@ -512,6 +532,27 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             finally { setTrendingLoading(false); }
         };
 
+        const fetchLatestUpdates = async () => {
+            if (latestUpdates.length > 0) return;
+            const cached = readHomeCache<Anime[]>('latest-updates', HOME_TTL.latestUpdates);
+            if (cached && cached.length > 0) {
+                setLatestUpdates(cached);
+                setLatestUpdatesLoading(false);
+                preloadLogos(cached.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+            } else {
+                setLatestUpdatesLoading(true);
+            }
+            try {
+                const latestData = await animeService.getLatestUpdates();
+                if (latestData?.data) {
+                    setLatestUpdates(latestData.data);
+                    writeHomeCache('latest-updates', latestData.data);
+                    preloadLogos(latestData.data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                }
+            } catch (e) { console.error(e); }
+            finally { setLatestUpdatesLoading(false); }
+        };
+
         const fetchPopular = async () => {
             if (popularSeason.length > 0) return;
             const cached = readHomeCache<Anime[]>('popular-season', HOME_TTL.popularSeason);
@@ -579,6 +620,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         await Promise.all([
             fetchSpotlight(),
+            fetchLatestUpdates(),
             fetchTrending(),
             fetchPopular(),
             fetchPopularMonth(),
@@ -1325,13 +1367,14 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     // View All Logic
-    const fetchViewAll = async (type: 'trending' | 'seasonal' | 'continue_watching' | 'popular', page: number) => {
+    const fetchViewAll = async (type: 'latest' | 'trending' | 'seasonal' | 'continue_watching' | 'popular', page: number) => {
         if (type === 'continue_watching') return;
 
         setViewAllLoading(true);
         try {
             let data;
-            if (type === 'trending') data = await animeService.getTrendingAnime(page, 18);
+            if (type === 'latest') data = await animeService.getLatestUpdatesPage(page);
+            else if (type === 'trending') data = await animeService.getTrendingAnime(page, 18);
             else if (type === 'seasonal') data = await animeService.getPopularThisSeason(page, 18);
             else if (type === 'popular') data = await animeService.getTopAnime(page); // Re-use getTopAnime for "View All" pagination
 
@@ -1367,9 +1410,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
     return (
         <AnimeContext.Provider value={{
-            topAnime, spotlightAnime, trendingAnime, popularSeason, popularMonth, topTenToday, topTenWeek, topTenMonth, selectedAnime,
+            topAnime, spotlightAnime, latestUpdates, trendingAnime, popularSeason, popularMonth, topTenToday, topTenWeek, topTenMonth, selectedAnime,
             showAnimeDetails, showWatchModal, episodes, scraperSession, epLoading, episodesResolved,
-            detailsLoading, loading, spotlightLoading, trendingLoading, popularSeasonLoading, popularMonthLoading, topTenLoading, currentPage, lastVisiblePage,
+            detailsLoading, loading, spotlightLoading, latestUpdatesLoading, trendingLoading, popularSeasonLoading, popularMonthLoading, topTenLoading, currentPage, lastVisiblePage,
             error, episodeSearchQuery, viewAllAnime, viewAllLoading, viewAllPagination,
             viewMode, setEpisodeSearchQuery, handleAnimeClick, startWatching,
             watchAnime, closeDetails, closeWatch, closeAllModals, changePage,

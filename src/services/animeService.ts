@@ -156,6 +156,38 @@ const mapTopTenItemToAnime = (item: any, index: number): Anime => {
     return anime;
 };
 
+const mapLatestUpdateItemToAnime = (item: any, index: number): Anime => {
+    const anime = item?.anilist
+        ? (mapAnilistToAnime(item.anilist) as Anime)
+        : (mapScraperToAnime(item) as Anime);
+
+    if (item.poster) {
+        const posterUrl = getDisplayImageUrl(item.poster);
+        anime.images.jpg.image_url = posterUrl;
+        anime.images.jpg.large_image_url = posterUrl;
+        anime.anilist_cover_image = posterUrl;
+    }
+
+    anime.title = item.title || anime.title;
+    anime.title_romaji = item.jname || anime.title_romaji;
+    anime.title_english = anime.title_english || item.title;
+    anime.type = item.type || anime.type || 'TV';
+    anime.duration = item.duration || anime.duration;
+    anime.scraperId = item.scraperId || anime.scraperId;
+
+    if (item.latestEpisode && !anime.latestEpisode) {
+        anime.latestEpisode = item.latestEpisode;
+    }
+    if (item.sub && !anime.latestEpisode) {
+        anime.latestEpisode = item.sub;
+    }
+
+    if (!anime.id && item.id) anime.id = item.id;
+    if (!anime.mal_id) anime.mal_id = item.mal_id || item.id || (index + 1);
+
+    return anime;
+};
+
 const hasAvailableEpisodes = (anime: Anime) => {
     const latestEpisode = Number(anime.latestEpisode || 0);
     const totalEpisodes = Number(anime.episodes || 0);
@@ -334,6 +366,9 @@ export const animeService = {
 
                 const result = {
                     spotlightAnime,
+                    latestUpdates: Array.isArray(payload?.latestEpisodes)
+                        ? payload.latestEpisodes.map(mapLatestUpdateItemToAnime)
+                        : [],
                     trendingAnime: (payload?.trending?.media?.map(mapAnilistToAnime) || []).filter(isReleasedTrendingAnime),
                     popularSeason: payload?.seasonal?.media?.map(mapAnilistToAnime) || [],
                     popularMonth: payload?.monthly?.media?.map(mapAnilistToAnime) || [],
@@ -367,6 +402,85 @@ export const animeService = {
     prefetchTopAnimeFormats() {
         const formats: Array<string | undefined> = [undefined, 'MOVIE', 'TV', 'OVA', 'ONA', 'SPECIAL'];
         Promise.allSettled(formats.map((format) => this.getTopAnime(1, format))).catch(() => undefined);
+    },
+
+    async getLatestUpdates() {
+        const cacheKey = 'latest-updates-1-10';
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
+        if (cached) return cached;
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/anilist/home-fast`);
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch latest updates: ${res.statusText}`);
+                }
+
+                const payload = await res.json();
+                const result = {
+                    data: Array.isArray(payload?.latestEpisodes)
+                        ? payload.latestEpisodes.map(mapLatestUpdateItemToAnime)
+                        : []
+                };
+
+                if (result.data.length > 0) {
+                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                }
+
+                return result;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
+    },
+
+    async getLatestUpdatesPage(page: number = 1, limit: number = 18) {
+        const cacheKey = `latest-updates-page-${page}-${limit}`;
+        const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
+        if (cached) return cached;
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/scraper/recently-updated?page=${page}&limit=${limit}`);
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch latest updates page: ${res.statusText}`);
+                }
+
+                const payload = await res.json();
+                const result = {
+                    data: Array.isArray(payload?.data)
+                        ? payload.data.map(mapLatestUpdateItemToAnime)
+                        : [],
+                    pagination: {
+                        last_visible_page: payload?.pagination?.last_visible_page || 1,
+                        current_page: payload?.pagination?.current_page || page,
+                        has_next_page: payload?.pagination?.has_next_page || false
+                    }
+                };
+
+                if (result.data.length > 0) {
+                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                }
+
+                return result;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
     },
 
     // Fetch top anime from AniList (Deduplicated)

@@ -8,6 +8,8 @@ let inMemorySpotlightCache: any = null;
 let isRefreshing = false;
 const inMemoryTop10Cache: Record<string, any> = {};
 const top10Refreshing: Record<string, boolean> = {};
+let inMemoryLatestEpisodesCache: any = null;
+let latestEpisodesRefreshing = false;
 
 export class HiAnimeScraper {
     private readonly BASE_URL = 'https://aniwatchtv.to';
@@ -151,6 +153,154 @@ export class HiAnimeScraper {
             console.error(`Error scraping HiAnime top 10 (${range}):`, error);
             return [];
         }
+    }
+
+    async getLatestEpisodes(): Promise<any[]> {
+        try {
+            const { data } = await axios.get(`${this.BASE_URL}/home`, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': this.BASE_URL
+                },
+                timeout: 10000
+            });
+
+            const $ = cheerio.load(data);
+            const items: any[] = [];
+
+            $('section.block_area_home').each((_, section) => {
+                const heading = $(section).find('.cat-heading').first().text().trim().toLowerCase();
+                if (heading !== 'latest episode') return;
+
+                $(section).find('.film_list-wrap .flw-item').each((__, element) => {
+                    const $el = $(element);
+                    const anchor = $el.find('.film-name a').first();
+                    const title = anchor.text().trim();
+                    const jname = (anchor.attr('data-jname') || '').trim();
+                    const link = anchor.attr('href') || '';
+                    const dataId = $el.find('.film-poster-ahref').attr('data-id') || '';
+                    const poster = $el.find('.film-poster-img').attr('data-src') || $el.find('.film-poster-img').attr('src');
+                    const type = $el.find('.fd-infor .fdi-item').first().text().trim() || 'TV';
+                    const duration = $el.find('.fd-infor .fdi-duration').text().trim();
+                    const subText = $el.find('.tick-item.tick-sub').text() || '';
+                    const dubText = $el.find('.tick-item.tick-dub').text() || '';
+                    const episodeText = $el.find('.tick-item.tick-eps').text() || '';
+                    const sub = parseInt(subText.replace(/\D/g, ''), 10) || 0;
+                    const dub = parseInt(dubText.replace(/\D/g, ''), 10) || 0;
+                    const latestEpisode = parseInt(episodeText.replace(/\D/g, ''), 10) || sub || dub || 0;
+
+                    if (title) {
+                        items.push({
+                            title,
+                            jname,
+                            poster,
+                            type,
+                            duration,
+                            dataId,
+                            link: link ? `${this.BASE_URL}${link}` : '',
+                            sub,
+                            dub,
+                            latestEpisode
+                        });
+                    }
+                });
+            });
+
+            return items;
+        } catch (error) {
+            console.error('Error scraping HiAnime latest episodes:', error);
+            return [];
+        }
+    }
+
+    async getEnrichedLatestEpisodes(): Promise<any> {
+        const cacheKey = 'latest-episodes:hianime:enriched';
+
+        try {
+            const cached = await redis.get<any>(cacheKey);
+            if (cached && Array.isArray(cached.latestEpisodes) && cached.latestEpisodes.length > 0) {
+                inMemoryLatestEpisodesCache = cached;
+                return cached;
+            }
+        } catch (e) {
+            console.error('Redis Error (Get Latest Episodes):', e);
+        }
+
+        if (inMemoryLatestEpisodesCache?.latestEpisodes?.length) {
+            if (!latestEpisodesRefreshing) {
+                this.refreshLatestEpisodesInBackground(cacheKey);
+            }
+            return inMemoryLatestEpisodesCache;
+        }
+
+        return this.fetchAndCacheLatestEpisodes(cacheKey);
+    }
+
+    private async refreshLatestEpisodesInBackground(cacheKey: string): Promise<void> {
+        if (latestEpisodesRefreshing) return;
+
+        latestEpisodesRefreshing = true;
+        try {
+            await this.fetchAndCacheLatestEpisodes(cacheKey);
+        } catch (error) {
+            console.error('Background latest episodes refresh failed:', error);
+        } finally {
+            latestEpisodesRefreshing = false;
+        }
+    }
+
+    private async fetchAndCacheLatestEpisodes(cacheKey: string): Promise<any> {
+        const latestItems = await this.getLatestEpisodes();
+
+        const enrichmentPromises = latestItems.map(async (item: any) => {
+            try {
+                let searchResult = await anilistService.searchAnime(item.title, 1, 1);
+                let anilistMedia = searchResult?.media?.[0];
+
+                if (!anilistMedia && item.jname) {
+                    searchResult = await anilistService.searchAnime(item.jname, 1, 1);
+                    anilistMedia = searchResult?.media?.[0];
+                }
+
+                return {
+                    ...item,
+                    id: anilistMedia?.id || 0,
+                    mal_id: anilistMedia?.idMal || anilistMedia?.id || 0,
+                    anilist: anilistMedia || null
+                };
+            } catch (err) {
+                console.error(`Failed to enrich latest episode item: ${item.title}`, err);
+                return {
+                    ...item,
+                    id: 0,
+                    mal_id: 0,
+                    anilist: null
+                };
+            }
+        });
+
+        const results = await Promise.allSettled(enrichmentPromises);
+        const enrichedItems = results
+            .map((result, index) => result.status === 'fulfilled' ? result.value : {
+                ...latestItems[index],
+                id: 0,
+                mal_id: 0,
+                anilist: null
+            })
+            .filter((item) => item?.title);
+
+        const payload = { latestEpisodes: enrichedItems };
+
+        if (enrichedItems.length > 0) {
+            inMemoryLatestEpisodesCache = payload;
+            try {
+                await redis.set(cacheKey, payload, { ex: 600 });
+            } catch (e) {
+                console.error('Redis Error (Set Latest Episodes):', e);
+            }
+        }
+
+        return payload;
     }
 
     async getEnrichedTopTen(range: 'day' | 'week' | 'month'): Promise<any> {
@@ -414,5 +564,176 @@ export class HiAnimeScraper {
             console.error(`Error scraping info for ${id}:`, error);
             return null;
         }
+    }
+
+    private async scrapeRecentlyUpdatedPage(sourcePage: number): Promise<any> {
+        try {
+            const url = `${this.BASE_URL}/recently-updated?page=${sourcePage}`;
+            const { data } = await axios.get(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': this.BASE_URL
+                },
+                timeout: 10000
+            });
+
+            const $ = cheerio.load(data);
+            const results: any[] = [];
+
+            $('.film_list-wrap .flw-item').each((_, element) => {
+                const $el = $(element);
+                const anchor = $el.find('.film-name a').first();
+                const title = anchor.text().trim();
+                const jname = (anchor.attr('data-jname') || '').trim();
+                const link = anchor.attr('href') || '';
+                const dataId = $el.find('.film-poster-ahref').attr('data-id') || '';
+                const poster = $el.find('.film-poster-img').attr('data-src') || $el.find('.film-poster-img').attr('src');
+                const type = $el.find('.fd-infor .fdi-item').first().text().trim() || 'TV';
+                const duration = $el.find('.fd-infor .fdi-duration').text().trim();
+                const subText = $el.find('.tick-item.tick-sub').text() || '';
+                const dubText = $el.find('.tick-item.tick-dub').text() || '';
+                const episodeText = $el.find('.tick-item.tick-eps').text() || '';
+                const sub = parseInt(subText.replace(/\D/g, ''), 10) || 0;
+                const dub = parseInt(dubText.replace(/\D/g, ''), 10) || 0;
+                const latestEpisode = parseInt(episodeText.replace(/\D/g, ''), 10) || sub || dub || 0;
+
+                if (title) {
+                    results.push({
+                        title,
+                        jname,
+                        poster,
+                        type,
+                        duration,
+                        dataId,
+                        link: link ? `${this.BASE_URL}${link}` : '',
+                        sub,
+                        dub,
+                        latestEpisode
+                    });
+                }
+            });
+
+            let lastPage = sourcePage;
+            const paginationLinks = $('.pre-pagination a')
+                .map((_, el) => {
+                    const href = $(el).attr('href') || '';
+                    const match = href.match(/page=(\d+)/i);
+                    return match ? parseInt(match[1], 10) : null;
+                })
+                .get()
+                .filter((value): value is number => Number.isFinite(value));
+
+            if (paginationLinks.length > 0) {
+                lastPage = Math.max(...paginationLinks);
+            }
+
+            return {
+                data: results,
+                pagination: {
+                    current_page: sourcePage,
+                    last_visible_page: lastPage,
+                    has_next_page: sourcePage < lastPage
+                }
+            };
+        } catch (error) {
+            console.error(`Error scraping recently updated anime page ${sourcePage}:`, error);
+            return {
+                data: [],
+                pagination: {
+                    current_page: sourcePage,
+                    last_visible_page: sourcePage,
+                    has_next_page: false
+                }
+            };
+        }
+    }
+
+    async getRecentlyUpdated(page: number = 1, perPage: number = 18): Promise<any> {
+        const safePage = Math.max(1, page);
+        const safePerPage = Math.max(1, perPage);
+        const firstPage = await this.scrapeRecentlyUpdatedPage(1);
+        const firstPageItems = Array.isArray(firstPage?.data) ? firstPage.data : [];
+        const sourcePageSize = Math.max(1, firstPageItems.length || safePerPage);
+        const lastSourcePage = Math.max(1, Number(firstPage?.pagination?.last_visible_page || 1));
+        const totalItems = sourcePageSize * lastSourcePage;
+        const totalPages = Math.max(1, Math.ceil(totalItems / safePerPage));
+        const normalizedPage = Math.min(safePage, totalPages);
+        const startIndex = (normalizedPage - 1) * safePerPage;
+        const endIndex = startIndex + safePerPage;
+        const startSourcePage = Math.floor(startIndex / sourcePageSize) + 1;
+        const endSourcePage = Math.min(lastSourcePage, Math.floor((endIndex - 1) / sourcePageSize) + 1);
+
+        const listings: any[] = [];
+        for (let currentSourcePage = startSourcePage; currentSourcePage <= endSourcePage; currentSourcePage += 1) {
+            if (currentSourcePage === 1) {
+                listings.push(firstPage);
+            } else {
+                listings.push(await this.scrapeRecentlyUpdatedPage(currentSourcePage));
+            }
+        }
+
+        const mergedItems = listings.flatMap((listing) => Array.isArray(listing?.data) ? listing.data : []);
+        const offsetWithinWindow = startIndex - ((startSourcePage - 1) * sourcePageSize);
+        const pagedItems = mergedItems.slice(offsetWithinWindow, offsetWithinWindow + safePerPage);
+
+        return {
+            data: pagedItems,
+            pagination: {
+                current_page: normalizedPage,
+                last_visible_page: totalPages,
+                has_next_page: normalizedPage < totalPages
+            }
+        };
+    }
+
+    async getEnrichedRecentlyUpdated(page: number = 1, perPage: number = 18): Promise<any> {
+        const listing = await this.getRecentlyUpdated(page, perPage);
+        const items = Array.isArray(listing?.data) ? listing.data : [];
+
+        const enrichmentPromises = items.map(async (item: any) => {
+            try {
+                let searchResult = await anilistService.searchAnime(item.title, 1, 1);
+                let anilistMedia = searchResult?.media?.[0];
+
+                if (!anilistMedia && item.jname) {
+                    searchResult = await anilistService.searchAnime(item.jname, 1, 1);
+                    anilistMedia = searchResult?.media?.[0];
+                }
+
+                return {
+                    ...item,
+                    id: anilistMedia?.id || 0,
+                    mal_id: anilistMedia?.idMal || anilistMedia?.id || 0,
+                    anilist: anilistMedia || null
+                };
+            } catch (err) {
+                console.error(`Failed to enrich recently updated item: ${item.title}`, err);
+                return {
+                    ...item,
+                    id: 0,
+                    mal_id: 0,
+                    anilist: null
+                };
+            }
+        });
+
+        const results = await Promise.allSettled(enrichmentPromises);
+        const enrichedItems = results
+            .map((result, index) => result.status === 'fulfilled' ? result.value : {
+                ...items[index],
+                id: 0,
+                mal_id: 0,
+                anilist: null
+            })
+            .filter((item: any) => item?.title);
+
+        return {
+            data: enrichedItems,
+            pagination: listing?.pagination || {
+                current_page: page,
+                last_visible_page: page,
+                has_next_page: false
+            }
+        };
     }
 }

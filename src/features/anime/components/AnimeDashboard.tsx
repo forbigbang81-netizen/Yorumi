@@ -14,6 +14,8 @@ import TopTenSidebar from './TopTenSidebar';
 interface AnimeDashboardProps {
     spotlightAnime: Anime[];
     continueWatchingList: WatchProgress[];
+    latestUpdates: Anime[];
+    latestUpdatesLoading: boolean;
     trendingAnime: Anime[];
     trendingLoading: boolean;
     popularSeason: Anime[];
@@ -30,7 +32,7 @@ interface AnimeDashboardProps {
     showGenres?: boolean;
     onAnimeClick: (anime: Anime) => void;
     onWatchClick: (anime: Anime, episodeNumber?: number, startSeconds?: number) => void;
-    onViewAll: (type: 'trending' | 'seasonal' | 'continue_watching' | 'popular') => void;
+    onViewAll: (type: 'latest' | 'trending' | 'seasonal' | 'continue_watching' | 'popular') => void;
     onRemoveFromHistory: (animeId: number | string) => void;
     onAnimeHover?: (anime: Anime) => void;
 }
@@ -38,6 +40,8 @@ interface AnimeDashboardProps {
 export default function AnimeDashboard({
     spotlightAnime,
     continueWatchingList,
+    latestUpdates,
+    latestUpdatesLoading,
     trendingAnime,
     trendingLoading,
     popularSeason,
@@ -81,6 +85,18 @@ export default function AnimeDashboard({
                         onViewAll={() => onViewAll('continue_watching')}
                     />
                 )}
+
+            {!compactCatalogMode && (
+                <TrendingNow
+                    animeList={latestUpdates}
+                    title="Latest Updates"
+                    isLoading={latestUpdatesLoading}
+                    onAnimeClick={onAnimeClick}
+                    onWatchClick={onWatchClick}
+                    onViewAll={() => onViewAll('latest')}
+                    onMouseEnter={onAnimeHover}
+                />
+            )}
 
             {!compactCatalogMode && (
                 <TrendingNow

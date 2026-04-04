@@ -8,6 +8,7 @@ import AnimeCardSkeleton from './AnimeCardSkeleton';
 
 interface TrendingNowProps {
     animeList: Anime[];
+    title?: string;
     isLoading?: boolean;
     onAnimeClick: (anime: Anime) => void;
     onWatchClick?: (anime: Anime) => void;
@@ -15,7 +16,15 @@ interface TrendingNowProps {
     onMouseEnter?: (anime: Anime) => void;
 }
 
-const TrendingNow: React.FC<TrendingNowProps> = ({ animeList, isLoading = false, onAnimeClick, onWatchClick, onViewAll, onMouseEnter }) => {
+const TrendingNow: React.FC<TrendingNowProps> = ({
+    animeList,
+    title = 'Trending',
+    isLoading = false,
+    onAnimeClick,
+    onWatchClick,
+    onViewAll,
+    onMouseEnter
+}) => {
     const { language } = useTitleLanguage();
     const [emblaRef, emblaApi] = useEmblaCarousel({
         align: 'center',
@@ -63,7 +72,7 @@ const TrendingNow: React.FC<TrendingNowProps> = ({ animeList, isLoading = false,
     return (
         <section className="relative z-20 mt-4 mb-12">
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-black text-white tracking-wide uppercase">Trending</h2>
+                <h2 className="text-2xl font-black text-white tracking-wide uppercase">{title}</h2>
 
                 <div className="flex items-center gap-4">
                     <div className="flex gap-2">
