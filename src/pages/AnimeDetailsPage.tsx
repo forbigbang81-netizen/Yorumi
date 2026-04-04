@@ -138,6 +138,13 @@ export default function AnimeDetailsPage() {
     const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
     const { isFavorite, addFavorite, removeFavorite } = useFavoriteAnime();
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
+    const [minimumSkeletonDone, setMinimumSkeletonDone] = useState(false);
+
+    useEffect(() => {
+        setMinimumSkeletonDone(false);
+        const timeout = window.setTimeout(() => setMinimumSkeletonDone(true), 220);
+        return () => window.clearTimeout(timeout);
+    }, [id]);
 
     // Derived state for button, but useWatchList is reactive so we can just use isInWatchList(id)
     const animeId = selectedAnime
@@ -219,7 +226,10 @@ export default function AnimeDetailsPage() {
         selectedAnime.images?.jpg?.image_url?.trim() ||
         selectedAnime.anilist_banner_image?.trim()
     );
-    const shouldShowPrimarySkeleton = detailsLoading && (!hasResolvedTitle || !hasResolvedArtwork);
+    const shouldShowPrimarySkeleton =
+        !minimumSkeletonDone ||
+        (detailsLoading && (!hasResolvedTitle || !hasResolvedArtwork)) ||
+        (!hasResolvedTitle && !hasResolvedArtwork);
 
     if (shouldShowPrimarySkeleton) {
         return <DetailsPageSkeleton />;

@@ -147,3 +147,14 @@ html.watch-safe-mode video {
   transform: none !important;
   filter: none !important;
 }
+
+.watch-viewport {
+  min-height: 100vh;
+  min-height: 100svh;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.watch-safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+}

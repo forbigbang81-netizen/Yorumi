@@ -319,6 +319,28 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         return true;
     };
 
+    const hasRenderablePrimaryDetails = (target: Partial<Anime> | null | undefined) => {
+        if (!target) return false;
+        const title = [
+            target.title,
+            target.title_english,
+            target.title_romaji,
+            target.title_japanese,
+        ]
+            .map((value) => String(value || '').trim())
+            .find(Boolean);
+        const artwork = [
+            target.images?.jpg?.large_image_url,
+            target.images?.jpg?.image_url,
+            target.anilist_banner_image,
+            target.anilist_cover_image,
+        ]
+            .map((value) => String(value || '').trim())
+            .find(Boolean);
+
+        return Boolean(title || artwork);
+    };
+
     const hydrateFastDetails = (fastData: any, fallbackAnime: Anime): Anime => {
         const hydratedAnime = (fastData?.data ? { ...fallbackAnime, ...fastData.data } : { ...fallbackAnime }) as Anime;
         const fastSession = String(fastData?.scraperSession || '').trim();
@@ -1206,7 +1228,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         const cachedFast = detailsId ? animeService.peekAnimeDetailsFastCache(detailsId) : null;
         const hydratedAnime = hydrateFastDetails(cachedFast, (cachedDetails?.data || anime) as Anime);
 
-        if (hydratedAnime.images || cachedDetails?.data || cachedFast?.data) {
+        if (hasRenderablePrimaryDetails(hydratedAnime) || cachedDetails?.data || cachedFast?.data) {
             setSelectedAnime(hydratedAnime);
         } else {
             setSelectedAnime(null);
@@ -1221,7 +1243,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         setWatchedEpisodes(new Set());
         setError(null);
-        setDetailsLoading(!(cachedDetails?.data || cachedFast?.data || anime.images));
+        setDetailsLoading(!(cachedDetails?.data || cachedFast?.data || hasRenderablePrimaryDetails(anime)));
 
         if (anime.scraperId && isAnimePaheSession(anime.scraperId)) {
             preloadEpisodes(anime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);

@@ -69,7 +69,7 @@ export default function PlayerControls({
         },
     ];
     return (
-        <div className="p-4">
+        <div className="watch-safe-bottom p-4">
             {/* Controls Row */}
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible">
                 {/* Previous */}

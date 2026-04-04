@@ -237,7 +237,6 @@ export default function Navbar({
                             onSearchSubmit={(e) => {
                                 onSearchSubmit(e, localSearchQuery);
                                 setLocalSearchQuery('');
-                                onClearSearch();
                             }}
                             onClearSearch={handleClearAndFocus}
                             onResultSelect={handleResultSelect}
@@ -312,7 +311,6 @@ export default function Navbar({
                         onSearchSubmit={(e) => {
                             onSearchSubmit(e, localSearchQuery);
                             setLocalSearchQuery('');
-                            onClearSearch();
                             setShowMobileSearch(false);
                         }}
                         onClearSearch={onClearSearch}

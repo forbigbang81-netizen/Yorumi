@@ -92,7 +92,7 @@ export default function WatchPage() {
 
     if (error) {
         return (
-            <div className="flex flex-col items-center justify-center p-12 text-center h-screen w-full bg-[#0a0a0a] text-white">
+            <div className="watch-viewport flex flex-col items-center justify-center p-12 text-center w-full bg-[#0a0a0a] text-white">
                 <h1 className="text-2xl font-bold text-red-400 mb-4">{error}</h1>
                 <button
                     onClick={() => navigate('/')}
@@ -107,7 +107,7 @@ export default function WatchPage() {
 
     if (isPageLoading) {
         return (
-            <div className="flex flex-col h-screen w-full bg-[#0a0a0a] text-white overflow-hidden pt-[60px]">
+            <div className="watch-viewport flex flex-col w-full bg-[#0a0a0a] text-white overflow-hidden pt-[60px]">
                 <header className="h-14 shrink-0 flex items-center px-6 border-b border-white/10 bg-black/40 backdrop-blur-md z-40">
                     <button
                         onClick={() => navigate('/')}
@@ -146,7 +146,7 @@ export default function WatchPage() {
     const backdropImage = getBackdropImage(animeData);
 
     return (
-        <div className="relative flex flex-col h-screen w-full bg-[#0a0a0a] text-white overflow-hidden pt-[60px]">
+        <div className="watch-viewport relative flex flex-col w-full bg-[#0a0a0a] text-white overflow-hidden pt-[60px]">
             {backdropImage && (
                 <>
                     <div

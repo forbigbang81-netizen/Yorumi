@@ -74,7 +74,6 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(({
                 onSelect={onResultSelect}
                 onViewAll={() => {
                     onSearchSubmit({ preventDefault: () => { } } as React.FormEvent, searchQuery);
-                    onClearSearch();
                 }}
                 theme={theme}
             />
