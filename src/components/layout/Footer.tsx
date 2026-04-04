@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Github, Globe } from 'lucide-react';
+import { Github } from 'lucide-react';
 
 const Footer = () => {
     const location = useLocation();
@@ -48,15 +48,19 @@ const Footer = () => {
                             <Github size={20} fill="currentColor" strokeWidth={0} />
                         </a>
 
-                        {/* AniSauce */}
+                        {/* Ko-fi */}
                         <a
-                            href="https://anisauce.vercel.app"
+                            href="https://ko-fi.com/davenarchives"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white transition-all duration-300 hover:bg-[#F97316] hover:scale-110"
-                            title="AniSauce"
+                            className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white transition-all duration-300 hover:bg-[#29ABE0] hover:scale-110"
+                            title="Ko-fi"
                         >
-                            <Globe size={20} />
+                            <img
+                                src="https://cdn.prod.website-files.com/5c14e387dab576fe667689cf/670f5a01229bf8a18f97a3c1_favion.png"
+                                alt="Ko-fi"
+                                className="w-5 h-5 object-contain"
+                            />
                         </a>
                     </div>
                 </div>
