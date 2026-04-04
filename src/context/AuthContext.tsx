@@ -79,7 +79,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                 // Sync data from cloud
                 try {
-                    await syncStorage.pullFromCloud();
+                    await syncStorage.pullFromCloud(currentUser.uid);
+                    await syncStorage.replayPendingWrites(currentUser.uid);
                 } catch (e) {
                     console.error("Failed to sync on login", e);
                 }
@@ -178,6 +179,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        if (!user?.uid) return;
+
+        const flushPendingWrites = () => {
+            void syncStorage.replayPendingWrites(user.uid);
+        };
+
+        const flushRootSync = () => {
+            void syncStorage.pushToCloud(user.uid);
+            void syncStorage.replayPendingWrites(user.uid);
+        };
+
+        window.addEventListener('online', flushPendingWrites);
+        window.addEventListener('visibilitychange', flushPendingWrites);
+        window.addEventListener('pagehide', flushRootSync);
+
+        return () => {
+            window.removeEventListener('online', flushPendingWrites);
+            window.removeEventListener('visibilitychange', flushPendingWrites);
+            window.removeEventListener('pagehide', flushRootSync);
+        };
+    }, [user?.uid]);
 
     const login = async () => {
         if (!auth || !googleProvider) return;
