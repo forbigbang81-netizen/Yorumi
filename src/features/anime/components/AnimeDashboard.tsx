@@ -123,7 +123,7 @@ export default function AnimeDashboard({
                 {/* All-Time Popular + Top 10 + Schedule + Genres */}
                 <div className="container mx-auto px-4 pt-4">
                     <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
-                        <div>
+                        <div data-hover-boundary>
                             <div className="flex items-center justify-between mb-6">
                                 <h2 className="text-xl font-bold border-l-4 border-yorumi-accent pl-3 text-white">{allTimeTitle}</h2>
                             </div>
