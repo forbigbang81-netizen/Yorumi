@@ -136,7 +136,7 @@ export default function AnimeDashboard({
                                 ) : (
                                     topAnime.slice(0, 15).map((item) => (
                                         <AnimeCard
-                                            key={item.mal_id}
+                                            key={`${item.scraperId || item.id || item.mal_id || item.title}-${item.latestEpisode || item.episodes || 0}`}
                                             anime={item}
                                             onClick={() => onAnimeClick(item)}
                                             onWatchClick={() => onWatchClick(item)}

@@ -43,12 +43,15 @@ export default function HomePage() {
         if (!id) return;
 
         let targetEp = episodeNumber;
+        const knownLatestEpisode = Number(item.latestEpisode || 0);
 
         if (!targetEp) {
             // Smart Logic:
             // If Finished -> Play Episode 1
             // If Airing -> Play Latest Episode
-            if (item.status === 'Finished Airing') {
+            if (knownLatestEpisode > 0 && item.status !== 'Finished Airing') {
+                targetEp = knownLatestEpisode as any;
+            } else if (item.status === 'Finished Airing') {
                 targetEp = 1;
             } else if (item.status === 'Currently Airing') {
                 // Use 'latest' keyword - let the player determine the actual number

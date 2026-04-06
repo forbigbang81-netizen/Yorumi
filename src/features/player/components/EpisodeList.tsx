@@ -22,6 +22,8 @@ export default function EpisodeList({
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [searchEp, setSearchEp] = useState('');
     const [sortAsc, setSortAsc] = useState(true);
+    const getPreviewImage = (ep: Episode, metaThumbnail?: string | null) =>
+        ep.snapshot || metaThumbnail || fallbackThumbnail;
 
     // Auto-scroll to active episode
     const activeEpRef = useRef<HTMLButtonElement>(null);
@@ -155,7 +157,7 @@ export default function EpisodeList({
                             const meta = getEpisodeMeta(ep);
                             const cleanTitle = ep.title && ep.title.trim().toLowerCase() !== 'untitled' ? ep.title : null;
                             const displayTitle = meta?.title?.replace(/^Episode \d+[\s-]*:?/i, '').trim() || cleanTitle || `Episode ${ep.episodeNumber}`;
-                            const previewImage = ep.snapshot || meta?.thumbnail || fallbackThumbnail;
+                            const previewImage = getPreviewImage(ep, meta?.thumbnail);
 
                             return (
                                 <button
@@ -181,6 +183,17 @@ export default function EpisodeList({
                                                         alt={displayTitle}
                                                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                                                         loading="lazy"
+                                                        onError={(event) => {
+                                                            const target = event.currentTarget;
+                                                            const fallback = fallbackThumbnail;
+
+                                                            if (fallback && target.src !== fallback) {
+                                                                target.src = fallback;
+                                                                return;
+                                                            }
+
+                                                            target.style.display = 'none';
+                                                        }}
                                                     />
                                                 ) : (
                                                     <div className="h-full w-full bg-white/5" />

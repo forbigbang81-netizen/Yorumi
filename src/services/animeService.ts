@@ -156,7 +156,7 @@ const mapTopTenItemToAnime = (item: any, index: number): Anime => {
     return anime;
 };
 
-const mapLatestUpdateItemToAnime = (item: any, index: number): Anime => {
+const mapLatestUpdateItemToAnime = (item: any): Anime => {
     const anime = item?.anilist
         ? (mapAnilistToAnime(item.anilist) as Anime)
         : (mapScraperToAnime(item) as Anime);
@@ -182,8 +182,15 @@ const mapLatestUpdateItemToAnime = (item: any, index: number): Anime => {
         anime.latestEpisode = item.sub;
     }
 
-    if (!anime.id && item.id) anime.id = item.id;
-    if (!anime.mal_id) anime.mal_id = item.mal_id || item.id || (index + 1);
+    const resolvedAniListId = Number(item.id || 0);
+    const resolvedMalId = Number(item.mal_id || item.id || 0);
+
+    if (!anime.id && resolvedAniListId > 0) {
+        anime.id = resolvedAniListId;
+    }
+    if (!anime.mal_id && resolvedMalId > 0) {
+        anime.mal_id = resolvedMalId;
+    }
 
     return anime;
 };
@@ -333,7 +340,7 @@ export const animeService = {
     },
 
     async getHomeFastData() {
-        const cacheKey = 'home-fast-data-v1';
+        const cacheKey = 'home-fast-data-v2';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
@@ -405,7 +412,7 @@ export const animeService = {
     },
 
     async getLatestUpdates() {
-        const cacheKey = 'latest-updates-1-10';
+        const cacheKey = 'latest-updates-2-10';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 

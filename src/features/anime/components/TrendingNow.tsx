@@ -104,7 +104,7 @@ const TrendingNow: React.FC<TrendingNowProps> = ({
                         <div className="flex gap-4">
                             {animeList.map((anime) => (
                                 <div
-                                    key={anime.mal_id}
+                                    key={`${anime.scraperId || anime.id || anime.mal_id || anime.title}-${anime.latestEpisode || anime.episodes || 0}`}
                                     className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
                                 >
                                     <AnimeCard

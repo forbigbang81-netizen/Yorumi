@@ -51,7 +51,7 @@ export default function AnimeGridPage({
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
                         {animeList.map((item) => (
                             <AnimeCard
-                                key={item.mal_id}
+                                key={`${item.scraperId || item.id || item.mal_id || item.title}-${item.latestEpisode || item.episodes || 0}`}
                                 anime={item}
                                 onClick={() => onAnimeClick(item)}
                                 onMouseEnter={() => onAnimeHover?.(item)}

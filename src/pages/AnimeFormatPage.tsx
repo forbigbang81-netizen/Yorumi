@@ -100,7 +100,12 @@ export default function AnimeFormatPage() {
             ? (rawScraperId.startsWith('s:') ? rawScraperId : `s:${rawScraperId}`)
             : (item.mal_id || item.id);
         if (!id) return;
-        const ep = item.status === 'Currently Airing' ? 'latest' : 1;
+        const latestEpisode = Number(item.latestEpisode || 0);
+        const ep = latestEpisode > 0 && item.status !== 'Finished Airing'
+            ? latestEpisode
+            : item.status === 'Currently Airing'
+                ? 'latest'
+                : 1;
         navigate(`/anime/watch/${title}/${id}?ep=${ep}`, { state: { anime: item } });
     };
 

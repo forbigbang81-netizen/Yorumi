@@ -271,7 +271,12 @@ export default function AnimeDetailsPage() {
                     onWatch={() => {
                         const title = slugify(selectedAnime.title || selectedAnime.title_english || 'anime');
                         const normalizedStatus = String(selectedAnime.status || '').toUpperCase();
-                        const targetEp = normalizedStatus === 'RELEASING' ? 'latest' : 1;
+                        const knownLatestEpisode = Number(selectedAnime.latestEpisode || 0);
+                        const targetEp = knownLatestEpisode > 0 && normalizedStatus !== 'FINISHED'
+                            ? knownLatestEpisode
+                            : normalizedStatus === 'RELEASING'
+                                ? 'latest'
+                                : 1;
                         navigate(`/anime/watch/${title}/${id}?ep=${targetEp}`);
                     }}
                     onToggleList={handleToggleList}
