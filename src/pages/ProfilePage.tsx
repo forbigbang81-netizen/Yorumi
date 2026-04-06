@@ -628,15 +628,23 @@ const applyAnimeCompletionSnapshot = (
     normalizeTitleKey: (title?: string) => string
 ) => {
     Object.entries(animeCompletionCache || {}).forEach(([animeId, snapshot]) => {
-        const alreadyGrouped = Array.from(animeGroups.values()).some((ids) => ids.has(animeId));
-        if (alreadyGrouped) return;
-
-        const key = normalizeTitleKey(snapshot?.title) || `history:${animeId}`;
-        if (!animeGroups.has(key)) {
-            animeGroups.set(key, new Set<string>());
+        let targetKey = normalizeTitleKey(snapshot?.title) || `history:${animeId}`;
+        let foundKey: string | null = null;
+        for (const [gKey, ids] of animeGroups.entries()) {
+            if (ids.has(animeId)) {
+                foundKey = gKey;
+                break;
+            }
         }
-        animeGroups.get(key)!.add(animeId);
-        upsertCompletionMeta(completionMeta, key, snapshot, isFinishedAnimeStatus);
+        if (foundKey) {
+            targetKey = foundKey;
+        } else {
+            if (!animeGroups.has(targetKey)) {
+                animeGroups.set(targetKey, new Set<string>());
+            }
+            animeGroups.get(targetKey)!.add(animeId);
+        }
+        upsertCompletionMeta(completionMeta, targetKey, snapshot, isFinishedAnimeStatus);
     });
 };
 
@@ -647,15 +655,23 @@ const applyMangaCompletionSnapshot = (
     normalizeTitleKey: (title?: string) => string
 ) => {
     Object.entries(mangaCompletionCache || {}).forEach(([mangaId, snapshot]) => {
-        const alreadyGrouped = Array.from(mangaGroups.values()).some((ids) => ids.has(mangaId));
-        if (alreadyGrouped) return;
-
-        const key = normalizeTitleKey(snapshot?.title) || `history:${mangaId}`;
-        if (!mangaGroups.has(key)) {
-            mangaGroups.set(key, new Set<string>());
+        let targetKey = normalizeTitleKey(snapshot?.title) || `history:${mangaId}`;
+        let foundKey: string | null = null;
+        for (const [gKey, ids] of mangaGroups.entries()) {
+            if (ids.has(mangaId)) {
+                foundKey = gKey;
+                break;
+            }
         }
-        mangaGroups.get(key)!.add(mangaId);
-        upsertCompletionMeta(completionMeta, key, snapshot, isFinishedMangaStatus);
+        if (foundKey) {
+            targetKey = foundKey;
+        } else {
+            if (!mangaGroups.has(targetKey)) {
+                mangaGroups.set(targetKey, new Set<string>());
+            }
+            mangaGroups.get(targetKey)!.add(mangaId);
+        }
+        upsertCompletionMeta(completionMeta, targetKey, snapshot, isFinishedMangaStatus);
     });
 };
 
