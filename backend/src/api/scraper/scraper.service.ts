@@ -43,6 +43,37 @@ export class ScraperService {
             return inFlight as Promise<T>;
         }
 
+        // Cross-instance dedup for Vercel serverless: each cold start gets its own
+        // empty inFlight Map, so in-memory dedup doesn't prevent duplicate scrapers.
+        // Use a Redis lock so that only ONE instance runs the loader while others
+        // poll Redis for the cached result.
+        const lockKey = `lock:dedup:${key}`;
+        const lockTtlSeconds = Math.min(60, Math.max(15, Math.ceil(ttlMs / 1000)));
+        let acquiredLock = false;
+
+        try {
+            acquiredLock = await acquireLock(lockKey, lockTtlSeconds);
+        } catch {
+            // Redis unavailable — proceed without distributed dedup.
+        }
+
+        if (!acquiredLock) {
+            // Another instance is already running this loader. Poll Redis for the result.
+            const pollStart = Date.now();
+            const pollTimeout = 15_000;
+            while (Date.now() - pollStart < pollTimeout) {
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+                const polled = await cacheGet<T>(key);
+                if (polled !== null) {
+                    if (!options?.allowCached || options.allowCached(polled)) {
+                        this.cache.set(key, { expiresAt: Date.now() + ttlMs, value: polled });
+                        return polled;
+                    }
+                }
+            }
+            // Timeout — fall through and run the loader ourselves as a safety net.
+        }
+
         const promise = loader()
             .then((value) => {
                 const shouldCache = options?.shouldCache ? options.shouldCache(value) : true;
@@ -58,6 +89,9 @@ export class ScraperService {
             })
             .finally(() => {
                 this.inFlight.delete(key);
+                if (acquiredLock) {
+                    releaseLock(lockKey).catch(() => undefined);
+                }
             });
 
         this.inFlight.set(key, promise);

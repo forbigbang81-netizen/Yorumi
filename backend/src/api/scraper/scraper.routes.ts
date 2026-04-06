@@ -256,6 +256,22 @@ router.get('/proxy', async (req, res) => {
         const nextReferer = requestedReferer || `${urlObj.origin}/`;
         const nextCookie = sanitizeCookie(upstreamCookieJar.get(cookieKey) || requestedCookie);
 
+        // Only sub-playlist (.m3u8) and encryption key URIs need to be proxied for CORS.
+        // Raw media segment lines (.ts, .aac, .mp4, etc.) are served directly from the upstream
+        // CDN so that Vercel is not burdened with streaming gigabytes of video through its
+        // serverless functions — which is the primary driver of Fluid Active CPU exhaustion.
+        const isMediaSegment = (line: string) => {
+            const lower = line.toLowerCase().split('?')[0];
+            return (
+                lower.endsWith('.ts') ||
+                lower.endsWith('.aac') ||
+                lower.endsWith('.mp4') ||
+                lower.endsWith('.m4s') ||
+                lower.endsWith('.cmaf') ||
+                lower.endsWith('.fmp4')
+            );
+        };
+
         const rewritten = body
             .split('\n')
             .map((line) => {
@@ -263,6 +279,7 @@ router.get('/proxy', async (req, res) => {
                 if (!trimmed) return line;
 
                 if (trimmed.startsWith('#') && trimmed.includes('URI=')) {
+                    // Rewrite URI= attributes (encryption keys, etc.) through proxy for CORS.
                     return line.replace(/URI=["']([^"']+)["']/g, (_m, uri) => {
                         const absoluteUri = uri.startsWith('http')
                             ? uri
@@ -277,7 +294,14 @@ router.get('/proxy', async (req, res) => {
                     ? trimmed
                     : (trimmed.startsWith('/') ? `${urlObj.origin}${trimmed}` : `${basePath}${trimmed}`);
 
-                return `${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absolute)}&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}`;
+                // Sub-playlist (.m3u8) lines must pass through the proxy for CORS.
+                // Media segments (.ts etc.) are served directly from the upstream CDN.
+                if (!isMediaSegment(trimmed) && (trimmed.toLowerCase().includes('.m3u8') || !trimmed.toLowerCase().split('?')[0].includes('.'))) {
+                    return `${getPublicBase(req)}/api/scraper/proxy?url=${encodeURIComponent(absolute)}&referer=${encodeURIComponent(nextReferer)}${nextCookie ? `&cookie=${encodeURIComponent(nextCookie)}` : ''}`;
+                }
+
+                // Direct absolute URL for media segments — browser fetches from CDN, not Vercel.
+                return absolute;
             })
             .join('\n');
 

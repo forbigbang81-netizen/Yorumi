@@ -4,7 +4,6 @@ import { useAnime } from '../../../hooks/useAnime';
 import { useStreams } from '../../../hooks/useStreams';
 import type { Anime, Episode } from '../../../types/anime';
 import { storage } from '../../../utils/storage';
-import { animeService } from '../../../services/animeService';
 
 export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) {
     const navigate = useNavigate();
@@ -45,7 +44,6 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         clearStreams,
         loadStream,
         bustEpisodeCache,
-        prefetchStream
     } = streamsHook;
 
     // 3. UI State
@@ -232,26 +230,9 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         lastDurationSecondRef.current = 0;
     }, [selectedAnime, currentEpisode, saveProgress, startAtOverrideSeconds, resumeAtSeconds]);
 
-    // Prewarm adjacent episode streams to make next/prev nearly instant.
-    useEffect(() => {
-        if (!currentEpisode || episodes.length === 0) return;
-        if (!scraperSession) return;
-
-        const currentNum = parseFloat(currentEpisode.episodeNumber);
-        if (!Number.isFinite(currentNum)) return;
-
-        const adjacent = episodes.filter((ep) => {
-            const n = parseFloat(ep.episodeNumber);
-            if (!Number.isFinite(n)) return false;
-            return n === currentNum + 1 || n === currentNum - 1 || n === currentNum + 2;
-        });
-
-        adjacent.forEach((ep) => prefetchStream(ep));
-        animeService.prefetchStreams(
-            scraperSession,
-            adjacent.map((ep) => ep.session)
-        );
-    }, [currentEpisode?.session, episodes, prefetchStream, scraperSession]);
+    // NOTE: Adjacent-episode prefetching has been intentionally disabled to prevent
+    // excessive Vercel serverless CPU usage. Each prefetch call spins up a Puppeteer
+    // browser instance on the backend, which causes rapid CPU spikes on every episode load.
 
     // When loading finishes with no stream result → immediately show exhausted (no retry loop).
     useEffect(() => {

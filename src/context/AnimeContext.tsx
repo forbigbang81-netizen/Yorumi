@@ -1081,10 +1081,17 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
                 }
 
-                if (hasEnoughEpisodes(anime, newEpisodes)) {
-                    episodesCache.current.set(session, newEpisodes);
-                    // Persist to sessionStorage for instant back-navigation
-                    if (cacheKey) writeEpisodeSessionCache(cacheKey, session, newEpisodes);
+                if (newEpisodes.length > 0) {
+                    // Gate persistent caching on having "enough" episodes, but ALWAYS
+                    // return whatever episodes the scraper found. For ongoing anime,
+                    // AniList often reports the planned total (e.g. 12) while only 1-2
+                    // episodes have aired. Previously this discarded partial results,
+                    // showing "No episodes found" for currently-airing shows.
+                    if (hasEnoughEpisodes(anime, newEpisodes)) {
+                        episodesCache.current.set(session, newEpisodes);
+                        // Persist to sessionStorage for instant back-navigation
+                        if (cacheKey) writeEpisodeSessionCache(cacheKey, session, newEpisodes);
+                    }
                     return { session, eps: newEpisodes };
                 }
             } catch (e) {
