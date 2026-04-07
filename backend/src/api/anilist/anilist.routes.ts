@@ -537,8 +537,12 @@ router.get('/anime/:id/fast', async (req, res) => {
                 : null;
 
             if (scraperDetails?.title) {
-                const searchRes = await anilistService.searchAnime(scraperDetails.title, 1, 1);
-                const anilistMatch = searchRes?.media?.[0];
+                const anilistMatch = await anilistService.findBestAnimeMatch({
+                    titles: [scraperDetails.title],
+                    year: Number(scraperDetails.year || 0) || undefined,
+                    episodes: Number(scraperDetails.episodes || 0) || undefined,
+                    format: scraperDetails.type,
+                });
                 if (anilistMatch?.id) {
                     const full = await anilistService.getAnimeById(anilistMatch.id);
                     if (full) {
@@ -686,8 +690,12 @@ router.get('/anime/:id', async (req, res) => {
 
             // 2. Search AniList by Title
             const title = scraperDetails.title;
-            const searchRes = await anilistService.searchAnime(title);
-            const anilistMatch = searchRes?.media?.[0];
+            const anilistMatch = await anilistService.findBestAnimeMatch({
+                titles: [title],
+                year: Number(scraperDetails.year || 0) || undefined,
+                episodes: Number(scraperDetails.episodes || 0) || undefined,
+                format: scraperDetails.type,
+            });
 
             if (anilistMatch) {
                 // 3. Get full AniList details

@@ -325,8 +325,8 @@ const clearCachedStream = (key: string) => {
     }
 };
 
-const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v2:${id}`;
-const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v4:${id}`;
+const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v3:${id}`;
+const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v5:${id}`;
 
 // Track in-flight requests to prevent duplicates
 const inFlightRequests = new Map<string, Promise<any>>();

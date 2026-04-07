@@ -56,6 +56,92 @@ function setCache(key: string, data: any, ttl: number): void {
     }
 }
 
+function normalizeTitleForMatch(value: unknown): string {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function scoreAnimeSearchCandidate(
+    titles: string[],
+    candidate: any,
+    hints?: { year?: number; episodes?: number; format?: string }
+): number {
+    const candidateTitles = [
+        candidate?.title?.english,
+        candidate?.title?.romaji,
+        candidate?.title?.native,
+        ...(Array.isArray(candidate?.synonyms) ? candidate.synonyms : []),
+    ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+
+    if (candidateTitles.length === 0) return Number.NEGATIVE_INFINITY;
+
+    const normalizedCandidateTitles = candidateTitles.map(normalizeTitleForMatch).filter(Boolean);
+    let score = 0;
+
+    for (const rawTitle of titles) {
+        const normalizedTitle = normalizeTitleForMatch(rawTitle);
+        if (!normalizedTitle) continue;
+
+        for (const candidateTitle of normalizedCandidateTitles) {
+            if (candidateTitle === normalizedTitle) {
+                score += 180;
+                continue;
+            }
+
+            if (candidateTitle.startsWith(`${normalizedTitle} `)) {
+                score += 60;
+                score -= Math.min(45, candidateTitle.length - normalizedTitle.length);
+                continue;
+            }
+
+            if (normalizedTitle.startsWith(`${candidateTitle} `)) {
+                score += 45;
+                continue;
+            }
+
+            if (candidateTitle.includes(normalizedTitle) || normalizedTitle.includes(candidateTitle)) {
+                score += 20;
+            }
+        }
+    }
+
+    const expectedEpisodes = Number(hints?.episodes || 0);
+    const candidateEpisodes = Number(candidate?.episodes || 0);
+    if (expectedEpisodes > 0 && candidateEpisodes > 0) {
+        const diff = Math.abs(candidateEpisodes - expectedEpisodes);
+        if (diff === 0) score += 70;
+        else if (diff <= 2) score += 45;
+        else if (diff <= 6) score += 15;
+        else score -= 55;
+    }
+
+    const expectedYear = Number(hints?.year || 0);
+    const candidateYear = Number(candidate?.seasonYear || candidate?.startDate?.year || 0);
+    if (expectedYear > 0 && candidateYear > 0) {
+        const diff = Math.abs(candidateYear - expectedYear);
+        if (diff === 0) score += 20;
+        else if (diff === 1) score += 8;
+        else score -= 24;
+    }
+
+    const expectedFormat = String(hints?.format || '').trim().toUpperCase();
+    const candidateFormat = String(candidate?.format || '').trim().toUpperCase();
+    if (expectedFormat && candidateFormat) {
+        if (expectedFormat === candidateFormat) score += 12;
+        else score -= 10;
+    }
+
+    return score;
+}
+
 // ============================================================================
 // RATE LIMITING - Prevents hitting AniList's rate limit
 // ============================================================================
@@ -1002,6 +1088,55 @@ export const anilistService = {
             console.error('Error searching anime:', error);
             throw error;
         }
+    },
+
+    async findBestAnimeMatch(params: {
+        titles: string[];
+        year?: number;
+        episodes?: number;
+        format?: string;
+        perPage?: number;
+    }) {
+        const titles = Array.from(
+            new Set(
+                (Array.isArray(params?.titles) ? params.titles : [])
+                    .map((value) => String(value || '').replace(/\s+/g, ' ').trim())
+                    .filter(Boolean)
+            )
+        );
+        if (titles.length === 0) return null;
+
+        const perPage = Math.max(3, Math.min(10, Number(params?.perPage || 6)));
+        const candidateMap = new Map<number, any>();
+
+        for (const title of titles.slice(0, 3)) {
+            try {
+                const result = await this.searchAnime(title, 1, perPage);
+                const media = Array.isArray(result?.media) ? result.media : [];
+                for (const item of media) {
+                    const id = Number(item?.id || 0);
+                    if (id > 0 && !candidateMap.has(id)) {
+                        candidateMap.set(id, item);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error searching AniList candidates for "${title}":`, error);
+            }
+        }
+
+        let best: { media: any; score: number } | null = null;
+        for (const media of candidateMap.values()) {
+            const score = scoreAnimeSearchCandidate(titles, media, {
+                year: params?.year,
+                episodes: params?.episodes,
+                format: params?.format,
+            });
+            if (!best || score > best.score) {
+                best = { media, score };
+            }
+        }
+
+        return best?.media || null;
     },
 
     async searchManga(search: string, page: number = 1, perPage: number = 24) {

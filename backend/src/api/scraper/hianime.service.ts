@@ -254,13 +254,9 @@ export class HiAnimeScraper {
 
         const enrichmentPromises = latestItems.map(async (item: any) => {
             try {
-                let searchResult = await anilistService.searchAnime(item.title, 1, 1);
-                let anilistMedia = searchResult?.media?.[0];
-
-                if (!anilistMedia && item.jname) {
-                    searchResult = await anilistService.searchAnime(item.jname, 1, 1);
-                    anilistMedia = searchResult?.media?.[0];
-                }
+                const anilistMedia = await anilistService.findBestAnimeMatch({
+                    titles: [item.title, item.jname].filter(Boolean),
+                });
 
                 return {
                     ...item,
@@ -346,13 +342,9 @@ export class HiAnimeScraper {
 
         const enrichmentPromises = topTenItems.map(async (item) => {
             try {
-                let searchResult = await anilistService.searchAnime(item.title, 1, 1);
-                let anilistMedia = searchResult?.media?.[0];
-
-                if (!anilistMedia && item.jname) {
-                    searchResult = await anilistService.searchAnime(item.jname, 1, 1);
-                    anilistMedia = searchResult?.media?.[0];
-                }
+                const anilistMedia = await anilistService.findBestAnimeMatch({
+                    titles: [item.title, item.jname].filter(Boolean),
+                });
 
                 if (anilistMedia) {
                     return {
@@ -409,8 +401,9 @@ export class HiAnimeScraper {
         // AniList has generous rate limits (~90 requests/minute), so parallel is fine for ~10 items
         const enrichmentPromises = spotlightItems.map(async (item) => {
             try {
-                const searchResult = await anilistService.searchAnime(item.title, 1, 1);
-                const anilistMedia = searchResult?.media?.[0];
+                const anilistMedia = await anilistService.findBestAnimeMatch({
+                    titles: [item.title].filter(Boolean),
+                });
 
                 if (anilistMedia) {
                     return {
@@ -692,13 +685,9 @@ export class HiAnimeScraper {
 
         const enrichmentPromises = items.map(async (item: any) => {
             try {
-                let searchResult = await anilistService.searchAnime(item.title, 1, 1);
-                let anilistMedia = searchResult?.media?.[0];
-
-                if (!anilistMedia && item.jname) {
-                    searchResult = await anilistService.searchAnime(item.jname, 1, 1);
-                    anilistMedia = searchResult?.media?.[0];
-                }
+                const anilistMedia = await anilistService.findBestAnimeMatch({
+                    titles: [item.title, item.jname].filter(Boolean),
+                });
 
                 return {
                     ...item,
