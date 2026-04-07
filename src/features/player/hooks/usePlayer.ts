@@ -408,8 +408,26 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     };
 
     // Derived State
-    const currentEpTitle = episodes.find(e => e.episodeNumber == epNumParam)?.title;
-    const cleanCurrentTitle = currentEpTitle && currentEpTitle.trim().toLowerCase() !== 'untitled' ? currentEpTitle : null;
+    const currentEpisodeData = episodes.find(e => e.episodeNumber == epNumParam);
+    const episodeNumber = parseFloat(String(epNumParam));
+    const metadata = selectedAnime?.episodeMetadata || [];
+    
+    const meta = (Number.isFinite(episodeNumber) && metadata.length > 0)
+        ? (metadata.find((item) => {
+            const match = item.title?.match(/Episode\s+(\d+)/i);
+            return match && parseFloat(match[1]) === episodeNumber;
+        }) || metadata[episodeNumber - 1] || null)
+        : null;
+
+    const rawTitle = currentEpisodeData?.title;
+    const isBasicTitle = rawTitle && (
+        rawTitle.trim().toLowerCase() === 'untitled' || 
+        !isNaN(Number(rawTitle.trim())) ||
+        /^episode\s+\d+$/i.test(rawTitle.trim())
+    );
+    const cleanRawTitle = rawTitle && !isBasicTitle ? rawTitle : null;
+
+    const cleanCurrentTitle = meta?.title?.replace(/^Episode \d+[\s-]*:?/i, '').trim() || cleanRawTitle;
 
     return {
         // Data

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { Home, ChevronRight } from 'lucide-react';
 import { usePlayer } from '../features/player/hooks/usePlayer';
 
 // Feature Components
@@ -54,6 +54,7 @@ export default function WatchPage() {
         watchedEpisodes,
         episodesResolved,
         epNum,
+        cleanCurrentTitle,
         resumeAtSeconds,
         epLoading,
         streamLoading,
@@ -96,10 +97,10 @@ export default function WatchPage() {
                 <h1 className="text-2xl font-bold text-red-400 mb-4">{error}</h1>
                 <button
                     onClick={() => navigate('/')}
-                    className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                    className="flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 transition-all active:scale-95 group"
                 >
-                    <ArrowLeft className="w-5 h-5" />
-                    Back to Home
+                    <Home className="w-5 h-5 text-gray-400 group-hover:text-white transition-colors" />
+                    <span className="font-medium">Back to Home</span>
                 </button>
             </div>
         );
@@ -111,11 +112,11 @@ export default function WatchPage() {
                 <div className="flex items-center gap-4 shrink-0">
                     <button
                         onClick={() => navigate('/')}
-                        className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+                        className="p-2 -ml-2 text-gray-400 hover:text-white transition-all hover:bg-white/5 rounded-lg active:scale-95"
                     >
-                        <ArrowLeft className="w-5 h-5" />
-                        <span className="text-sm font-medium">Back</span>
+                        <Home className="w-5 h-5" />
                     </button>
+                    <ChevronRight className="w-4 h-4 text-gray-600 shrink-0" />
                     <div className="h-4 w-48 bg-white/10 rounded animate-pulse" />
                 </div>
 
@@ -160,20 +161,31 @@ export default function WatchPage() {
 
 
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-10 pb-10 pt-4 gap-8 relative z-10">
-                <div className="flex items-center gap-4 shrink-0">
+                <div className="flex items-center gap-3 shrink-0 min-w-0">
                     <button
                         onClick={() => navigate('/')}
-                        className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+                        className="p-2 -ml-2 text-gray-400 hover:text-white transition-all hover:bg-white/5 rounded-lg active:scale-95 group"
                     >
-                        <ArrowLeft className="w-5 h-5" />
-                        <span className="text-sm font-medium">Back</span>
+                        <Home className="w-5 h-5 group-hover:scale-110 transition-transform" />
                     </button>
-                    <h1 
+                    
+                    <ChevronRight className="w-4 h-4 text-gray-600 shrink-0" />
+                    
+                    <div 
                         onClick={() => navigate(`/anime/details/${id}`)}
-                        className="text-base font-bold text-white tracking-wide truncate hover:text-yorumi-accent transition-colors cursor-pointer"
+                        className="text-sm font-medium text-gray-400 hover:text-white transition-colors cursor-pointer truncate max-w-[200px]"
                     >
                         {displayTitle}
-                    </h1>
+                    </div>
+
+                    {episodesResolved && (
+                        <>
+                            <ChevronRight className="w-4 h-4 text-gray-600 shrink-0" />
+                            <h1 className="text-sm font-bold text-white tracking-wide truncate">
+                                {cleanCurrentTitle || `Episode ${epNum}`}
+                            </h1>
+                        </>
+                    )}
                 </div>
 
                 <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-hidden gap-8">
