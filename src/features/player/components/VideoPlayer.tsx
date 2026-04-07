@@ -9,7 +9,6 @@ interface VideoPlayerProps {
     isHls?: boolean;
     subtitles?: SubtitleTrack[];
     isLoading: boolean;
-    isExpanded: boolean;
     hasPlayableSource?: boolean;
     streamExhausted?: boolean;
     onLoad?: () => void;
@@ -24,7 +23,6 @@ export default function VideoPlayer({
     isHls = false,
     subtitles = [],
     isLoading,
-    isExpanded,
     hasPlayableSource = true,
     streamExhausted = false,
     onLoad,
@@ -208,8 +206,7 @@ export default function VideoPlayer({
     }, [subtitles, isHlsStream, streamUrl]);
 
     return (
-        <div className={`relative w-full aspect-video shrink-0 ${isExpanded ? 'max-h-[78vh]' : ''} bg-black group transition-all duration-300 overflow-hidden`}>
-            <div className="absolute inset-0 bg-black" />
+        <div className={`aspect-video w-full max-h-full relative bg-[#0b0c0f] group transition-all duration-300 overflow-hidden rounded-2xl shadow-2xl shadow-black/80`}>
             {isLoading ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">
                     <LoadingSpinner />
@@ -219,7 +216,7 @@ export default function VideoPlayer({
                 <div className="relative w-full h-full z-10 flex items-center justify-center">
                     <video
                         ref={videoRef}
-                        className="max-w-full max-h-full w-auto h-auto object-contain object-center [color-scheme:dark] bg-black"
+                        className="w-full h-full object-contain [color-scheme:dark] bg-black"
                         controls
                         playsInline
                         autoPlay

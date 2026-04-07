@@ -107,34 +107,34 @@ export default function WatchPage() {
 
     if (isPageLoading) {
         return (
-            <div className="watch-viewport flex flex-col w-full bg-[#0a0a0a] text-white overflow-hidden pt-[60px]">
-                <header className="h-14 shrink-0 flex items-center px-6 border-b border-white/10 bg-black/40 backdrop-blur-md z-40">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-8 pb-8 pt-0 gap-4">
+                <div className="flex items-center gap-4 shrink-0">
                     <button
                         onClick={() => navigate('/')}
-                        className="mr-4 flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+                        className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
                     >
                         <ArrowLeft className="w-5 h-5" />
                         <span className="text-sm font-medium">Back</span>
                     </button>
                     <div className="h-4 w-48 bg-white/10 rounded animate-pulse" />
-                </header>
+                </div>
 
-                <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-y-auto md:overflow-hidden">
+                <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-hidden gap-8">
+                    <div className="flex-1 min-w-0 relative flex flex-col overflow-hidden gap-4">
+                        <div className="flex-1 flex items-center justify-center bg-black/40 rounded-2xl">
+                            <div className="w-40 h-24 bg-white/5 rounded-xl animate-pulse" />
+                        </div>
+                    </div>
+
                     <EpisodeList
                         episodes={[]}
                         currentEpNumber={'1'}
                         watchedEpisodes={new Set<number>()}
                         isLoading={true}
                         onEpisodeClick={() => null}
+                        reloadPlayer={() => null}
                         anime={null}
                     />
-
-                    <div className="flex-1 min-w-0 relative bg-black flex flex-col order-1 md:order-1">
-                        <div className="flex-1 flex items-center justify-center">
-                            <div className="w-40 h-24 bg-white/5 rounded-xl animate-pulse" />
-                        </div>
-                        <div className="h-16 border-t border-white/10 bg-black/40" />
-                    </div>
                 </div>
             </div>
         );
@@ -146,7 +146,7 @@ export default function WatchPage() {
     const backdropImage = getBackdropImage(animeData);
 
     return (
-        <div className="watch-viewport relative flex flex-col w-full bg-[#0a0a0a] text-white overflow-hidden pt-[60px]">
+        <div className="watch-viewport relative flex flex-col w-full bg-[#0a0a0a] text-white overflow-hidden pt-14">
             {backdropImage && (
                 <>
                     <div
@@ -157,70 +157,82 @@ export default function WatchPage() {
                 </>
             )}
             {/* 1. Header Row (Fixed) */}
-            <header className="h-14 shrink-0 flex items-center px-6 border-b border-white/10 bg-black/40 backdrop-blur-md z-40">
-                <button
-                    onClick={() => navigate('/')}
-                    className="mr-4 flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-                >
-                    <ArrowLeft className="w-5 h-5" />
-                    <span className="text-sm font-medium">Back</span>
-                </button>
-                <h1 className="text-lg font-bold text-white tracking-wide truncate">
-                    {displayTitle}
-                </h1>
-            </header>
 
-            <div className="flex-1 flex flex-col md:flex-row min-h-0 relative z-10 overflow-y-auto md:overflow-hidden gap-0">
-                <div className="flex-1 min-w-0 relative bg-black/30 flex flex-col order-1 md:order-1">
-                    {/* Video Player Container */}
-                    <VideoPlayer
-                        key={epNum}
-                        streamUrl={currentStream?.url}
-                        episodeSession={currentEpisode?.session ?? epNum}
-                        isHls={currentStream?.isHls}
-                        subtitles={currentStream?.subtitles}
-                        isLoading={streamLoading}
-                        isExpanded={isExpanded}
-                        streamExhausted={streamExhausted}
-                        hasPlayableSource={!currentEpisode || Boolean(currentStream?.url) || streamLoading}
-                        onLoad={() => setIsPlayerReady(true)}
-                        onError={handleStreamError}
-                        onProgress={handlePlaybackProgress}
-                        startAtSeconds={resumeAtSeconds}
-                    />
 
-                    {/* Metadata & Controls Bar (Below Player) */}
-                    <PlayerControls
-                        isExpanded={isExpanded}
-                        canPrev={epNum !== '1'}
-                        isAutoQuality={isAutoQuality}
-                        selectedStreamIndex={selectedStreamIndex}
-                        streams={streams}
-                        selectedAudio={selectedAudio}
-                        availableAudios={availableAudios}
-                        currentEpisodeNumber={epNum}
-                        showQualityMenu={showQualityMenu}
-                        onPrev={handlePrevEp}
-                        onNext={handleNextEp}
-                        onReload={reloadPlayer}
-                        onToggleExpand={toggleExpand}
-                        setShowQualityMenu={setShowQualityMenu}
-                        onQualityChange={handleQualityChange}
-                        onSetAutoQuality={setAutoQuality}
-                        onAudioChange={setSelectedAudio}
-                    />
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-10 pb-10 pt-4 gap-8 relative z-10">
+                <div className="flex items-center gap-4 shrink-0">
+                    <button
+                        onClick={() => navigate('/')}
+                        className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                        <span className="text-sm font-medium">Back</span>
+                    </button>
+                    <h1 
+                        onClick={() => navigate(`/anime/details/${id}`)}
+                        className="text-base font-bold text-white tracking-wide truncate hover:text-yorumi-accent transition-colors cursor-pointer"
+                    >
+                        {displayTitle}
+                    </h1>
                 </div>
 
-                {!isExpanded && (
-                    <EpisodeList
-                        episodes={episodes}
-                        currentEpNumber={epNum}
-                        watchedEpisodes={watchedEpisodes}
-                        isLoading={epLoading || !episodesResolved}
-                        onEpisodeClick={handleEpisodeClick}
-                        anime={anime}
-                    />
-                )}
+                <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-hidden gap-8">
+                        <div className="flex-1 min-w-0 relative flex flex-col overflow-hidden items-center">
+                            {/* Constrained Column - Ensures 16:9 ratio is never broken by viewport height */}
+                            <div className="w-full h-full flex flex-col gap-6 max-w-[calc((100vh-240px)*1.777)]">
+                                {/* Video Player Card - Maximized & End-to-End Alignment */}
+                                <div className="shrink-0 w-full aspect-video flex items-center justify-center overflow-hidden relative">
+                                    <VideoPlayer
+                                        key={epNum}
+                                        streamUrl={currentStream?.url}
+                                        episodeSession={currentEpisode?.session ?? epNum}
+                                        isHls={currentStream?.isHls}
+                                        subtitles={currentStream?.subtitles}
+                                        isLoading={streamLoading}
+                                        streamExhausted={streamExhausted}
+                                        hasPlayableSource={!currentEpisode || Boolean(currentStream?.url) || streamLoading}
+                                        onLoad={() => setIsPlayerReady(true)}
+                                        onError={handleStreamError}
+                                        onProgress={handlePlaybackProgress}
+                                        startAtSeconds={resumeAtSeconds}
+                                    />
+                                </div>
+
+                                {/* Player Controls - Aligned end-to-end with the video player above */}
+                                <div className="shrink-0">
+                                    <PlayerControls
+                                        isExpanded={isExpanded}
+                                        canPrev={epNum !== '1'}
+                                        isAutoQuality={isAutoQuality}
+                                        selectedStreamIndex={selectedStreamIndex}
+                                        streams={streams}
+                                        selectedAudio={selectedAudio}
+                                        availableAudios={availableAudios}
+                                        showQualityMenu={showQualityMenu}
+                                        onPrev={handlePrevEp}
+                                        onNext={handleNextEp}
+                                        onToggleExpand={toggleExpand}
+                                        setShowQualityMenu={setShowQualityMenu}
+                                        onQualityChange={handleQualityChange}
+                                        onSetAutoQuality={setAutoQuality}
+                                        onAudioChange={setSelectedAudio}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                    {!isExpanded && (
+                        <EpisodeList
+                            episodes={episodes}
+                            currentEpNumber={epNum}
+                            watchedEpisodes={watchedEpisodes}
+                            isLoading={epLoading || !episodesResolved}
+                            onEpisodeClick={handleEpisodeClick}
+                            reloadPlayer={reloadPlayer}
+                            anime={anime}
+                        />
+                    )}
+                </div>
             </div>
         </div>
     );

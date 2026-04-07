@@ -8,6 +8,7 @@ interface EpisodeListProps {
     watchedEpisodes: Set<number>;
     isLoading: boolean;
     onEpisodeClick: (ep: Episode) => void;
+    reloadPlayer?: () => void;
     anime?: Anime | null;
 }
 
@@ -17,6 +18,7 @@ export default function EpisodeList({
     watchedEpisodes,
     isLoading,
     onEpisodeClick,
+    reloadPlayer,
     anime
 }: EpisodeListProps) {
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -51,11 +53,7 @@ export default function EpisodeList({
         anime?.anilist_cover_image ||
         '';
 
-    const nextEpisode = (() => {
-        const currentNum = parseFloat(currentEpNumber);
-        if (!Number.isFinite(currentNum)) return null;
-        return episodes.find(ep => parseFloat(ep.episodeNumber) === currentNum + 1) || null;
-    })();
+
 
     const getEpisodeMeta = (ep: Episode) => {
         const episodeNumber = parseFloat(String(ep.episodeNumber));
@@ -71,20 +69,38 @@ export default function EpisodeList({
         }) || metadata[episodeNumber - 1] || null;
     };
 
+    const [isScrolling, setIsScrolling] = useState(false);
+    const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleScroll = () => {
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+        setIsScrolling(true);
+        scrollTimeoutRef.current = setTimeout(() => {
+            setIsScrolling(false);
+        }, 1000);
+    };
+
+    // Cleanup timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+        };
+    }, []);
+
     return (
-        <aside className="w-full md:w-[380px] xl:w-[420px] shrink-0 flex flex-col h-[480px] md:h-full overflow-hidden order-2 md:order-2 rounded-t-[28px] md:rounded-none md:border-l border-white/10 bg-[linear-gradient(180deg,rgba(12,12,16,0.96),rgba(7,7,10,0.92))] backdrop-blur-xl shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
-            <div className="px-4 pt-4 pb-3 border-b border-white/5 flex flex-col gap-3">
-                {/* Title row */}
-                <div>
-                    <p className="text-[11px] font-semibold tracking-[0.24em] uppercase text-gray-500">
-                        {nextEpisode ? `Up Next - Episode ${nextEpisode.episodeNumber}` : 'Up Next'}
-                    </p>
-                    <h3 className="mt-0.5 text-sm font-semibold text-white">
-                        Episodes ({episodes.length})
-                    </h3>
+        <aside className="w-full md:w-[380px] xl:w-[420px] shrink-0 flex flex-col h-[480px] md:h-full overflow-hidden order-2 md:order-2 rounded-2xl bg-[#0b0c0f] shadow-2xl shadow-black/80">
+            <div className="px-5 pt-5 pb-4 flex flex-col gap-4">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <h3 className="text-sm font-medium text-gray-300 leading-tight line-clamp-1 italic opacity-80">
+                            {anime?.synopsis?.replace(/<[^>]*>/g, '').slice(0, 60)}...
+                        </h3>
+                        <p className="mt-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            {anime?.title_english || anime?.title_romaji || anime?.title}
+                        </p>
+                    </div>
                 </div>
 
-                {/* Toolbar row: search + sort + view toggle */}
                 <div className="flex items-center gap-2">
                     {/* Search */}
                     <div className="relative flex-1">
@@ -98,26 +114,35 @@ export default function EpisodeList({
                         />
                     </div>
 
-                    {/* Sort toggle */}
+                    <button
+                        onClick={() => reloadPlayer?.()}
+                        title="Reload Player"
+                        className="flex-shrink-0 p-2.5 rounded-xl bg-white/[0.03] text-gray-400 hover:text-white hover:bg-white/[0.08] transition-all"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                            <path d="M21 3v5h-5" />
+                        </svg>
+                    </button>
+
                     <button
                         onClick={() => setSortAsc(v => !v)}
-                        title={sortAsc ? 'Sort descending' : 'Sort ascending'}
-                        className="flex-shrink-0 p-2 rounded-lg bg-black/40 text-gray-400 hover:text-white hover:bg-black/60 transition-colors"
+                        title={sortAsc ? 'Sort Descending' : 'Sort Ascending'}
+                        className="flex-shrink-0 p-2.5 rounded-xl bg-white/[0.03] text-gray-400 hover:text-white hover:bg-white/[0.08] transition-all"
                     >
                         <ArrowUpDown className="w-4 h-4" />
                     </button>
 
-                    {/* List / Grid toggle */}
-                    <div className="flex flex-shrink-0 bg-black/40 rounded-lg p-0.5">
+                    <div className="flex flex-shrink-0 bg-white/[0.03] rounded-xl p-1">
                         <button
                             onClick={() => setViewMode('list')}
-                            className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                            className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
                         >
                             <LayoutList className="w-4 h-4" />
                         </button>
                         <button
                             onClick={() => setViewMode('grid')}
-                            className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                            className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white/10 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
                         >
                             <LayoutGrid className="w-4 h-4" />
                         </button>
@@ -125,7 +150,10 @@ export default function EpisodeList({
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+            <div 
+                onScroll={handleScroll}
+                className={`flex-1 overflow-y-auto custom-scrollbar ${isScrolling ? 'is-scrolling' : ''}`}
+            >
                 {isLoading ? (
                     <div className={viewMode === 'grid' ? "grid grid-cols-5 gap-2 p-3" : "flex flex-col"}>
                         {Array.from({ length: viewMode === 'grid' ? 20 : 10 }).map((_, index) => (
