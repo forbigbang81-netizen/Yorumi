@@ -4,8 +4,8 @@ import { getBrowserInstance } from '../utils/browser';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
-const BASE_URL = 'https://animepahe.com';
-const API_URL = 'https://animepahe.com/api';
+const BASE_URL = 'https://animepahe.pw';
+const API_URL = 'https://animepahe.pw/api';
 
 export interface AnimeSearchResult {
     id: string;
