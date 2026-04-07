@@ -24,6 +24,12 @@ export default function EpisodeList({
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [searchEp, setSearchEp] = useState('');
     const [sortAsc, setSortAsc] = useState(true);
+
+    const nextEpisodeNumber = [...episodes]
+        .map(ep => parseFloat(ep.episodeNumber))
+        .filter(num => num > parseFloat(currentEpNumber))
+        .sort((a, b) => a - b)[0];
+
     const getPreviewImage = (ep: Episode, metaThumbnail?: string | null) =>
         ep.snapshot || metaThumbnail || fallbackThumbnail;
 
@@ -91,12 +97,18 @@ export default function EpisodeList({
         <aside className="w-full md:w-[380px] xl:w-[420px] shrink-0 flex flex-col h-[480px] md:h-full overflow-hidden order-2 md:order-2 rounded-2xl bg-[#0b0c0f] shadow-2xl shadow-black/80">
             <div className="px-5 pt-5 pb-4 flex flex-col gap-4">
                 <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <h3 className="text-sm font-medium text-gray-300 leading-tight line-clamp-1 italic opacity-80">
-                            {anime?.synopsis?.replace(/<[^>]*>/g, '').slice(0, 60)}...
-                        </h3>
-                        <p className="mt-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                            {anime?.title_english || anime?.title_romaji || anime?.title}
+                    <div className="min-w-0 flex flex-col pt-1">
+                        {nextEpisodeNumber !== undefined ? (
+                            <h3 className="text-[10px] font-bold text-gray-400 tracking-[0.2em] uppercase mb-0.5">
+                                UP NEXT - EPISODE {nextEpisodeNumber}
+                            </h3>
+                        ) : (
+                            <h3 className="text-[10px] font-bold text-gray-400 tracking-[0.2em] uppercase mb-0.5">
+                                CURRENTLY AIRING
+                            </h3>
+                        )}
+                        <p className="text-base font-bold text-white tracking-wide">
+                            Episodes ({episodes.length})
                         </p>
                     </div>
                 </div>
