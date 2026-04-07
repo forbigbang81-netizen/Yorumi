@@ -104,33 +104,40 @@ export default function AnimeDetailsPage() {
         // Scroll to top on mount
         window.scrollTo({ top: 0, behavior: 'auto' });
 
-        if (location.state?.anime) {
-            // Instant load from navigation state
-            animeHook.handleAnimeClick(location.state.anime);
-        } else if (id) {
-            // Deep link / Refresh - fetch using ID
-            if (id.startsWith('s:')) {
-                const scraperSession = id.substring(2).trim();
-                if (!isAnimePaheSession(scraperSession)) {
-                    navigate('/', { replace: true });
-                    return;
-                }
-                // Scraper ID
-                animeHook.handleAnimeClick({
-                    mal_id: 0,
-                    id: 0,
-                    scraperId: scraperSession,
-                    title: '', // Title unknown on deep link, might fail identification if not mapped
-                    images: { jpg: { image_url: '', large_image_url: '' } } // Placeholder
-                } as Anime);
-            } else {
-                const parsedId = Number.parseInt(id, 10);
-                if (Number.isFinite(parsedId) && parsedId > 0) {
-                    animeHook.handleAnimeClick({ mal_id: parsedId } as Anime);
-                } else {
-                    navigate('/', { replace: true });
-                }
+        if (!id) return;
+
+        const routeAnime = (location.state?.anime && typeof location.state.anime === 'object')
+            ? { ...(location.state.anime as Anime) }
+            : null;
+
+        // Always derive the identity from the URL. Navigation state is only a render seed.
+        if (id.startsWith('s:')) {
+            const scraperSession = id.substring(2).trim();
+            if (!isAnimePaheSession(scraperSession)) {
+                navigate('/', { replace: true });
+                return;
             }
+
+            animeHook.handleAnimeClick({
+                ...(routeAnime || {}),
+                id: routeAnime?.id || 0,
+                mal_id: routeAnime?.mal_id || 0,
+                scraperId: scraperSession,
+                title: routeAnime?.title || '',
+                images: routeAnime?.images || { jpg: { image_url: '', large_image_url: '' } }
+            } as Anime);
+            return;
+        }
+
+        const parsedId = Number.parseInt(id, 10);
+        if (Number.isFinite(parsedId) && parsedId > 0) {
+            animeHook.handleAnimeClick({
+                ...(routeAnime || {}),
+                id: routeAnime?.id || parsedId,
+                mal_id: parsedId
+            } as Anime);
+        } else {
+            navigate('/', { replace: true });
         }
     }, [id, location.state, navigate]);
 
