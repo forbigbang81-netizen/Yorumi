@@ -3,13 +3,12 @@ import useEmblaCarousel from 'embla-carousel-react';
 
 interface CarouselProps {
     title?: string;
-    viewAllLink?: string;
     children: React.ReactNode;
     variant?: 'portrait' | 'landscape';
     onViewAll?: () => void;
 }
 
-const Carousel: React.FC<CarouselProps> = ({ title, viewAllLink, children, variant = 'portrait', onViewAll }) => {
+const Carousel: React.FC<CarouselProps> = ({ title, children, variant = 'portrait', onViewAll }) => {
     const [emblaRef, emblaApi] = useEmblaCarousel({
         loop: false,
         align: 'center',
@@ -36,7 +35,7 @@ const Carousel: React.FC<CarouselProps> = ({ title, viewAllLink, children, varia
                     <h2 className="text-xl font-bold text-white tracking-wide border-l-4 border-yorumi-accent pl-3">
                         {title}
                     </h2>
-                    {showControls && (viewAllLink || onViewAll) && (
+                    {showControls && onViewAll && (
                         <span
                             onClick={onViewAll}
                             className="text-xs font-semibold text-gray-400 hover:text-yorumi-accent cursor-pointer transition-colors tracking-wider"
