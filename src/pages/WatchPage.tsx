@@ -194,7 +194,7 @@ export default function WatchPage() {
                             <div
                                 className={`w-full h-auto md:h-full flex flex-col gap-0 md:gap-6 ${
                                     isExpanded
-                                        ? 'md:max-w-[calc((100vh-275px)*1.777)]'
+                                        ? 'md:max-w-[calc((100vh-255px)*1.777)]'
                                         : 'md:max-w-[calc((100vh-240px)*1.777)]'
                                 }`}
                             >
