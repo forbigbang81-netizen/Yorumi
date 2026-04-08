@@ -108,8 +108,8 @@ export default function WatchPage() {
 
     if (isPageLoading) {
         return (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-8 pb-8 pt-0 gap-4">
-                <div className="flex items-center gap-4 shrink-0">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-0 pb-0 pt-0 gap-4 md:px-8 md:pb-8">
+                <div className="flex items-center gap-4 shrink-0 px-4 pt-4 md:px-0 md:pt-0">
                     <button
                         onClick={() => navigate('/')}
                         className="p-2 -ml-2 text-gray-400 hover:text-white transition-all hover:bg-white/5 rounded-lg active:scale-95"
@@ -120,9 +120,9 @@ export default function WatchPage() {
                     <div className="h-4 w-48 bg-white/10 rounded animate-pulse" />
                 </div>
 
-                <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-hidden gap-8">
-                    <div className="flex-1 min-w-0 relative flex flex-col overflow-hidden gap-4">
-                        <div className="flex-1 flex items-center justify-center bg-black/40 rounded-2xl">
+                <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-hidden gap-0 md:gap-8">
+                    <div className="flex-1 min-w-0 relative flex flex-col overflow-hidden gap-0 md:gap-4">
+                        <div className="flex-1 flex items-center justify-center bg-black/40 md:rounded-2xl">
                             <div className="w-40 h-24 bg-white/5 rounded-xl animate-pulse" />
                         </div>
                     </div>
@@ -160,8 +160,8 @@ export default function WatchPage() {
             {/* 1. Header Row (Fixed) */}
 
 
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-10 pb-10 pt-4 gap-8 relative z-10">
-                <div className="flex items-center gap-3 shrink-0 min-w-0">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-0 pb-0 pt-4 gap-4 md:px-10 md:pb-10 md:gap-8 relative z-10">
+                <div className="flex items-center gap-3 shrink-0 min-w-0 px-4 md:px-0">
                     <button
                         onClick={() => navigate('/')}
                         className="p-2 -ml-2 text-gray-400 hover:text-white transition-all hover:bg-white/5 rounded-lg active:scale-95 group"
@@ -188,10 +188,16 @@ export default function WatchPage() {
                     )}
                 </div>
 
-                <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-hidden gap-8">
-                        <div className="flex-1 min-w-0 relative flex flex-col overflow-hidden items-center">
+                <div className="flex-1 flex flex-col md:flex-row min-h-0 relative overflow-visible md:overflow-hidden gap-0 md:gap-8">
+                        <div className="flex-none md:flex-1 min-w-0 relative flex flex-col overflow-visible md:overflow-hidden items-center">
                             {/* Constrained Column - Ensures 16:9 ratio is never broken by viewport height */}
-                            <div className="w-full h-full flex flex-col gap-6 max-w-[calc((100vh-240px)*1.777)]">
+                            <div
+                                className={`w-full h-auto md:h-full flex flex-col gap-0 md:gap-6 ${
+                                    isExpanded
+                                        ? 'md:max-w-[calc((100vh-275px)*1.777)]'
+                                        : 'md:max-w-[calc((100vh-240px)*1.777)]'
+                                }`}
+                            >
                                 {/* Video Player Card - Maximized & End-to-End Alignment */}
                                 <div className="shrink-0 w-full aspect-video flex items-center justify-center overflow-hidden relative">
                                     <VideoPlayer
@@ -211,7 +217,7 @@ export default function WatchPage() {
                                 </div>
 
                                 {/* Player Controls - Aligned end-to-end with the video player above */}
-                                <div className="shrink-0">
+                                <div className="shrink-0 px-0 md:px-0">
                                     <PlayerControls
                                         isExpanded={isExpanded}
                                         canPrev={epNum !== '1'}

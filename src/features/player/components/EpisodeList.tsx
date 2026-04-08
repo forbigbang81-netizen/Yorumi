@@ -94,7 +94,7 @@ export default function EpisodeList({
     }, []);
 
     return (
-        <aside className="w-full md:w-[380px] xl:w-[420px] shrink-0 flex flex-col h-[480px] md:h-full overflow-hidden order-2 md:order-2 rounded-2xl bg-[#0b0c0f] shadow-2xl shadow-black/80">
+        <aside className="w-full md:w-[380px] xl:w-[420px] shrink-0 flex flex-col h-[480px] md:h-full overflow-hidden order-2 md:order-2 rounded-none shadow-none bg-[#0b0c0f] md:rounded-2xl md:shadow-2xl md:shadow-black/80">
             <div className="px-5 pt-5 pb-4 flex flex-col gap-4">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex flex-col pt-1">

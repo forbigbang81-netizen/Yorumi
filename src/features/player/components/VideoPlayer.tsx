@@ -206,14 +206,14 @@ export default function VideoPlayer({
     }, [subtitles, isHlsStream, streamUrl]);
 
     return (
-        <div className={`aspect-video w-full max-h-full relative bg-[#0b0c0f] group transition-all duration-300 overflow-hidden rounded-2xl shadow-2xl shadow-black/80`}>
+        <div className={`w-full h-full max-h-full relative bg-[#0b0c0f] group transition-all duration-300 overflow-clip md:overflow-hidden rounded-none shadow-none md:rounded-2xl md:shadow-2xl md:shadow-black/80`}>
             {isLoading ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">
                     <LoadingSpinner />
                     <p className="mt-4 text-gray-400 animate-pulse">Loading Stream...</p>
                 </div>
             ) : streamUrl && isHlsStream ? (
-                <div className="relative w-full h-full z-10 flex items-center justify-center">
+                <div className="relative w-full h-full z-10 flex items-center justify-center overflow-clip md:overflow-hidden">
                     <video
                         ref={videoRef}
                         className="w-full h-full object-contain [color-scheme:dark] bg-black"
@@ -249,8 +249,8 @@ export default function VideoPlayer({
                     />
                 </div>
             ) : streamUrl ? (
-                <div className="relative w-full h-full bg-black flex items-center justify-center z-10">
-                    <div className="w-full h-full max-w-full max-h-full flex items-center justify-center bg-black">
+                <div className="relative w-full h-full bg-black flex items-center justify-center z-10 overflow-clip md:overflow-hidden">
+                    <div className="w-full h-full max-w-full max-h-full flex items-center justify-center bg-black overflow-clip md:overflow-hidden">
                         <iframe
                             key={`${episodeSession ?? ''}::${streamUrl ?? ''}`}
                             src={streamUrl}

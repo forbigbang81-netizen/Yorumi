@@ -41,39 +41,39 @@ export default function PlayerControls({
         ? 'Auto'
         : `${selectedStream?.quality || 'Quality'}`;
     return (
-        <div className="watch-safe-bottom py-2">
+        <div className="hidden md:block watch-safe-bottom bg-[#202020] px-2 py-2 md:bg-transparent md:px-0">
             {/* Controls Row */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 sm:overflow-visible">
+            <div className="flex items-center gap-1.5 pb-1 overflow-x-auto no-scrollbar md:gap-2 md:flex-nowrap md:overflow-visible">
                 {/* Previous */}
                 <button
                     onClick={onPrev}
-                    className="flex-shrink-0 h-9 px-4 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-shrink-0 h-8 px-2.5 md:h-9 md:px-4 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium flex items-center gap-1.5 md:gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={!canPrev}
                 >
-                    <ChevronLeft className="w-4 h-4" />
-                    <span className="hidden sm:inline text-sm">Previous</span>
+                    <ChevronLeft className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                    <span className="text-[13px] md:text-sm">Previous</span>
                 </button>
 
                 {/* Next */}
                 <button
                     onClick={onNext}
-                    className="flex-shrink-0 h-9 px-4 rounded-lg bg-yorumi-accent hover:bg-yorumi-accent/90 text-white font-bold flex items-center gap-2 transition-colors shadow-lg shadow-yorumi-accent/20"
+                    className="flex-shrink-0 h-8 px-2.5 md:h-9 md:px-4 rounded-lg bg-yorumi-accent hover:bg-yorumi-accent/90 text-white font-bold flex items-center gap-1.5 md:gap-2 transition-colors shadow-lg shadow-yorumi-accent/20"
                 >
-                    <span className="hidden sm:inline text-sm">Next</span>
-                    <ChevronRight className="w-4 h-4" />
+                    <span className="text-[13px] md:text-sm">Next</span>
+                    <ChevronRight className="w-3.5 h-3.5 md:w-4 md:h-4" />
                 </button>
 
                 {/* Sub/Dub Toggle */}
-                <div className="flex bg-white/5 border border-white/10 rounded-lg p-0.5 h-9 items-center ml-auto">
+                <div className="flex bg-white/5 border border-white/10 rounded-lg p-0.5 h-8 md:h-9 items-center ml-auto">
                     <button 
                         onClick={() => onAudioChange('sub')}
                         disabled={!availableAudios.includes('sub')}
-                        className={`px-3 h-full rounded-md text-[10px] font-bold tracking-wider transition-all ${selectedAudio === 'sub' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'} disabled:opacity-20`}
+                        className={`px-2.5 md:px-3 h-full rounded-md text-[10px] font-bold tracking-wider transition-all ${selectedAudio === 'sub' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'} disabled:opacity-20`}
                     >SUB</button>
                     <button 
                         onClick={() => onAudioChange('dub')}
                         disabled={!availableAudios.includes('dub')}
-                        className={`px-3 h-full rounded-md text-[10px] font-bold tracking-wider transition-all ${selectedAudio === 'dub' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'} disabled:opacity-20`}
+                        className={`px-2.5 md:px-3 h-full rounded-md text-[10px] font-bold tracking-wider transition-all ${selectedAudio === 'dub' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'} disabled:opacity-20`}
                     >DUB</button>
                 </div>
 
@@ -81,10 +81,10 @@ export default function PlayerControls({
                 <div className="relative flex-shrink-0 z-50">
                     <button
                         onClick={() => setShowQualityMenu(!showQualityMenu)}
-                        className="h-9 px-4 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-medium flex items-center gap-2 transition-colors relative z-10"
+                        className="h-8 px-2.5 md:h-9 md:px-4 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-medium flex items-center gap-1.5 md:gap-2 transition-colors relative z-10"
                     >
-                        <Settings className="w-4 h-4" />
-                        <span className="hidden sm:inline text-sm">
+                        <Settings className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                        <span className="text-[13px] md:text-sm">
                             {selectedQualityLabel}
                         </span>
                     </button>
@@ -140,10 +140,10 @@ export default function PlayerControls({
                 {/* Expand */}
                 <button
                     onClick={onToggleExpand}
-                    className="flex-shrink-0 flex h-9 px-4 rounded-lg bg-transparent hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-medium items-center gap-2 transition-colors"
+                    className="hidden md:flex flex-shrink-0 h-9 px-4 rounded-lg bg-transparent hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-medium items-center gap-2 transition-colors"
                 >
                     {isExpanded ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-                    <span className="hidden sm:inline text-sm">{isExpanded ? 'Collapse' : 'Expand'}</span>
+                    <span className="text-sm">{isExpanded ? 'Collapse' : 'Expand'}</span>
                 </button>
             </div>
 
