@@ -206,17 +206,17 @@ export default function VideoPlayer({
     }, [subtitles, isHlsStream, streamUrl]);
 
     return (
-        <div className={`w-full h-full max-h-full relative bg-[#0b0c0f] group transition-all duration-300 overflow-clip md:overflow-hidden rounded-none shadow-none md:rounded-2xl md:shadow-2xl md:shadow-black/80`}>
+        <div className="watch-player-shell w-full h-full max-h-full relative bg-[#0b0c0f] group transition-all duration-300 overflow-visible rounded-none shadow-none md:rounded-t-2xl md:rounded-b-none md:shadow-2xl md:shadow-black/80">
             {isLoading ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">
                     <LoadingSpinner />
                     <p className="mt-4 text-gray-400 animate-pulse">Loading Stream...</p>
                 </div>
             ) : streamUrl && isHlsStream ? (
-                <div className="relative w-full h-full z-10 flex items-center justify-center overflow-clip md:overflow-hidden">
+                <div className="relative w-full h-full z-10 flex items-center justify-center overflow-visible">
                     <video
                         ref={videoRef}
-                        className="w-full h-full object-contain [color-scheme:dark] bg-black"
+                        className="watch-native-video w-full h-full object-contain [color-scheme:dark] bg-black rounded-none md:rounded-t-2xl md:rounded-b-none"
                         controls
                         playsInline
                         autoPlay
@@ -249,8 +249,8 @@ export default function VideoPlayer({
                     />
                 </div>
             ) : streamUrl ? (
-                <div className="relative w-full h-full bg-black flex items-center justify-center z-10 overflow-clip md:overflow-hidden">
-                    <div className="w-full h-full max-w-full max-h-full flex items-center justify-center bg-black overflow-clip md:overflow-hidden">
+                <div className="relative w-full h-full bg-black flex items-center justify-center z-10 overflow-hidden rounded-none md:rounded-2xl">
+                    <div className="w-full h-full max-w-full max-h-full flex items-center justify-center bg-black overflow-hidden rounded-none md:rounded-2xl">
                         <iframe
                             key={`${episodeSession ?? ''}::${streamUrl ?? ''}`}
                             src={streamUrl}

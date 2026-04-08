@@ -194,8 +194,8 @@ export default function WatchPage() {
                             <div
                                 className={`w-full h-auto md:h-full flex flex-col gap-0 md:gap-6 ${
                                     isExpanded
-                                        ? 'md:max-w-[calc((100vh-255px)*1.777)]'
-                                        : 'md:max-w-[calc((100vh-240px)*1.777)]'
+                                        ? 'md:max-w-[min(96vw,calc((100vh-248px)*1.777))]'
+                                        : 'md:max-w-[calc((100vh-252px)*1.777)]'
                                 }`}
                             >
                                 {/* Video Player Card - Maximized & End-to-End Alignment */}

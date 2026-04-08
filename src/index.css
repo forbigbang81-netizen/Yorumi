@@ -159,6 +159,18 @@ html.watch-safe-mode video {
   padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
 }
 
+@media (min-width: 768px) {
+  .watch-player-shell {
+    overflow: visible;
+  }
+
+  .watch-native-video {
+    display: block;
+    overflow: clip;
+    overflow-clip-margin: content-box;
+  }
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
