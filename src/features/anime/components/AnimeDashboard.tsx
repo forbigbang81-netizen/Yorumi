@@ -131,17 +131,23 @@ export default function AnimeDashboard({
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                                 {topAnimeLoading ? (
                                     Array.from({ length: 15 }).map((_, i) => (
-                                        <AnimeCardSkeleton key={i} />
+                                        <div key={i} className={i >= 10 ? 'hidden sm:block' : ''}>
+                                            <AnimeCardSkeleton />
+                                        </div>
                                     ))
                                 ) : (
-                                    topAnime.slice(0, 15).map((item) => (
-                                        <AnimeCard
+                                    topAnime.slice(0, 15).map((item, i) => (
+                                        <div
                                             key={`${item.scraperId || item.id || item.mal_id || item.title}-${item.latestEpisode || item.episodes || 0}`}
-                                            anime={item}
-                                            onClick={() => onAnimeClick(item)}
-                                            onWatchClick={() => onWatchClick(item)}
-                                            onMouseEnter={() => onAnimeHover?.(item)}
-                                        />
+                                            className={i >= 10 ? 'hidden sm:block' : ''}
+                                        >
+                                            <AnimeCard
+                                                anime={item}
+                                                onClick={() => onAnimeClick(item)}
+                                                onWatchClick={() => onWatchClick(item)}
+                                                onMouseEnter={() => onAnimeHover?.(item)}
+                                            />
+                                        </div>
                                     ))
                                 )}
                             </div>

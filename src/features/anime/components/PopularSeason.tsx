@@ -42,7 +42,7 @@ const PopularSeason: React.FC<PopularSeasonProps> = ({ animeList, isLoading = fa
                     {Array.from({ length: 6 }).map((_, index) => (
                         <div
                             key={`popular-season-skeleton-${index}`}
-                            className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
+                            className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
                         >
                             <AnimeCardSkeleton />
                         </div>
@@ -56,8 +56,8 @@ const PopularSeason: React.FC<PopularSeasonProps> = ({ animeList, isLoading = fa
 
     return (
         <section className="relative z-20 mt-4 mb-12">
-            <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-black text-white tracking-wide uppercase">Popular This Season</h2>
+            <div className="flex items-center justify-between gap-3 mb-4">
+                <h2 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase leading-none">Popular This Season</h2>
 
                 <div className="flex items-center gap-4">
                     <div className="flex gap-2">
@@ -80,7 +80,7 @@ const PopularSeason: React.FC<PopularSeasonProps> = ({ animeList, isLoading = fa
                     {onViewAll && (
                         <button
                             onClick={onViewAll}
-                            className="text-xs font-semibold text-gray-400 hover:text-yorumi-accent transition-colors tracking-wider"
+                            className="text-[11px] sm:text-xs font-semibold text-gray-400 hover:text-yorumi-accent transition-colors tracking-wider"
                         >
                             View All
                         </button>
@@ -96,7 +96,7 @@ const PopularSeason: React.FC<PopularSeasonProps> = ({ animeList, isLoading = fa
                             {animeList.map((anime) => (
                                 <div
                                     key={anime.mal_id}
-                                    className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
+                                    className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
                                 >
                                     <AnimeCard
                                         anime={anime}

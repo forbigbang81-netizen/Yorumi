@@ -51,7 +51,7 @@ const TrendingNow: React.FC<TrendingNowProps> = ({
                     {Array.from({ length: 6 }).map((_, index) => (
                         <div
                             key={`trending-skeleton-${index}`}
-                            className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
+                            className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
                         >
                             <AnimeCardSkeleton />
                         </div>
@@ -105,7 +105,7 @@ const TrendingNow: React.FC<TrendingNowProps> = ({
                             {animeList.map((anime) => (
                                 <div
                                     key={`${anime.scraperId || anime.id || anime.mal_id || anime.title}-${anime.latestEpisode || anime.episodes || 0}`}
-                                    className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
+                                    className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px]"
                                 >
                                     <AnimeCard
                                         anime={anime}

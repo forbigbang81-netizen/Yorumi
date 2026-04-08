@@ -52,7 +52,7 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick,
                 </div>
                 <div className="flex gap-4 overflow-hidden">
                     {Array.from({ length: 6 }).map((_, idx) => (
-                        <div key={idx} className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px]">
+                        <div key={idx} className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px]">
                             <div className="aspect-[2/3] rounded-lg bg-white/10 mb-3" />
                             <div className="h-4 w-4/5 rounded bg-white/10" />
                             <div className="h-4 w-3/5 rounded bg-white/10 mt-2" />
@@ -106,7 +106,7 @@ const AllTimePopularManga: React.FC<AllTimePopularMangaProps> = ({ onMangaClick,
                             {mangaList.slice(0, 10).map((manga) => (
                                 <div
                                     key={manga.id || manga.mal_id}
-                                    className="flex-[0_0_180px] md:flex-[0_0_210px] lg:flex-[0_0_230px] select-none cursor-pointer group relative"
+                                    className="flex-[0_0_160px] md:flex-[0_0_210px] lg:flex-[0_0_230px] select-none cursor-pointer group relative"
                                     onClick={() => onMangaClick((manga.id || manga.mal_id).toString(), false, manga)}
                                 >
                                     {/* Image Container */}
