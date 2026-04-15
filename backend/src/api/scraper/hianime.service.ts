@@ -11,6 +11,30 @@ const top10Refreshing: Record<string, boolean> = {};
 let inMemoryLatestEpisodesCache: any = null;
 let latestEpisodesRefreshing = false;
 
+const extractScraperIdFromLink = (link: string) => {
+    const raw = String(link || '').trim();
+    if (!raw) return '';
+    return raw
+        .replace(/^https?:\/\/[^/]+/i, '')
+        .replace(/^\/+/, '')
+        .split('?')[0]
+        .trim();
+};
+
+const normalizeHeading = (value: string) =>
+    String(value || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const isLatestEpisodesHeading = (value: string) => {
+    const heading = normalizeHeading(value);
+    return heading === 'latest episode'
+        || heading === 'latest episodes'
+        || heading.startsWith('latest episode ')
+        || heading.startsWith('latest episodes ');
+};
+
 export class HiAnimeScraper {
     private readonly BASE_URL = 'https://aniwatchtv.to';
 
@@ -167,11 +191,7 @@ export class HiAnimeScraper {
 
             const $ = cheerio.load(data);
             const items: any[] = [];
-
-            $('section.block_area_home').each((_, section) => {
-                const heading = $(section).find('.cat-heading').first().text().trim().toLowerCase();
-                if (heading !== 'latest episode') return;
-
+            const collectLatestItems = (_: number, section: cheerio.Element) => {
                 $(section).find('.film_list-wrap .flw-item').each((__, element) => {
                     const $el = $(element);
                     const anchor = $el.find('.film-name a').first();
@@ -188,6 +208,7 @@ export class HiAnimeScraper {
                     const sub = parseInt(subText.replace(/\D/g, ''), 10) || 0;
                     const dub = parseInt(dubText.replace(/\D/g, ''), 10) || 0;
                     const latestEpisode = parseInt(episodeText.replace(/\D/g, ''), 10) || sub || dub || 0;
+                    const absoluteLink = link ? `${this.BASE_URL}${link}` : '';
 
                     if (title) {
                         items.push({
@@ -197,14 +218,28 @@ export class HiAnimeScraper {
                             type,
                             duration,
                             dataId,
-                            link: link ? `${this.BASE_URL}${link}` : '',
+                            link: absoluteLink,
+                            scraperId: extractScraperIdFromLink(link),
                             sub,
                             dub,
                             latestEpisode
                         });
                     }
                 });
-            });
+            };
+
+            const candidateSections = $('section.block_area_home').filter((_, section) =>
+                isLatestEpisodesHeading($(section).find('.cat-heading').first().text())
+            );
+
+            if (candidateSections.length > 0) {
+                candidateSections.each(collectLatestItems);
+            }
+
+            if (items.length === 0) {
+                const fallback = await this.scrapeRecentlyUpdatedPage(1);
+                return Array.isArray(fallback?.data) ? fallback.data.slice(0, 18) : [];
+            }
 
             return items;
         } catch (error) {

@@ -18,6 +18,15 @@ const normalizeProxyUrl = (url?: string) => {
     if (url.startsWith('/api/')) return `${API_ORIGIN}${url}`;
     return url;
 };
+const extractScraperIdFromLink = (link?: string) => {
+    const raw = String(link || '').trim();
+    if (!raw) return '';
+    return raw
+        .replace(/^https?:\/\/[^/]+/i, '')
+        .replace(/^\/+/, '')
+        .split('?')[0]
+        .trim();
+};
 const getExpectedEpisodeCount = (anime?: Partial<Anime> | null) =>
     Number(anime?.latestEpisode || anime?.episodes || 0);
 const hasSufficientEpisodePayload = (anime: Partial<Anime> | null | undefined, payload: any) => {
@@ -173,7 +182,7 @@ const mapLatestUpdateItemToAnime = (item: any): Anime => {
     anime.title_english = anime.title_english || item.title;
     anime.type = item.type || anime.type || 'TV';
     anime.duration = item.duration || anime.duration;
-    anime.scraperId = item.scraperId || anime.scraperId;
+    anime.scraperId = item.scraperId || extractScraperIdFromLink(item.link) || anime.scraperId;
 
     if (item.latestEpisode && !anime.latestEpisode) {
         anime.latestEpisode = item.latestEpisode;
@@ -422,17 +431,34 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
-                const res = await fetch(`${API_BASE}/anilist/home-fast`);
-                if (!res.ok) {
-                    throw new Error(`Failed to fetch latest updates: ${res.statusText}`);
-                }
+                let result = { data: [] as Anime[] };
 
-                const payload = await res.json();
-                const result = {
-                    data: Array.isArray(payload?.latestEpisodes)
-                        ? payload.latestEpisodes.map(mapLatestUpdateItemToAnime)
-                        : []
-                };
+                try {
+                    const res = await fetch(`${API_BASE}/anilist/home-fast`);
+                    if (!res.ok) {
+                        throw new Error(`Failed to fetch latest updates: ${res.statusText}`);
+                    }
+
+                    const payload = await res.json();
+                    result = {
+                        data: Array.isArray(payload?.latestEpisodes)
+                            ? payload.latestEpisodes.map(mapLatestUpdateItemToAnime)
+                            : []
+                    };
+                } catch (homeFastError) {
+                    console.warn('[AnimeService] home-fast latest updates unavailable, falling back to recently-updated', homeFastError);
+                    const fallbackRes = await fetch(`${API_BASE}/scraper/recently-updated?page=1&limit=10`);
+                    if (!fallbackRes.ok) {
+                        throw new Error(`Failed to fetch latest updates fallback: ${fallbackRes.statusText}`);
+                    }
+
+                    const fallbackPayload = await fallbackRes.json();
+                    result = {
+                        data: Array.isArray(fallbackPayload?.data)
+                            ? fallbackPayload.data.map(mapLatestUpdateItemToAnime)
+                            : []
+                    };
+                }
 
                 if (result.data.length > 0) {
                     setCache(cacheKey, result, DETAIL_CACHE_TTL);
