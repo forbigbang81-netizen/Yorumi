@@ -36,7 +36,11 @@ const isLatestEpisodesHeading = (value: string) => {
 };
 
 export class HiAnimeScraper {
-    private readonly BASE_URL = 'https://aniwatchtv.to';
+    private readonly BASE_URL = String(
+        process.env.HIANIME_BASE_URL || process.env.ANIWATCH_BASE_URL || 'https://hianimetv.cfd'
+    )
+        .trim()
+        .replace(/\/+$/, '');
 
     async getSpotlightAnime(): Promise<any[]> {
         try {
@@ -634,6 +638,7 @@ export class HiAnimeScraper {
                         duration,
                         dataId,
                         link: link ? `${this.BASE_URL}${link}` : '',
+                        scraperId: extractScraperIdFromLink(link),
                         sub,
                         dub,
                         latestEpisode

@@ -2,10 +2,12 @@ import { Router } from 'express';
 import { scraperService } from './scraper.service';
 import axios from 'axios';
 import { HiAnimeScraper } from './hianime.service';
+import { AnimeKaiScraper } from '../../scraper/animekai';
 
 const router = Router();
 const upstreamCookieJar = new Map<string, string>();
 const hiAnimeScraper = new HiAnimeScraper();
+const animeKaiScraper = new AnimeKaiScraper();
 
 const mergeCookieHeader = (existing: string, setCookie: string[]) => {
     const jar = new Map<string, string>();
@@ -87,9 +89,42 @@ router.get('/recently-updated', async (req, res) => {
     try {
         const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 18;
-        const result = await hiAnimeScraper.getEnrichedRecentlyUpdated(page, limit);
+        const result = await animeKaiScraper.getNewReleases(page, limit);
         res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
         res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/animekai/latest-updates', async (_req, res) => {
+    try {
+        const latestItems = await animeKaiScraper.getLatestUpdates();
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+        res.json({
+            latestEpisodes: latestItems
+                .filter((item) => item?.title)
+                .map((item) => ({
+                    ...item,
+                    id: 0,
+                    mal_id: 0,
+                    anilist: null,
+                })),
+        });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/animekai/top-trending', async (req, res) => {
+    try {
+        const requestedRange = String(req.query.range || 'now').toLowerCase();
+        const range = ['now', 'day', 'week', 'month'].includes(requestedRange)
+            ? requestedRange as 'now' | 'day' | 'week' | 'month'
+            : 'now';
+        const top10 = await animeKaiScraper.getTopTrending(range);
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+        res.json({ top10 });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

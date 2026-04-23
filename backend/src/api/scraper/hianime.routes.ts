@@ -9,10 +9,22 @@ const scraper = new HiAnimeScraper();
 router.get('/spotlight', async (req, res) => {
     try {
         const result = await scraper.getEnrichedSpotlight();
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
         res.json(result);
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Failed to fetch spotlight anime' });
+    }
+});
+
+router.get('/latest-episodes', async (_req, res) => {
+    try {
+        const result = await scraper.getEnrichedLatestEpisodes();
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+        res.json(result);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Failed to fetch latest episodes' });
     }
 });
 

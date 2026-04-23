@@ -33,7 +33,9 @@ export default function HomePage() {
     };
 
     const handleAnimeClick = (item: Anime) => {
-        const animeId = item.id || item.mal_id;
+        const rawScraperId = String(item.scraperId || '').trim();
+        const animeId = item.id || item.mal_id || (rawScraperId ? `s:${rawScraperId}` : undefined);
+        if (!animeId) return;
         navigate(`/anime/details/${animeId}`, { state: { anime: item } });
     };
 
@@ -79,6 +81,7 @@ export default function HomePage() {
             <div className={`min-h-screen pb-20 ${isCatalogFilterView ? 'pt-24' : ''}`}>
                 <AnimeDashboard
                     spotlightAnime={[]}
+                    spotlightLoading={true}
                     continueWatchingList={[]}
                     latestUpdates={[]}
                     latestUpdatesLoading={true}
@@ -200,6 +203,7 @@ export default function HomePage() {
         <div className={`min-h-screen pb-20 ${isCatalogFilterView ? 'pt-24' : ''}`}>
             <AnimeDashboard
                 spotlightAnime={anime.spotlightAnime}
+                spotlightLoading={anime.spotlightLoading}
                 continueWatchingList={anime.continueWatchingList}
                 latestUpdates={anime.latestUpdates}
                 latestUpdatesLoading={anime.latestUpdatesLoading}

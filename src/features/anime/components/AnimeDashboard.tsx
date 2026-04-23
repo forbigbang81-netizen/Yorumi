@@ -13,6 +13,7 @@ import TopTenSidebar from './TopTenSidebar';
 
 interface AnimeDashboardProps {
     spotlightAnime: Anime[];
+    spotlightLoading?: boolean;
     continueWatchingList: WatchProgress[];
     latestUpdates: Anime[];
     latestUpdatesLoading: boolean;
@@ -39,6 +40,7 @@ interface AnimeDashboardProps {
 
 export default function AnimeDashboard({
     spotlightAnime,
+    spotlightLoading = false,
     continueWatchingList,
     latestUpdates,
     latestUpdatesLoading,
@@ -69,6 +71,7 @@ export default function AnimeDashboard({
             {!compactCatalogMode && (
                 <SpotlightHero
                     animeList={spotlightAnime}
+                    isLoading={spotlightLoading}
                     onAnimeClick={onAnimeClick}
                     onWatchClick={onWatchClick}
                 />

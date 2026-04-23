@@ -2,12 +2,13 @@ import { Router } from 'express';
 import { anilistService } from './anilist.service';
 import { HiAnimeScraper } from '../scraper/hianime.service';
 import { AnimePaheScraper } from '../../scraper/animepahe';
+import { AnimeKaiScraper } from '../../scraper/animekai';
 import { redis } from '../mapping/mapper';
 import { mappingService } from '../mapping/mapping.service';
 import { scraperService } from '../scraper/scraper.service';
 
 const router = Router();
-const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v1';
+const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v2';
 const HOME_FAST_TTL_SECONDS = 120;
 let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
 let homeFastRefreshPromise: Promise<any> | null = null;
@@ -16,6 +17,7 @@ const FORCED_ANIMEPAHE_SESSIONS: Record<number, string> = {
 };
 const isAnimePaheSession = (value: unknown) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+const isGenericScraperSession = (value: unknown) => /^[a-z0-9-]+$/i.test(String(value || '').trim());
 const normalizeTitleToken = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const hasExplicitSeasonMarker = (title: string) =>
     /\bseason\s*\d+\b/i.test(String(title || '')) || /\b\d+(st|nd|rd|th)\s*season\b/i.test(String(title || ''));
@@ -199,16 +201,27 @@ const getFreshHomeFastFromMemory = () => {
 
 const buildHomeFastPayload = async () => {
     const scraper = new HiAnimeScraper();
-    const [spotlight, latestEpisodes, trending, seasonal, monthly, topAnime, topDay, topWeek, topMonth] = await Promise.all([
-        scraper.getEnrichedSpotlight(),
-        scraper.getEnrichedLatestEpisodes(),
-        anilistService.getTrendingAnime(1, 10),
-        anilistService.getPopularThisSeason(1, 10),
-        anilistService.getPopularThisMonth(1, 10),
-        anilistService.getTopAnime(1, 18),
-        scraper.getEnrichedTopTen('day'),
-        scraper.getEnrichedTopTen('week'),
-        scraper.getEnrichedTopTen('month'),
+    const animeKaiScraper = new AnimeKaiScraper();
+    const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
+        try {
+            return await Promise.race<T>([
+                promise,
+                new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs)),
+            ]);
+        } catch {
+            return fallback;
+        }
+    };
+    const [spotlight, latestEpisodes, trending, seasonal, monthly, topAnime, topNow, topWeek, topMonth] = await Promise.all([
+        withTimeout(scraper.getEnrichedSpotlight(), 1800, { spotlight: [] }),
+        withTimeout(scraper.getEnrichedLatestEpisodes(), 1800, { latestEpisodes: [] }),
+        withTimeout(anilistService.getTrendingAnime(1, 10), 4000, { media: [] }),
+        withTimeout(anilistService.getPopularThisSeason(1, 10), 4000, { media: [] }),
+        withTimeout(anilistService.getPopularThisMonth(1, 10), 4000, { media: [] }),
+        withTimeout(anilistService.getTopAnime(1, 18), 4000, { media: [], pageInfo: { lastPage: 1, currentPage: 1, hasNextPage: false } }),
+        withTimeout(animeKaiScraper.getTopTrending('now'), 2500, [] as any[]),
+        withTimeout(animeKaiScraper.getTopTrending('week'), 2500, [] as any[]),
+        withTimeout(animeKaiScraper.getTopTrending('month'), 2500, [] as any[]),
     ]);
 
     return {
@@ -219,9 +232,9 @@ const buildHomeFastPayload = async () => {
         monthly,
         topAnime,
         topTen: {
-            day: topDay?.top10 || [],
-            week: topWeek?.top10 || [],
-            month: topMonth?.top10 || [],
+            day: Array.isArray(topNow) ? topNow : [],
+            week: Array.isArray(topWeek) ? topWeek : [],
+            month: Array.isArray(topMonth) ? topMonth : [],
         },
         generatedAt: Date.now(),
     };
@@ -528,15 +541,31 @@ router.get('/anime/:id/fast', async (req, res) => {
 
         if (id.startsWith('s:')) {
             resolvedSession = id.substring(2).trim() || null;
-            if (!isAnimePaheSession(resolvedSession)) {
-                res.status(400).json({ error: 'Only AnimePahe scraper sessions are supported' });
+            if (!resolvedSession || (!isAnimePaheSession(resolvedSession) && !isGenericScraperSession(resolvedSession))) {
+                res.status(400).json({ error: 'Unsupported scraper session' });
                 return;
             }
-            const scraperDetails = resolvedSession
+            const genericScraperSession = !isAnimePaheSession(resolvedSession);
+            const scraperDetails = isAnimePaheSession(resolvedSession)
                 ? await new AnimePaheScraper().getAnimeInfo(resolvedSession)
-                : null;
+                : await new AnimeKaiScraper().getAnimeInfo(resolvedSession);
 
-            if (scraperDetails?.title) {
+            if (genericScraperSession) {
+                animeDetails = scraperDetails ? {
+                    id,
+                    title: { romaji: scraperDetails.title, english: scraperDetails.title },
+                    coverImage: { large: scraperDetails.poster },
+                    description: scraperDetails.description,
+                    status: scraperDetails.status,
+                    episodes: scraperDetails.episodes || null,
+                    format: scraperDetails.type || 'TV',
+                    genres: [],
+                    averageScore: 0,
+                    scraperId: resolvedSession,
+                } : null;
+            }
+
+            if (!genericScraperSession && scraperDetails?.title) {
                 const anilistMatch = await anilistService.findBestAnimeMatch({
                     titles: [scraperDetails.title],
                     year: Number(scraperDetails.year || 0) || undefined,
@@ -680,34 +709,39 @@ router.get('/anime/:id', async (req, res) => {
         // Hybrid Logic for Scraper IDs (e.g. s:one-piece-100)
         if (id.startsWith('s:')) {
             const scraperId = id.substring(2);
-            if (!isAnimePaheSession(scraperId)) {
-                return res.status(400).json({ error: 'Only AnimePahe scraper sessions are supported' });
+            if (!scraperId || (!isAnimePaheSession(scraperId) && !isGenericScraperSession(scraperId))) {
+                return res.status(400).json({ error: 'Unsupported scraper session' });
             }
-            const scraperDetails = await new AnimePaheScraper().getAnimeInfo(scraperId);
+            const genericScraperSession = !isAnimePaheSession(scraperId);
+            const scraperDetails = isAnimePaheSession(scraperId)
+                ? await new AnimePaheScraper().getAnimeInfo(scraperId)
+                : await new AnimeKaiScraper().getAnimeInfo(scraperId);
             if (!scraperDetails) {
                 return res.status(404).json({ error: 'Anime not found on scraper' });
             }
 
-            // 2. Search AniList by Title
-            const title = scraperDetails.title;
-            const anilistMatch = await anilistService.findBestAnimeMatch({
-                titles: [title],
-                year: Number(scraperDetails.year || 0) || undefined,
-                episodes: Number(scraperDetails.episodes || 0) || undefined,
-                format: scraperDetails.type,
-            });
+            if (!genericScraperSession) {
+                // 2. Search AniList by Title
+                const title = scraperDetails.title;
+                const anilistMatch = await anilistService.findBestAnimeMatch({
+                    titles: [title],
+                    year: Number(scraperDetails.year || 0) || undefined,
+                    episodes: Number(scraperDetails.episodes || 0) || undefined,
+                    format: scraperDetails.type,
+                });
 
-            if (anilistMatch) {
-                // 3. Get full AniList details
-                const anilistDetails = await anilistService.getAnimeById(anilistMatch.id);
-                if (anilistDetails) {
-                    // 4. Return merged result (AniList metadata + Scraper ID hint)
-                    return res.json({
-                        ...anilistDetails,
-                        id: id, // Maintain s: prefix
-                        mal_id: anilistDetails.id, // Keep AniList/MAL ID ref as mal_id
-                        scraperId: scraperId
-                    });
+                if (anilistMatch) {
+                    // 3. Get full AniList details
+                    const anilistDetails = await anilistService.getAnimeById(anilistMatch.id);
+                    if (anilistDetails) {
+                        // 4. Return merged result (AniList metadata + Scraper ID hint)
+                        return res.json({
+                            ...anilistDetails,
+                            id: id, // Maintain s: prefix
+                            mal_id: anilistDetails.id, // Keep AniList/MAL ID ref as mal_id
+                            scraperId: scraperId
+                        });
+                    }
                 }
             }
 

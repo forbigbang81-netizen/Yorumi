@@ -336,6 +336,16 @@ const clearCachedStream = (key: string) => {
 
 const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v3:${id}`;
 const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v5:${id}`;
+const fetchJsonWithTimeout = async (url: string, init: RequestInit = {}, timeoutMs = 2500) => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, { ...init, signal: controller.signal });
+        return res;
+    } finally {
+        window.clearTimeout(timeoutId);
+    }
+};
 
 // Track in-flight requests to prevent duplicates
 const inFlightRequests = new Map<string, Promise<any>>();
@@ -349,7 +359,7 @@ export const animeService = {
     },
 
     async getHomeFastData() {
-        const cacheKey = 'home-fast-data-v2';
+        const cacheKey = 'home-fast-data-v3';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
@@ -359,7 +369,7 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
-                const res = await fetch(`${API_BASE}/anilist/home-fast`);
+                const res = await fetchJsonWithTimeout(`${API_BASE}/anilist/home-fast`, {}, 1800);
                 if (!res.ok) {
                     throw new Error(`Failed to fetch fast home data: ${res.statusText}`);
                 }
@@ -434,7 +444,7 @@ export const animeService = {
                 let result = { data: [] as Anime[] };
 
                 try {
-                    const res = await fetch(`${API_BASE}/anilist/home-fast`);
+                    const res = await fetchJsonWithTimeout(`${API_BASE}/scraper/animekai/latest-updates`, {}, 3500);
                     if (!res.ok) {
                         throw new Error(`Failed to fetch latest updates: ${res.statusText}`);
                     }
@@ -445,19 +455,13 @@ export const animeService = {
                             ? payload.latestEpisodes.map(mapLatestUpdateItemToAnime)
                             : []
                     };
-                } catch (homeFastError) {
-                    console.warn('[AnimeService] home-fast latest updates unavailable, falling back to recently-updated', homeFastError);
-                    const fallbackRes = await fetch(`${API_BASE}/scraper/recently-updated?page=1&limit=10`);
-                    if (!fallbackRes.ok) {
-                        throw new Error(`Failed to fetch latest updates fallback: ${fallbackRes.statusText}`);
-                    }
 
-                    const fallbackPayload = await fallbackRes.json();
-                    result = {
-                        data: Array.isArray(fallbackPayload?.data)
-                            ? fallbackPayload.data.map(mapLatestUpdateItemToAnime)
-                            : []
-                    };
+                    if (result.data.length === 0) {
+                        throw new Error('Latest episodes endpoint returned no items');
+                    }
+                } catch (latestEndpointError) {
+                    console.warn('[AnimeService] dedicated latest updates endpoint failed', latestEndpointError);
+                    throw latestEndpointError;
                 }
 
                 if (result.data.length > 0) {
@@ -485,7 +489,11 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
-                const res = await fetch(`${API_BASE}/scraper/recently-updated?page=${page}&limit=${limit}`);
+                const res = await fetchJsonWithTimeout(
+                    `${API_BASE}/scraper/recently-updated?page=${page}&limit=${limit}`,
+                    {},
+                    7000
+                );
                 if (!res.ok) {
                     throw new Error(`Failed to fetch latest updates page: ${res.statusText}`);
                 }
@@ -1062,9 +1070,9 @@ export const animeService = {
         return fetchPromise;
     },
 
-    // Get AniWatch Top 10 (Today/Week/Month)
-    async getAniwatchTopTen(range: 'day' | 'week' | 'month') {
-        const cacheKey = `aniwatch-top10-${range}`;
+    // Get AnimeKai Top Trending for the home sidebar.
+    async getAnimeKaiTopTrending(range: 'now' | 'week' | 'month') {
+        const cacheKey = `animekai-top-trending-${range}`;
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
@@ -1074,9 +1082,9 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
-                const res = await fetch(`${API_BASE}/hianime/top10?range=${range}`);
+                const res = await fetch(`${API_BASE}/scraper/animekai/top-trending?range=${range}`);
                 if (!res.ok) {
-                    console.warn(`Failed to fetch AniWatch top10 (${range}): ${res.statusText}`);
+                    console.warn(`Failed to fetch AnimeKai top trending (${range}): ${res.statusText}`);
                     return { data: [] };
                 }
                 const payload = await res.json();
@@ -1115,7 +1123,7 @@ export const animeService = {
     // Get spotlight (AniWatch/HiAnime scraper, enriched with AniList data)
     async getSpotlightAnime() {
         try {
-            const res = await fetch(`${API_BASE}/hianime/spotlight`);
+            const res = await fetchJsonWithTimeout(`${API_BASE}/hianime/spotlight`, {}, 2200);
             if (!res.ok) throw new Error('Failed to fetch AniWatch spotlight');
             const { spotlight } = await res.json();
 
@@ -1136,11 +1144,13 @@ export const animeService = {
                 }
                 return anime;
             });
+            if (data.length === 0) {
+                throw new Error('Spotlight endpoint returned no items');
+            }
             return { data };
         } catch (error) {
             console.error('Error in getSpotlightAnime:', error);
-            // Fallback to trending
-            return this.getTrendingAnime();
+            throw error;
         }
     },
 

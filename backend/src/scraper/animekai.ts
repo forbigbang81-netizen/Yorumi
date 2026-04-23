@@ -4,8 +4,11 @@ import * as cheerio from 'cheerio';
 import type { AnimeSearchResult, Episode, StreamLink } from './aniwatch';
 
 const ANIMEKAI_BASE = 'https://anikai.to';
+const ANIMEKAI_HOME_BASE = 'https://animekai.to';
 const ENC_DEC_BASE = 'https://enc-dec.app/api';
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
+
+type TopTrendingRange = 'now' | 'day' | 'week' | 'month';
 
 export class AnimeKaiScraper {
     private readonly client = new ANIME.AnimeKai();
@@ -14,6 +17,247 @@ export class AnimeKaiScraper {
 
     private getWatchReferer(animeSession: string) {
         return `${ANIMEKAI_BASE}/watch/${animeSession}`;
+    }
+
+    private extractBackgroundImage(input: string): string | undefined {
+        const match = String(input || '').match(/url\((['"]?)(.*?)\1\)/i);
+        const value = String(match?.[2] || '').trim();
+        return value || undefined;
+    }
+
+    private parseLatestUpdateCard($: any, element: cheerio.Element) {
+        const $el = $(element);
+        const posterLink = String($el.find('a.poster').attr('href') || '').trim();
+        const titleEl = $el.find('a.title').first();
+        const title = String(titleEl.attr('title') || titleEl.text() || '').trim();
+        const jname = String(titleEl.attr('data-jp') || '').trim();
+        const poster =
+            String($el.find('img').attr('data-src') || $el.find('img').attr('src') || '').trim();
+
+        const infoSpans = $el.find('.info span');
+        const sub = Number(String(infoSpans.eq(0).text() || '').replace(/\D/g, '')) || 0;
+        const dub = Number(String(infoSpans.eq(1).text() || '').replace(/\D/g, '')) || 0;
+        const numericThird = Number(String(infoSpans.eq(2).text() || '').replace(/\D/g, '')) || 0;
+        const episodes = numericThird || undefined;
+        const type = String(infoSpans.last().text() || '').trim() || undefined;
+
+        const watchPath = posterLink.split('#')[0].trim();
+        const scraperId = watchPath.replace(/^\/watch\//, '').trim();
+        if (!title || !watchPath || !scraperId) return null;
+
+        return {
+            title,
+            jname: jname || undefined,
+            poster: poster || undefined,
+            type,
+            episodes,
+            latestEpisode: Math.max(sub, dub, numericThird) || undefined,
+            sub: sub || undefined,
+            dub: dub || undefined,
+            link: `${ANIMEKAI_HOME_BASE}${posterLink}`,
+            scraperId,
+        };
+    }
+
+    async getLatestUpdates(): Promise<Array<{
+        title: string;
+        jname?: string;
+        poster?: string;
+        type?: string;
+        episodes?: number;
+        latestEpisode?: number;
+        sub?: number;
+        dub?: number;
+        link: string;
+        scraperId: string;
+    }>> {
+        try {
+            const { data } = await axios.get(`${ANIMEKAI_HOME_BASE}/home`, {
+                timeout: 20000,
+                proxy: false,
+                headers: {
+                    'User-Agent': BROWSER_UA,
+                    Referer: `${ANIMEKAI_HOME_BASE}/`,
+                },
+            });
+
+            const $ = cheerio.load(data);
+            const items: Array<{
+                title: string;
+                jname?: string;
+                poster?: string;
+                type?: string;
+                episodes?: number;
+                latestEpisode?: number;
+                sub?: number;
+                dub?: number;
+                link: string;
+                scraperId: string;
+            }> = [];
+
+            $('#latest-updates .aitem').each((_, element) => {
+                const item = this.parseLatestUpdateCard($, element);
+                if (item) items.push(item);
+            });
+
+            return items;
+        } catch (error) {
+            console.error('AnimeKai latest updates error:', error);
+            return [];
+        }
+    }
+
+    async getNewReleases(page: number = 1, limit: number = 18): Promise<{
+        data: Array<{
+            title: string;
+            jname?: string;
+            poster?: string;
+            type?: string;
+            episodes?: number;
+            latestEpisode?: number;
+            sub?: number;
+            dub?: number;
+            link: string;
+            scraperId: string;
+        }>;
+        pagination: {
+            current_page: number;
+            last_visible_page: number;
+            has_next_page: boolean;
+        };
+    }> {
+        try {
+            const safePage = Math.max(1, Number(page) || 1);
+            const safeLimit = Math.max(1, Number(limit) || 18);
+            const { data } = await axios.get(`${ANIMEKAI_HOME_BASE}/new-releases?page=${safePage}`, {
+                timeout: 20000,
+                proxy: false,
+                headers: {
+                    'User-Agent': BROWSER_UA,
+                    Referer: `${ANIMEKAI_HOME_BASE}/`,
+                },
+            });
+
+            const $ = cheerio.load(data);
+            const parsed: Array<{
+                title: string;
+                jname?: string;
+                poster?: string;
+                type?: string;
+                episodes?: number;
+                latestEpisode?: number;
+                sub?: number;
+                dub?: number;
+                link: string;
+                scraperId: string;
+            }> = [];
+
+            $('.aitem-wrapper .aitem').each((_, element) => {
+                const item = this.parseLatestUpdateCard($, element);
+                if (item) parsed.push(item);
+            });
+
+            const pageLinks = $('.pagination a.page-link')
+                .map((_, element) => {
+                    const href = String($(element).attr('href') || '');
+                    const match = href.match(/page=(\d+)/i);
+                    return match ? Number(match[1]) : null;
+                })
+                .get()
+                .filter((value): value is number => Number.isFinite(value) && value > 0);
+
+            const lastPage = pageLinks.length > 0 ? Math.max(...pageLinks) : safePage;
+            const dataSlice = parsed.slice(0, safeLimit);
+
+            return {
+                data: dataSlice,
+                pagination: {
+                    current_page: safePage,
+                    last_visible_page: lastPage,
+                    has_next_page: safePage < lastPage,
+                },
+            };
+        } catch (error) {
+            console.error('AnimeKai new releases error:', error);
+            return {
+                data: [],
+                pagination: {
+                    current_page: Math.max(1, Number(page) || 1),
+                    last_visible_page: Math.max(1, Number(page) || 1),
+                    has_next_page: false,
+                },
+            };
+        }
+    }
+
+    async getTopTrending(range: TopTrendingRange): Promise<Array<{
+        title: string;
+        jname?: string;
+        poster?: string;
+        type?: string;
+        latestEpisode?: number;
+        sub?: number;
+        dub?: number;
+        link: string;
+        scraperId: string;
+    }>> {
+        try {
+            const { data } = await axios.get(`${ANIMEKAI_HOME_BASE}/home`, {
+                timeout: 20000,
+                proxy: false,
+                headers: {
+                    'User-Agent': BROWSER_UA,
+                    Referer: `${ANIMEKAI_HOME_BASE}/`,
+                },
+            });
+
+            const $ = cheerio.load(data);
+            const tabId = range === 'now' ? 'trending' : range;
+            const items: Array<{
+                title: string;
+                jname?: string;
+                poster?: string;
+                type?: string;
+                latestEpisode?: number;
+                sub?: number;
+                dub?: number;
+                link: string;
+                scraperId: string;
+            }> = [];
+
+            $(`#trending-anime .tab-body[data-id="${tabId}"] > a.aitem`).each((_, element) => {
+                const $el = $(element);
+                const href = String($el.attr('href') || '').trim();
+                const scraperId = href.replace(/^\/watch\//, '').trim();
+                const titleEl = $el.find('.detail .title').first();
+                const title = String(titleEl.text() || '').trim();
+                const jname = String(titleEl.attr('data-jp') || '').trim();
+                const poster = this.extractBackgroundImage(String($el.attr('style') || '').trim());
+                const infoSpans = $el.find('.detail .info > span');
+                const sub = Number(String(infoSpans.filter('.sub').first().text() || '').replace(/\D/g, '')) || 0;
+                const dub = Number(String(infoSpans.filter('.dub').first().text() || '').replace(/\D/g, '')) || 0;
+                const type = String(infoSpans.last().text() || '').trim() || undefined;
+
+                if (!title || !href || !scraperId) return;
+
+                items.push({
+                    title,
+                    jname: jname || undefined,
+                    poster,
+                    type,
+                    latestEpisode: Math.max(sub, dub) || undefined,
+                    sub: sub || undefined,
+                    dub: dub || undefined,
+                    link: `${ANIMEKAI_HOME_BASE}${href}`,
+                    scraperId,
+                });
+            });
+
+            return items;
+        } catch (error) {
+            console.error(`AnimeKai top trending error (${range}):`, error);
+            return [];
+        }
     }
 
     private parseEpisodeToken(episodeSession: string) {
@@ -25,6 +269,7 @@ export class AnimeKaiScraper {
         const { data } = await axios.get(`${ENC_DEC_BASE}/enc-kai`, {
             params: { text },
             timeout: 15000,
+            proxy: false,
             headers: {
                 'User-Agent': BROWSER_UA,
                 Accept: 'application/json, text/plain, */*',
@@ -39,6 +284,7 @@ export class AnimeKaiScraper {
     private async decKai(text: string): Promise<{ url?: string; skip?: any }> {
         const { data } = await axios.post(`${ENC_DEC_BASE}/dec-kai`, { text }, {
             timeout: 15000,
+            proxy: false,
             headers: {
                 'User-Agent': BROWSER_UA,
                 'Content-Type': 'application/json',
@@ -57,6 +303,7 @@ export class AnimeKaiScraper {
             agent: BROWSER_UA,
         }, {
             timeout: 15000,
+            proxy: false,
             headers: {
                 'User-Agent': BROWSER_UA,
                 'Content-Type': 'application/json',
@@ -80,6 +327,7 @@ export class AnimeKaiScraper {
         const { data: listPayload } = await axios.get(`${ANIMEKAI_BASE}/ajax/links/list`, {
             params: { token, _: listKey },
             timeout: 15000,
+            proxy: false,
             headers: {
                 'User-Agent': BROWSER_UA,
                 'X-Requested-With': 'XMLHttpRequest',
@@ -107,6 +355,7 @@ export class AnimeKaiScraper {
         const { data: viewPayload } = await axios.get(`${ANIMEKAI_BASE}/ajax/links/view`, {
             params: { id: lid, _: viewKey },
             timeout: 15000,
+            proxy: false,
             headers: {
                 'User-Agent': BROWSER_UA,
                 'X-Requested-With': 'XMLHttpRequest',
@@ -128,6 +377,7 @@ export class AnimeKaiScraper {
         const mediaUrl = referer.replace('/e/', '/media/');
         const { data: mediaPayload } = await axios.get(mediaUrl, {
             timeout: 15000,
+            proxy: false,
             headers: {
                 'User-Agent': BROWSER_UA,
                 Accept: 'application/json, text/plain, */*',
@@ -195,20 +445,96 @@ export class AnimeKaiScraper {
         }
     }
 
+    async getAnimeInfo(animeSessionId: string): Promise<{
+        id: string;
+        title: string;
+        poster?: string;
+        description?: string;
+        status?: string;
+        episodes?: number;
+        type?: string;
+        year?: string;
+    } | null> {
+        try {
+            const { data } = await axios.get(`${ANIMEKAI_BASE}/watch/${animeSessionId}`, {
+                timeout: 20000,
+                proxy: false,
+                headers: {
+                    'User-Agent': BROWSER_UA,
+                    Referer: `${ANIMEKAI_BASE}/`,
+                },
+            });
+            const $ = cheerio.load(data);
+            const episodes = Number($('.entity-scroll > .detail').find("div:contains('Episodes') > span").text().trim()) || 0;
+            const premiered = $('.entity-scroll > .detail').find("div:contains('Premiered') > span").text().trim();
+            const yearMatch = premiered.match(/(\d{4})/);
+            return {
+                id: animeSessionId,
+                title: String($('.entity-scroll > .title').text() || animeSessionId).trim(),
+                poster: String($('div.poster > div > img').attr('src') || '').trim() || undefined,
+                description: String($('.entity-scroll > .desc').text() || '').trim() || undefined,
+                status: String($('.entity-scroll > .detail').find("div:contains('Status') > span").text() || '').trim() || undefined,
+                episodes: episodes || undefined,
+                type: String($('.entity-scroll > .info').children().last().text() || '').trim().toUpperCase() || undefined,
+                year: yearMatch?.[1],
+            };
+        } catch (error) {
+            console.error('AnimeKai getAnimeInfo error:', error);
+            return null;
+        }
+    }
+
     async getEpisodes(animeSessionId: string): Promise<{ episodes: Episode[]; lastPage: number }> {
         try {
-            const info = await this.client.fetchAnimeInfo(animeSessionId);
-            const episodesRaw = Array.isArray((info as any)?.episodes) ? (info as any).episodes : [];
-            const episodes = episodesRaw.map((ep: any) => ({
-                id: String(ep.id || ''),
-                session: String(ep.id || ''),
-                episodeNumber: Number(ep.number || 0),
-                url: String(ep.url || ''),
-                title: String(ep.title || `Episode ${ep.number || ''}`).trim(),
-                isSubbed: Boolean(ep.isSubbed ?? true),
-                isDubbed: Boolean(ep.isDubbed ?? false),
-                isFiller: Boolean(ep.isFiller ?? false),
-            })).filter((ep: Episode) => Boolean(ep.session) && Number.isFinite(ep.episodeNumber));
+            const { data } = await axios.get(`${ANIMEKAI_BASE}/watch/${animeSessionId}`, {
+                timeout: 20000,
+                proxy: false,
+                headers: {
+                    'User-Agent': BROWSER_UA,
+                    Referer: `${ANIMEKAI_BASE}/`,
+                },
+            });
+            const $ = cheerio.load(data);
+            const aniId = String($('.rate-box#anime-rating').attr('data-id') || '').trim();
+            if (!aniId) {
+                return { episodes: [], lastPage: 1 };
+            }
+
+            const token = await this.encKai(aniId);
+            const { data: episodesAjax } = await axios.get(`${ANIMEKAI_BASE}/ajax/episodes/list`, {
+                params: { ani_id: aniId, _: token },
+                timeout: 20000,
+                proxy: false,
+                headers: {
+                    'User-Agent': BROWSER_UA,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    Referer: `${ANIMEKAI_BASE}/watch/${animeSessionId}`,
+                    Accept: 'application/json, text/plain, */*',
+                },
+            });
+
+            const $$ = cheerio.load(String(episodesAjax?.result || ''));
+            const maxSub = Number($('.entity-scroll > .info > span.sub').text().trim()) || 0;
+            const maxDub = Number($('.entity-scroll > .info > span.dub').text().trim()) || 0;
+            const episodes: Episode[] = [];
+
+            $$('div.eplist > ul > li > a').each((_, el) => {
+                const num = Number($$(el).attr('num') || 0);
+                const epToken = String($$(el).attr('token') || '').trim();
+                if (!num || !epToken) return;
+
+                const href = String($$(el).attr('href') || '').trim();
+                episodes.push({
+                    id: `${animeSessionId}$ep=${num}$token=${epToken}`,
+                    session: `${animeSessionId}$ep=${num}$token=${epToken}`,
+                    episodeNumber: num,
+                    url: `${ANIMEKAI_BASE}/watch/${animeSessionId}${href}ep=${num}`,
+                    title: String($$(el).children('span').text() || `Episode ${num}`).trim(),
+                    isSubbed: num <= maxSub,
+                    isDubbed: num <= maxDub,
+                    isFiller: $$(el).hasClass('filler'),
+                });
+            });
 
             return { episodes, lastPage: 1 };
         } catch (error) {
@@ -218,61 +544,6 @@ export class AnimeKaiScraper {
     }
 
     async getLinks(animeSession: string, episodeSession: string): Promise<StreamLink[]> {
-        try {
-            const payload = await this.client.fetchEpisodeSources(episodeSession);
-            const sources = Array.isArray((payload as any)?.sources) ? (payload as any).sources : [];
-            const referer = String((payload as any)?.headers?.Referer || 'https://megaup.nl/');
-            const subtitles = Array.isArray((payload as any)?.subtitles)
-                ? (payload as any).subtitles
-                    .filter((sub: any) => sub?.url)
-                    .map((sub: any) => ({
-                        url: `/api/scraper/proxy?url=${encodeURIComponent(String(sub.url))}&referer=${encodeURIComponent(referer)}`,
-                        lang: String(sub.lang || sub.label || 'Unknown'),
-                        default: Boolean(sub.default),
-                    }))
-                : [];
-
-            const links = sources
-                .filter((source: any) => source?.url)
-                .map((source: any) => {
-                    const directUrl = String(source.url);
-                    const isHls = Boolean(source.isM3U8 || directUrl.includes('.m3u8'));
-                    const quality = /^\d+$/.test(String(source.quality || ''))
-                        ? String(source.quality)
-                        : '1080';
-
-                    return {
-                        quality,
-                        audio: 'sub',
-                        provider: 'animekai',
-                        server: 'animekai',
-                        url: isHls
-                            ? `/api/scraper/proxy?url=${encodeURIComponent(directUrl)}&referer=${encodeURIComponent(referer)}`
-                            : directUrl,
-                        directUrl,
-                        isHls,
-                        subtitles,
-                    } satisfies StreamLink;
-                });
-
-            const deduped = new Map<string, StreamLink>();
-            links.forEach((link: StreamLink) => {
-                const key = `${link.audio}|${link.quality}|${link.directUrl || link.url}`;
-                if (!deduped.has(key)) deduped.set(key, link);
-            });
-
-            const resolved = [...deduped.values()];
-            if (resolved.length > 0) {
-                return resolved;
-            }
-        } catch (error) {
-            console.error('AnimeKai getLinks package path failed:', {
-                animeSession,
-                episodeSession,
-                error: error instanceof Error ? error.message : error,
-            });
-        }
-
         try {
             const manual = await this.fetchLinksManual(animeSession, episodeSession);
             if (manual.length > 0) {

@@ -171,15 +171,14 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (!raw) return '';
         return raw.startsWith('s:') ? raw.slice(2) : raw;
     };
-    const isAnimePaheSession = (value: unknown) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizeScraperId(value));
+    const hasDirectScraperSession = (value: unknown) => Boolean(normalizeScraperId(value));
     const getAnimeCacheKey = (target: Anime): string | null => {
         const mal = Number(target?.mal_id);
         if (Number.isFinite(mal) && mal > 0) return `mal:${mal}`;
         const aid = Number(target?.id);
         if (Number.isFinite(aid) && aid > 0) return `anilist:${aid}`;
         const sid = normalizeScraperId(target?.scraperId);
-        if (sid && isAnimePaheSession(sid)) return `scraper:${sid}`;
+        if (sid) return `scraper:${sid}`;
         return null;
     };
     const normalizeEpisodeNumber = (value: unknown, fallbackIndex: number): string => {
@@ -670,9 +669,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             }
             try {
                 const [day, week, month] = await Promise.all([
-                    animeService.getAniwatchTopTen('day'),
-                    animeService.getAniwatchTopTen('week'),
-                    animeService.getAniwatchTopTen('month')
+                    animeService.getAnimeKaiTopTrending('now'),
+                    animeService.getAnimeKaiTopTrending('week'),
+                    animeService.getAnimeKaiTopTrending('month')
                 ]);
                 if (day?.data) setTopTenToday(day.data);
                 if (week?.data) setTopTenWeek(week.data);
@@ -959,7 +958,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         };
 
         // Fast path: when scraperId is already known, avoid extra mapping/search calls.
-        if (anime.scraperId && isAnimePaheSession(anime.scraperId)) {
+        if (anime.scraperId && hasDirectScraperSession(anime.scraperId)) {
             session = normalizeScraperId(anime.scraperId);
             if (cacheKey) {
                 scraperSessionCache.current.set(cacheKey, session);
@@ -1263,7 +1262,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         let currentAnime = anime;
 
         let detailsId: string | number | undefined = anime.id || anime.mal_id;
-        if (anime.scraperId && isAnimePaheSession(anime.scraperId) && (!detailsId || detailsId === 0)) {
+        if (anime.scraperId && hasDirectScraperSession(anime.scraperId) && (!detailsId || detailsId === 0)) {
             const normalizedScraperId = normalizeScraperId(anime.scraperId);
             if (normalizedScraperId) {
                 detailsId = `s:${normalizedScraperId}`;
@@ -1291,13 +1290,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         setError(null);
         setDetailsLoading(!(cachedDetails?.data || cachedFast?.data || hasRenderablePrimaryDetails(anime)));
 
-        if (anime.scraperId && isAnimePaheSession(anime.scraperId)) {
+        if (anime.scraperId && hasDirectScraperSession(anime.scraperId)) {
             preloadEpisodes(anime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);
         }
 
         try {
             detailsId = anime.id || anime.mal_id;
-            if (anime.scraperId && isAnimePaheSession(anime.scraperId) && (!detailsId || detailsId === 0)) {
+            if (anime.scraperId && hasDirectScraperSession(anime.scraperId) && (!detailsId || detailsId === 0)) {
                 const normalizedScraperId = normalizeScraperId(anime.scraperId);
                 if (!normalizedScraperId) throw new Error('Could not identify scraper ID');
                 detailsId = `s:${normalizedScraperId}`;
@@ -1417,7 +1416,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     const prefetchEpisodes = (anime: Anime) => {
-        if (anime.scraperId && isAnimePaheSession(anime.scraperId)) {
+        if (anime.scraperId && hasDirectScraperSession(anime.scraperId)) {
             resolveAndCacheEpisodes(anime).catch(console.error);
             return;
         }
@@ -1447,8 +1446,17 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             else if (type === 'popular') data = await animeService.getTopAnime(page); // Re-use getTopAnime for "View All" pagination
 
             if (data?.data) {
-                setViewAllAnime(data.data);
-                if (data.pagination) setViewAllPagination(data.pagination);
+                const resolvedItems = Array.isArray(data.data) ? data.data : [];
+                setViewAllAnime(resolvedItems);
+                if (data.pagination) {
+                    setViewAllPagination(data.pagination);
+                } else {
+                    setViewAllPagination({
+                        last_visible_page: 1,
+                        current_page: page,
+                        has_next_page: false
+                    });
+                }
             }
         } catch (error) {
             console.error(error);

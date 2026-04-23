@@ -113,7 +113,7 @@ export default function AnimeDetailsPage() {
         // Always derive the identity from the URL. Navigation state is only a render seed.
         if (id.startsWith('s:')) {
             const scraperSession = id.substring(2).trim();
-            if (!isAnimePaheSession(scraperSession)) {
+            if (!scraperSession) {
                 navigate('/', { replace: true });
                 return;
             }
@@ -246,7 +246,7 @@ export default function AnimeDetailsPage() {
     const hasEpisodes = episodes.length > 0;
     const hasCharacters = Boolean(selectedAnime.characters?.edges?.length);
     const hasTrailers = Boolean(selectedAnime.trailer);
-    const isEpisodesResolving = !hasEpisodes && (!episodesResolved || epLoading);
+    const isEpisodesResolving = !hasEpisodes && (!episodesResolved || epLoading || detailsLoading);
     const expectedEpisodeCount = Number(selectedAnime.episodes || 0);
     const episodeSkeletonCount = Math.min(
         20,
@@ -339,8 +339,10 @@ export default function AnimeDetailsPage() {
                                             navigate(`/anime/watch/${title}/${id}?ep=${ep.episodeNumber}`);
                                         }}
                                     />
-                                ) : (
+                                ) : episodesResolved && !epLoading && !detailsLoading ? (
                                     <div className="py-6 border-t border-white/10 mt-6 text-gray-500 text-center">No episodes found.</div>
+                                ) : (
+                                    <EpisodesSkeleton count={episodeSkeletonCount} />
                                 )
                             )}
 

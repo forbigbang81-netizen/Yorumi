@@ -48,16 +48,22 @@ export default function AnimeGridPage({
                 </div>
             ) : (
                 <>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                        {animeList.map((item) => (
-                            <AnimeCard
-                                key={`${item.scraperId || item.id || item.mal_id || item.title}-${item.latestEpisode || item.episodes || 0}`}
-                                anime={item}
-                                onClick={() => onAnimeClick(item)}
-                                onMouseEnter={() => onAnimeHover?.(item)}
-                            />
-                        ))}
-                    </div>
+                    {animeList.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                            {animeList.map((item) => (
+                                <AnimeCard
+                                    key={`${item.scraperId || item.id || item.mal_id || item.title}-${item.latestEpisode || item.episodes || 0}`}
+                                    anime={item}
+                                    onClick={() => onAnimeClick(item)}
+                                    onMouseEnter={() => onAnimeHover?.(item)}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-10 text-center text-gray-400">
+                            No titles available right now.
+                        </div>
+                    )}
                     {pagination && (
                         <Pagination
                             currentPage={pagination.current_page}

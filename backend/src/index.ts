@@ -16,16 +16,19 @@ if (shouldRunStandaloneServer) {
         const hianimeScraper = new HiAnimeScraper();
 
         try {
-            logger.info('Warming anime spotlight cache');
+            logger.info('Warming anime homepage caches');
             await Promise.race([
-                hianimeScraper.getEnrichedSpotlight(),
+                Promise.all([
+                    hianimeScraper.getEnrichedSpotlight(),
+                    hianimeScraper.getEnrichedLatestEpisodes(),
+                ]),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Cache warming timeout')), 10000)
                 )
             ]);
-            logger.info('Spotlight cache warmed successfully');
+            logger.info('Homepage caches warmed successfully');
         } catch (error) {
-            logger.warn('Spotlight cache warming failed or timed out', error);
+            logger.warn('Homepage cache warming failed or timed out', error);
             logger.warn('Server will continue, cache will be populated on first request');
         }
 
@@ -43,10 +46,12 @@ if (shouldRunStandaloneServer) {
         startScraperWarmer();
 
         setInterval(() => {
-            logger.info('Running scheduled spotlight refresh');
-            hianimeScraper.getEnrichedSpotlight()
-                .catch((error) => logger.error('Scheduled spotlight refresh failed', error));
-        }, 12 * 60 * 60 * 1000);
+            logger.info('Running scheduled homepage cache refresh');
+            Promise.all([
+                hianimeScraper.getEnrichedSpotlight(),
+                hianimeScraper.getEnrichedLatestEpisodes(),
+            ]).catch((error) => logger.error('Scheduled homepage cache refresh failed', error));
+        }, 10 * 60 * 1000);
     };
 
     startServer();

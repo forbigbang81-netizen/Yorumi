@@ -1,14 +1,25 @@
 import { AnimePaheScraper } from '../../scraper/animepahe';
+import { AnimeKaiScraper } from '../../scraper/animekai';
 import { acquireLock, cacheGet, cacheSet, releaseLock } from '../../utils/redis-cache';
 
 export class ScraperService {
     private fastScraper: AnimePaheScraper;
+    private animeKaiScraper: AnimeKaiScraper;
     private cache = new Map<string, { expiresAt: number; value: any }>();
     private inFlight = new Map<string, Promise<any>>();
     private hotStreamKeys = new Map<string, { animeSession: string; epSession: string; hits: number; lastAccess: number }>();
 
     constructor() {
         this.fastScraper = new AnimePaheScraper();
+        this.animeKaiScraper = new AnimeKaiScraper();
+    }
+
+    private isAnimePaheSession(session: string) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(session || '').trim());
+    }
+
+    private getEpisodeScraper(session: string) {
+        return this.isAnimePaheSession(session) ? this.fastScraper : this.animeKaiScraper;
     }
 
     private async getOrLoad<T>(
@@ -190,14 +201,14 @@ export class ScraperService {
                         return staleCached;
                     }
                     // Last-resort fallback: scrape anyway instead of surfacing an empty episode list.
-                    const fast = await this.fastScraper.getEpisodes(session);
+                    const fast = await this.getEpisodeScraper(session).getEpisodes(session);
                     return Array.isArray(fast.episodes) && fast.episodes.length > 0
                         ? fast
                         : { episodes: [], lastPage: 1 };
                 }
 
                 try {
-                    const fast = await this.fastScraper.getEpisodes(session);
+                    const fast = await this.getEpisodeScraper(session).getEpisodes(session);
                     if (Array.isArray(fast.episodes) && fast.episodes.length > 0) {
                         if (isCompleteEpisodePayload(fast)) {
                             cacheSet(fullCacheKey, fast, Math.ceil(fullTtlMs / 1000)).catch((error) => {
@@ -225,7 +236,7 @@ export class ScraperService {
             key,
             5 * 60 * 1000,
             async () => {
-                const links = await this.fastScraper.getLinks(animeSession, epSession);
+                const links = await this.getEpisodeScraper(animeSession).getLinks(animeSession, epSession);
                 return Array.isArray(links) ? links : [];
             },
             {

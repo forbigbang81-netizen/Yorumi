@@ -9,13 +9,14 @@ import { getDisplayTitle } from '../../../utils/titleLanguage';
 
 interface SpotlightHeroProps {
     animeList: Anime[];
+    isLoading?: boolean;
     onAnimeClick: (anime: Anime) => void;
     onWatchClick: (anime: Anime) => void;
 }
 
 
 
-const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, onWatchClick }) => {
+const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = false, onAnimeClick, onWatchClick }) => {
     const { language } = useTitleLanguage();
     // Embla Carousel hook with Autoplay
     const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -54,9 +55,13 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
         if (emblaApi) emblaApi.scrollTo(index);
     }, [emblaApi]);
 
-    // Show skeleton while loading
-    if (animeList.length === 0) {
+    // Show skeleton only while the hero is actively loading.
+    if (isLoading) {
         return <SpotlightSkeleton />;
+    }
+
+    if (animeList.length === 0) {
+        return null;
     }
 
     return (
@@ -87,7 +92,10 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, onAnimeClick, 
                         const shouldLoadBackdrop = loopDistance <= 1;
 
                         return (
-                            <div key={anime.mal_id} className="relative min-w-full h-full flex-[0_0_100%]">
+                            <div
+                                key={`${anime.scraperId || anime.id || anime.mal_id || anime.title}-${index}`}
+                                className="relative min-w-full h-full flex-[0_0_100%]"
+                            >
                                 {/* Background Image */}
                                 <div className="absolute inset-0 z-0 select-none">
                                     {trailerUrl && isActive && (
