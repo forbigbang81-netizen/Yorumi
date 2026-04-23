@@ -36,6 +36,15 @@ const extractAnimePaheSession = (value: unknown) => {
 };
 const getExpectedEpisodeCount = (anime?: Partial<Anime> | null) =>
     Number(anime?.latestEpisode || anime?.episodes || 0);
+type LatestUpdatesResult = { data: Anime[] };
+type LatestUpdatesPageResult = {
+    data: Anime[];
+    pagination: {
+        last_visible_page: number;
+        current_page: number;
+        has_next_page: boolean;
+    };
+};
 const hasSufficientEpisodePayload = (anime: Partial<Anime> | null | undefined, payload: any) => {
     const episodes = Array.isArray(payload?.episodes) ? payload.episodes : [];
     if (episodes.length === 0) return false;
@@ -458,7 +467,7 @@ export const animeService = {
         Promise.allSettled(formats.map((format) => this.getTopAnime(1, format))).catch(() => undefined);
     },
 
-    async getLatestUpdates() {
+    async getLatestUpdates(): Promise<LatestUpdatesResult> {
         const cacheKey = 'latest-updates-3-10';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
@@ -468,42 +477,30 @@ export const animeService = {
             return inFlightRequests.get(cacheKey);
         }
 
-        const fetchPromise = (async () => {
+        const fetchPromise: Promise<LatestUpdatesResult> = (async () => {
             try {
-                try {
-                    const res = await fetchJsonWithTimeout(`${API_BASE}/scraper/animekai/latest-updates`, {}, 10000);
-                    if (!res.ok) {
-                        throw new Error(`Failed to fetch latest updates: ${res.statusText}`);
-                    }
-
-                    const payload = await res.json();
-                    const result = {
-                        data: Array.isArray(payload?.latestEpisodes)
-                            ? payload.latestEpisodes.map(mapLatestUpdateItemToAnime)
-                            : []
-                    };
-
-                    if (result.data.length > 0) {
-                        setCache(cacheKey, result, DETAIL_CACHE_TTL);
-                        return result;
-                    }
-
-                    throw new Error('Latest episodes endpoint returned no items');
-                } catch (latestEndpointError) {
-                    console.warn('[AnimeService] dedicated latest updates endpoint failed', latestEndpointError);
-                    const fallback = await this.getLatestUpdatesPage(1, 10);
-                    if (Array.isArray(fallback?.data) && fallback.data.length > 0) {
-                        const result = { data: fallback.data };
-                        setCache(cacheKey, result, DETAIL_CACHE_TTL);
-                        return result;
-                    }
-
-                    if (staleCached?.data && Array.isArray(staleCached.data) && staleCached.data.length > 0) {
-                        return staleCached;
-                    }
-
-                    throw latestEndpointError;
+                const res = await fetchJsonWithTimeout(`${API_BASE}/scraper/animekai/latest-updates`, {}, 10000);
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch latest updates: ${res.statusText}`);
                 }
+
+                const payload = await res.json();
+                const result: LatestUpdatesResult = {
+                    data: Array.isArray(payload?.latestEpisodes)
+                        ? payload.latestEpisodes.map(mapLatestUpdateItemToAnime)
+                        : []
+                };
+
+                if (result.data.length > 0) {
+                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                    return result;
+                }
+
+                if (staleCached?.data && Array.isArray(staleCached.data) && staleCached.data.length > 0) {
+                    return staleCached;
+                }
+
+                return result;
             } finally {
                 inFlightRequests.delete(cacheKey);
             }
@@ -513,19 +510,20 @@ export const animeService = {
         return fetchPromise;
     },
 
-    async getLatestUpdatesPage(page: number = 1, limit: number = 18) {
-        const cacheKey = `latest-updates-page-${page}-${limit}`;
+    async getLatestUpdatesPage(page: number = 1, limit: number = 18): Promise<LatestUpdatesPageResult> {
+        const cacheKey = `animekai-latest-updates-page-${page}-${limit}`;
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
+        const staleCached = getStaleCached(cacheKey);
 
         if (inFlightRequests.has(cacheKey)) {
             return inFlightRequests.get(cacheKey);
         }
 
-        const fetchPromise = (async () => {
+        const fetchPromise: Promise<LatestUpdatesPageResult> = (async () => {
             try {
                 const res = await fetchJsonWithTimeout(
-                    `${API_BASE}/scraper/recently-updated?page=${page}&limit=${limit}`,
+                    `${API_BASE}/scraper/animekai/new-releases?page=${page}&limit=${limit}`,
                     {},
                     7000
                 );
@@ -534,7 +532,7 @@ export const animeService = {
                 }
 
                 const payload = await res.json();
-                const result = {
+                const result: LatestUpdatesPageResult = {
                     data: Array.isArray(payload?.data)
                         ? payload.data.map(mapLatestUpdateItemToAnime)
                         : [],
@@ -547,6 +545,11 @@ export const animeService = {
 
                 if (result.data.length > 0) {
                     setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                    return result;
+                }
+
+                if (staleCached?.data && Array.isArray(staleCached.data) && staleCached.data.length > 0) {
+                    return staleCached;
                 }
 
                 return result;

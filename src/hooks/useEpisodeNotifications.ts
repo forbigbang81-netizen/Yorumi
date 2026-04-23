@@ -49,6 +49,53 @@ const getWatchCandidateId = (item: WatchListItem) => {
     return raw || null;
 };
 
+const normalizeTitleToken = (value: unknown) =>
+    String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+
+const getLatestFeedMatch = (item: WatchListItem, latestUpdates: Anime[]) => {
+    const candidateIds = new Set<string>();
+    [item.id, item.anilistId, item.malId, item.scraperId].forEach((value) => {
+        const normalized = String(value || '').trim().replace(/^s:/, '');
+        if (normalized) candidateIds.add(normalized);
+    });
+
+    const titleTokens = new Set<string>();
+    [
+        item.title,
+        normalizeTitleToken(item.title),
+    ].forEach((value) => {
+        const normalized = String(value || '').trim();
+        if (normalized) titleTokens.add(normalized);
+    });
+
+    return latestUpdates.find((anime) => {
+        const animeIds = [
+            anime.id,
+            anime.mal_id,
+            anime.scraperId,
+        ]
+            .map((value) => String(value || '').trim().replace(/^s:/, ''))
+            .filter(Boolean);
+
+        if (animeIds.some((value) => candidateIds.has(value))) {
+            return true;
+        }
+
+        const animeTitleTokens = [
+            anime.title,
+            anime.title_english,
+            anime.title_romaji,
+            anime.title_japanese,
+        ]
+            .map(normalizeTitleToken)
+            .filter(Boolean);
+
+        return animeTitleTokens.some((token) => titleTokens.has(token));
+    }) || null;
+};
+
 const getAvailableEpisode = (anime: Anime) => {
     const latest = Number(anime.latestEpisode || 0);
     const nextAiring = Number(anime.nextAiringEpisode?.episode || 0);
@@ -106,12 +153,31 @@ export function useEpisodeNotifications() {
             }
 
             const animeCandidates = watchList.slice(0, 20);
+            const latestUpdatesResult = await animeService.getLatestUpdates().catch(() => ({ data: [] as Anime[] }));
+            const latestUpdates = Array.isArray(latestUpdatesResult?.data) ? latestUpdatesResult.data : [];
             const animeResolved = await Promise.all(
                 animeCandidates.map(async (item) => {
                     const id = getWatchCandidateId(item);
                     if (!id) return null;
 
                     try {
+                        const latestMatch = getLatestFeedMatch(item, latestUpdates);
+                        if (latestMatch) {
+                            const availableEpisode = getAvailableEpisode(latestMatch);
+                            const watchedEpisode = getWatchedEpisodeMax(latestMatch, item);
+
+                            if (availableEpisode > 0 && availableEpisode > watchedEpisode) {
+                                return {
+                                    id: `${String(latestMatch.id || latestMatch.mal_id || item.id)}:${availableEpisode}`,
+                                    mediaType: 'anime',
+                                    mediaId: String(latestMatch.id || latestMatch.mal_id || item.id),
+                                    title: latestMatch.title || item.title,
+                                    image: latestMatch.images?.jpg?.large_image_url || latestMatch.images?.jpg?.image_url || item.image,
+                                    availableNumber: availableEpisode,
+                                } satisfies EpisodeNotification;
+                            }
+                        }
+
                         const cached = animeService.peekAnimeDetailsCache(id);
                         const details = cached || await animeService.getAnimeDetails(id);
                         const anime = details?.data as Anime | null;

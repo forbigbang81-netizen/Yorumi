@@ -18,10 +18,7 @@ if (shouldRunStandaloneServer) {
         try {
             logger.info('Warming anime homepage caches');
             await Promise.race([
-                Promise.all([
-                    hianimeScraper.getEnrichedSpotlight(),
-                    hianimeScraper.getEnrichedLatestEpisodes(),
-                ]),
+                hianimeScraper.getEnrichedSpotlight(),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Cache warming timeout')), 10000)
                 )
@@ -47,10 +44,8 @@ if (shouldRunStandaloneServer) {
 
         setInterval(() => {
             logger.info('Running scheduled homepage cache refresh');
-            Promise.all([
-                hianimeScraper.getEnrichedSpotlight(),
-                hianimeScraper.getEnrichedLatestEpisodes(),
-            ]).catch((error) => logger.error('Scheduled homepage cache refresh failed', error));
+            hianimeScraper.getEnrichedSpotlight()
+                .catch((error) => logger.error('Scheduled homepage cache refresh failed', error));
         }, 10 * 60 * 1000);
     };
 

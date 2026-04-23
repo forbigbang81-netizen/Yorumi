@@ -535,20 +535,26 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             setTopTenLoading(false);
         }
 
+        const hasAnimeItems = (items: Anime[] | undefined | null) => Array.isArray(items) && items.length > 0;
+        const hasTopTenItems = (fast: any) =>
+            Array.isArray(fast?.topTenToday) && fast.topTenToday.length > 0
+            && Array.isArray(fast?.topTenWeek) && fast.topTenWeek.length > 0
+            && Array.isArray(fast?.topTenMonth) && fast.topTenMonth.length > 0;
+
         // Try fast bundle with a short budget; don't stall fallback path.
         const fastBundlePromise = animeService.getHomeFastData()
-            .then((fast) => applyFastHomeData(fast))
+            .then((fast) => {
+                applyFastHomeData(fast);
+                return fast;
+            })
             .catch((error) => {
                 console.warn('[AnimeContext] Fast home bundle unavailable, using fallback fetches', error);
-                return false;
+                return null;
             });
-        const fastResolvedQuickly = await Promise.race<boolean>([
+        const fastBundle = await Promise.race<any | null>([
             fastBundlePromise,
-            new Promise<boolean>((resolve) => window.setTimeout(() => resolve(false), 300)),
+            new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 300)),
         ]);
-        if (fastResolvedQuickly) {
-            return;
-        }
 
         const fetchSpotlight = async () => {
             if (spotlightAnime.length > 0) {
@@ -686,14 +692,28 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             finally { setTopTenLoading(false); }
         };
 
-        await Promise.all([
-            fetchSpotlight(),
-            fetchLatestUpdates(),
-            fetchTrending(),
-            fetchPopular(),
-            fetchPopularMonth(),
-            fetchTopTen()
-        ]);
+        const tasks: Promise<void>[] = [];
+
+        if (!hasAnimeItems(fastBundle?.spotlightAnime)) {
+            tasks.push(fetchSpotlight());
+        }
+        if (!hasAnimeItems(fastBundle?.latestUpdates)) {
+            tasks.push(fetchLatestUpdates());
+        }
+        if (!hasAnimeItems(fastBundle?.trendingAnime)) {
+            tasks.push(fetchTrending());
+        }
+        if (!hasAnimeItems(fastBundle?.popularSeason)) {
+            tasks.push(fetchPopular());
+        }
+        if (!hasAnimeItems(fastBundle?.popularMonth)) {
+            tasks.push(fetchPopularMonth());
+        }
+        if (!hasTopTenItems(fastBundle)) {
+            tasks.push(fetchTopTen());
+        }
+
+        await Promise.all(tasks);
     };
 
     // --- Pagination Effect ---

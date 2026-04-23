@@ -4,11 +4,19 @@ import axios from 'axios';
 import { HiAnimeScraper } from './hianime.service';
 import { AnimeKaiScraper } from '../../scraper/animekai';
 import { anilistService } from '../anilist/anilist.service';
+import { redis } from '../mapping/mapper';
 
 const router = Router();
 const upstreamCookieJar = new Map<string, string>();
 const hiAnimeScraper = new HiAnimeScraper();
 const animeKaiScraper = new AnimeKaiScraper();
+
+// ── Resilient in-memory caches (stale-serve on failure) ────────────────────
+let latestUpdatesMemCache: { latestEpisodes: any[] } | null = null;
+const newReleasesMemCache = new Map<string, { data: any[]; pagination: any }>();
+const LATEST_REDIS_KEY = 'animekai:latest-updates:enriched';
+const NEW_RELEASES_REDIS_PREFIX = 'animekai:new-releases:enriched';
+const CACHE_TTL_SECONDS = 300; // 5 min fresh window
 
 const enrichAnimeKaiItems = async (items: any[]) => {
     const safeItems = Array.isArray(items) ? items.filter((item) => item?.title) : [];
@@ -40,6 +48,34 @@ const enrichAnimeKaiItems = async (items: any[]) => {
                 anilist: null,
             })
         .filter((item) => item?.title);
+};
+
+/** Read stale data from memory → Redis → empty. Never throws. */
+const getStaleLatestUpdates = async (): Promise<{ latestEpisodes: any[] }> => {
+    if (latestUpdatesMemCache && latestUpdatesMemCache.latestEpisodes.length > 0) {
+        return latestUpdatesMemCache;
+    }
+    try {
+        const redisHit = await redis.get<any>(LATEST_REDIS_KEY);
+        if (redisHit && Array.isArray(redisHit.latestEpisodes) && redisHit.latestEpisodes.length > 0) {
+            latestUpdatesMemCache = redisHit;
+            return redisHit;
+        }
+    } catch { /* swallow */ }
+    return { latestEpisodes: [] };
+};
+
+const getStaleNewReleases = async (key: string): Promise<{ data: any[]; pagination: any } | null> => {
+    const mem = newReleasesMemCache.get(key);
+    if (mem && mem.data.length > 0) return mem;
+    try {
+        const redisHit = await redis.get<any>(`${NEW_RELEASES_REDIS_PREFIX}:${key}`);
+        if (redisHit && Array.isArray(redisHit.data) && redisHit.data.length > 0) {
+            newReleasesMemCache.set(key, redisHit);
+            return redisHit;
+        }
+    } catch { /* swallow */ }
+    return null;
 };
 
 const mergeCookieHeader = (existing: string, setCookie: string[]) => {
@@ -118,36 +154,81 @@ router.get('/search', async (req, res) => {
     }
 });
 
-router.get('/recently-updated', async (req, res) => {
+// ── Latest Updates (homepage section) — never 500s ─────────────────────────
+router.get('/animekai/latest-updates', async (_req, res) => {
+    res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     try {
-        const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 18;
-        const result = await animeKaiScraper.getNewReleases(page, limit);
-        const enrichedItems = await enrichAnimeKaiItems(result?.data || []);
-        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
-        res.json({
-            data: enrichedItems,
-            pagination: result?.pagination || {
-                current_page: page,
-                last_visible_page: page,
-                has_next_page: false,
-            },
-        });
+        const rawItems = await animeKaiScraper.getLatestUpdates();
+        const enrichedItems = await enrichAnimeKaiItems(rawItems);
+        const payload = { latestEpisodes: enrichedItems };
+
+        // Persist to caches
+        if (enrichedItems.length > 0) {
+            latestUpdatesMemCache = payload;
+            redis.set(LATEST_REDIS_KEY, payload, { ex: CACHE_TTL_SECONDS }).catch(() => undefined);
+        }
+
+        res.json(payload);
     } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        console.error('AnimeKai latest-updates scrape failed, serving stale:', error?.message || error);
+        const stale = await getStaleLatestUpdates();
+        res.json(stale);
     }
 });
 
-router.get('/animekai/latest-updates', async (_req, res) => {
+// ── Recently Updated / View All (paginated) — never 500s ──────────────────
+router.get('/recently-updated', async (req, res) => {
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 18;
+    const cacheKey = `${page}:${limit}`;
+
+    res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     try {
-        const latestItems = await animeKaiScraper.getLatestUpdates();
-        const enrichedItems = await enrichAnimeKaiItems(latestItems);
-        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
-        res.json({
-            latestEpisodes: enrichedItems,
-        });
+        const result = await animeKaiScraper.getNewReleases(page, limit);
+        const enrichedItems = await enrichAnimeKaiItems(result.data);
+        const payload = { data: enrichedItems, pagination: result.pagination };
+
+        if (enrichedItems.length > 0) {
+            newReleasesMemCache.set(cacheKey, payload);
+            redis.set(`${NEW_RELEASES_REDIS_PREFIX}:${cacheKey}`, payload, { ex: CACHE_TTL_SECONDS }).catch(() => undefined);
+        }
+
+        res.json(payload);
     } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        console.error(`AnimeKai new-releases (page=${page}) scrape failed, serving stale:`, error?.message || error);
+        const stale = await getStaleNewReleases(cacheKey);
+        res.json(stale || {
+            data: [],
+            pagination: { current_page: page, last_visible_page: page, has_next_page: false },
+        });
+    }
+});
+
+// ── New Releases (explicit endpoint, same resilience) ──────────────────────
+router.get('/animekai/new-releases', async (req, res) => {
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 18;
+    const cacheKey = `${page}:${limit}`;
+
+    res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+    try {
+        const result = await animeKaiScraper.getNewReleases(page, limit);
+        const enrichedItems = await enrichAnimeKaiItems(result.data);
+        const payload = { data: enrichedItems, pagination: result.pagination };
+
+        if (enrichedItems.length > 0) {
+            newReleasesMemCache.set(cacheKey, payload);
+            redis.set(`${NEW_RELEASES_REDIS_PREFIX}:${cacheKey}`, payload, { ex: CACHE_TTL_SECONDS }).catch(() => undefined);
+        }
+
+        res.json(payload);
+    } catch (error: any) {
+        console.error(`AnimeKai new-releases (page=${page}) scrape failed, serving stale:`, error?.message || error);
+        const stale = await getStaleNewReleases(cacheKey);
+        res.json(stale || {
+            data: [],
+            pagination: { current_page: page, last_visible_page: page, has_next_page: false },
+        });
     }
 });
 
