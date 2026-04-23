@@ -27,6 +27,13 @@ const extractScraperIdFromLink = (link?: string) => {
         .split('?')[0]
         .trim();
 };
+const extractAnimePaheSession = (value: unknown) => {
+    const raw = String(value || '').trim();
+    const normalized = raw.startsWith('s:') ? raw.slice(2) : raw;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)
+        ? normalized
+        : '';
+};
 const getExpectedEpisodeCount = (anime?: Partial<Anime> | null) =>
     Number(anime?.latestEpisode || anime?.episodes || 0);
 const hasSufficientEpisodePayload = (anime: Partial<Anime> | null | undefined, payload: any) => {
@@ -182,7 +189,15 @@ const mapLatestUpdateItemToAnime = (item: any): Anime => {
     anime.title_english = anime.title_english || item.title;
     anime.type = item.type || anime.type || 'TV';
     anime.duration = item.duration || anime.duration;
-    anime.scraperId = item.scraperId || extractScraperIdFromLink(item.link) || anime.scraperId;
+    const animePaheSession =
+        extractAnimePaheSession(item.scraperId) ||
+        extractAnimePaheSession(extractScraperIdFromLink(item.link)) ||
+        extractAnimePaheSession(anime.scraperId);
+    if (animePaheSession) {
+        anime.scraperId = animePaheSession;
+    } else {
+        delete anime.scraperId;
+    }
 
     if (item.latestEpisode && !anime.latestEpisode) {
         anime.latestEpisode = item.latestEpisode;
@@ -359,7 +374,7 @@ export const animeService = {
     },
 
     async getHomeFastData() {
-        const cacheKey = 'home-fast-data-v3';
+        const cacheKey = 'home-fast-data-v4';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
@@ -369,7 +384,7 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
-                const res = await fetchJsonWithTimeout(`${API_BASE}/anilist/home-fast`, {}, 1800);
+                const res = await fetchJsonWithTimeout(`${API_BASE}/anilist/home-fast`, {}, 6000);
                 if (!res.ok) {
                     throw new Error(`Failed to fetch fast home data: ${res.statusText}`);
                 }
@@ -431,7 +446,7 @@ export const animeService = {
     },
 
     async getLatestUpdates() {
-        const cacheKey = 'latest-updates-2-10';
+        const cacheKey = 'latest-updates-3-10';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
@@ -444,7 +459,7 @@ export const animeService = {
                 let result = { data: [] as Anime[] };
 
                 try {
-                    const res = await fetchJsonWithTimeout(`${API_BASE}/scraper/animekai/latest-updates`, {}, 3500);
+                    const res = await fetchJsonWithTimeout(`${API_BASE}/scraper/animekai/latest-updates`, {}, 10000);
                     if (!res.ok) {
                         throw new Error(`Failed to fetch latest updates: ${res.statusText}`);
                     }
