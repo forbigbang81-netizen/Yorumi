@@ -8,7 +8,7 @@ import { mappingService } from '../mapping/mapping.service';
 import { scraperService } from '../scraper/scraper.service';
 
 const router = Router();
-const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v2';
+const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v3';
 const HOME_FAST_TTL_SECONDS = 120;
 let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
 let homeFastRefreshPromise: Promise<any> | null = null;
@@ -199,6 +199,38 @@ const getFreshHomeFastFromMemory = () => {
     return homeFastMemoryCache.data;
 };
 
+const enrichAnimeKaiItems = async (items: any[]) => {
+    const safeItems = Array.isArray(items) ? items.filter((item) => item?.title) : [];
+    const results = await Promise.allSettled(
+        safeItems.map(async (item) => {
+            const anilistMedia = await anilistService.findBestAnimeMatch({
+                titles: [item.title, item.jname].filter(Boolean),
+                episodes: Number(item.episodes || item.latestEpisode || item.sub || 0) || undefined,
+                format: item.type,
+                perPage: 5,
+            });
+
+            return {
+                ...item,
+                id: anilistMedia?.id || 0,
+                mal_id: anilistMedia?.idMal || anilistMedia?.id || 0,
+                anilist: anilistMedia || null,
+            };
+        })
+    );
+
+    return results
+        .map((result, index) => result.status === 'fulfilled'
+            ? result.value
+            : {
+                ...safeItems[index],
+                id: 0,
+                mal_id: 0,
+                anilist: null,
+            })
+        .filter((item) => item?.title);
+};
+
 const buildHomeFastPayload = async () => {
     const scraper = new HiAnimeScraper();
     const animeKaiScraper = new AnimeKaiScraper();
@@ -212,9 +244,9 @@ const buildHomeFastPayload = async () => {
             return fallback;
         }
     };
-    const [spotlight, latestEpisodes, trending, seasonal, monthly, topAnime, topNow, topWeek, topMonth] = await Promise.all([
+    const [spotlight, latestEpisodesRaw, trending, seasonal, monthly, topAnime, topNow, topWeek, topMonth] = await Promise.all([
         withTimeout(scraper.getEnrichedSpotlight(), 1800, { spotlight: [] }),
-        withTimeout(scraper.getEnrichedLatestEpisodes(), 1800, { latestEpisodes: [] }),
+        withTimeout(animeKaiScraper.getLatestUpdates(), 1800, [] as any[]),
         withTimeout(anilistService.getTrendingAnime(1, 10), 4000, { media: [] }),
         withTimeout(anilistService.getPopularThisSeason(1, 10), 4000, { media: [] }),
         withTimeout(anilistService.getPopularThisMonth(1, 10), 4000, { media: [] }),
@@ -223,10 +255,11 @@ const buildHomeFastPayload = async () => {
         withTimeout(animeKaiScraper.getTopTrending('week'), 2500, [] as any[]),
         withTimeout(animeKaiScraper.getTopTrending('month'), 2500, [] as any[]),
     ]);
+    const latestEpisodes = await enrichAnimeKaiItems(Array.isArray(latestEpisodesRaw) ? latestEpisodesRaw : []);
 
     return {
         spotlight: spotlight?.spotlight || [],
-        latestEpisodes: latestEpisodes?.latestEpisodes || [],
+        latestEpisodes,
         trending,
         seasonal,
         monthly,

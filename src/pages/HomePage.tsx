@@ -34,7 +34,7 @@ export default function HomePage() {
 
     const handleAnimeClick = (item: Anime) => {
         const rawScraperId = String(item.scraperId || '').trim();
-        const animeId = item.id || item.mal_id || (rawScraperId ? `s:${rawScraperId}` : undefined);
+        const animeId = item.id || item.mal_id || (isAnimePaheSession(rawScraperId) ? `s:${rawScraperId}` : undefined);
         if (!animeId) return;
         navigate(`/anime/details/${animeId}`, { state: { anime: item } });
     };

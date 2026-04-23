@@ -31,6 +31,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         streamLoading,
         currentEpisode,
         streams,
+        hasResolvedStreams,
         isAutoQuality,
         selectedAudio,
         availableAudios,
@@ -236,10 +237,10 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
 
     // When loading finishes with no stream result → immediately show exhausted (no retry loop).
     useEffect(() => {
-        if (!currentEpisode || currentStream || streamLoading) return;
+        if (!currentEpisode || currentStream || streamLoading || hasResolvedStreams) return;
         if (String(currentEpisode.episodeNumber) !== String(epNumParam)) return;
         setStreamExhausted(true);
-    }, [currentEpisode, currentStream, streamLoading, epNumParam]);
+    }, [currentEpisode, currentStream, streamLoading, hasResolvedStreams, epNumParam]);
 
     const flushWatchTime = useCallback(() => {
         if (!selectedAnime) return;

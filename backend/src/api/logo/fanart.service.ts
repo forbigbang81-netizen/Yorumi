@@ -3,6 +3,18 @@ import axios from 'axios';
 const FANART_API_KEY = process.env.FANART_API_KEY || '';
 const FANART_BASE_URL = 'https://webservice.fanart.tv/v3/tv';
 
+// Fanart.tv logos are attached at the TV series level, not the season level.
+// For sequel-heavy shows that share one TVDB series ID across multiple AniList
+// entries, we keep a narrow manual override table keyed by AniList ID so a
+// specific season can use the intended clear logo.
+const ANILIST_LOGO_OVERRIDES: Record<number, string> = {
+    // Classroom of the Elite
+    98659: 'https://assets.fanart.tv/fanart/welcome-to-the-classroom-of-the-know-it-alls-5c620555791bb.png',
+    145545: 'https://assets.fanart.tv/fanart/classroom-of-the-elite-626fe81a6cada.png',
+    146066: 'https://assets.fanart.tv/fanart/classroom-of-the-elite-65b0e2dc96aa1.png',
+    180745: 'https://assets.fanart.tv/fanart/classroom-of-the-elite-6337c11102a80.png',
+};
+
 // Log API key status at startup (don't log the actual key for security)
 console.log('[Fanart Service] API Key configured:', FANART_API_KEY ? '✓ Yes' : '✗ No');
 
@@ -41,6 +53,11 @@ interface AnifyMappingResponse {
         providerId: string;
         similarity: number;
     }[];
+}
+
+function getOverrideLogo(anilistId: number): string | null {
+    const override = ANILIST_LOGO_OVERRIDES[anilistId];
+    return typeof override === 'string' && override.trim() ? override.trim() : null;
 }
 
 /**
@@ -168,6 +185,15 @@ export async function getAnimeLogo(anilistId: number): Promise<{
     source: 'fanart' | 'fallback';
     cached: boolean;
 }> {
+    const overrideLogo = getOverrideLogo(anilistId);
+    if (overrideLogo) {
+        return {
+            logo: overrideLogo,
+            source: 'fanart',
+            cached: true,
+        };
+    }
+
     // Check if we have cached logo mapping
     const cacheKey = anilistId;
     const tvdbCached = tvdbMappingCache.has(cacheKey);

@@ -183,6 +183,7 @@ export function useStreams(scraperSession: string | null) {
         // State
         currentEpisode,
         streams,
+        hasResolvedStreams: allStreams.length > 0,
         selectedStreamIndex,
         isAutoQuality,
         selectedAudio,

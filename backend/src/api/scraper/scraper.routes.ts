@@ -3,11 +3,44 @@ import { scraperService } from './scraper.service';
 import axios from 'axios';
 import { HiAnimeScraper } from './hianime.service';
 import { AnimeKaiScraper } from '../../scraper/animekai';
+import { anilistService } from '../anilist/anilist.service';
 
 const router = Router();
 const upstreamCookieJar = new Map<string, string>();
 const hiAnimeScraper = new HiAnimeScraper();
 const animeKaiScraper = new AnimeKaiScraper();
+
+const enrichAnimeKaiItems = async (items: any[]) => {
+    const safeItems = Array.isArray(items) ? items.filter((item) => item?.title) : [];
+    const results = await Promise.allSettled(
+        safeItems.map(async (item) => {
+            const anilistMedia = await anilistService.findBestAnimeMatch({
+                titles: [item.title, item.jname].filter(Boolean),
+                episodes: Number(item.episodes || item.latestEpisode || item.sub || 0) || undefined,
+                format: item.type,
+                perPage: 5,
+            });
+
+            return {
+                ...item,
+                id: anilistMedia?.id || 0,
+                mal_id: anilistMedia?.idMal || anilistMedia?.id || 0,
+                anilist: anilistMedia || null,
+            };
+        })
+    );
+
+    return results
+        .map((result, index) => result.status === 'fulfilled'
+            ? result.value
+            : {
+                ...safeItems[index],
+                id: 0,
+                mal_id: 0,
+                anilist: null,
+            })
+        .filter((item) => item?.title);
+};
 
 const mergeCookieHeader = (existing: string, setCookie: string[]) => {
     const jar = new Map<string, string>();
@@ -90,8 +123,16 @@ router.get('/recently-updated', async (req, res) => {
         const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 18;
         const result = await animeKaiScraper.getNewReleases(page, limit);
+        const enrichedItems = await enrichAnimeKaiItems(result?.data || []);
         res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
-        res.json(result);
+        res.json({
+            data: enrichedItems,
+            pagination: result?.pagination || {
+                current_page: page,
+                last_visible_page: page,
+                has_next_page: false,
+            },
+        });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
@@ -100,16 +141,10 @@ router.get('/recently-updated', async (req, res) => {
 router.get('/animekai/latest-updates', async (_req, res) => {
     try {
         const latestItems = await animeKaiScraper.getLatestUpdates();
+        const enrichedItems = await enrichAnimeKaiItems(latestItems);
         res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
         res.json({
-            latestEpisodes: latestItems
-                .filter((item) => item?.title)
-                .map((item) => ({
-                    ...item,
-                    id: 0,
-                    mal_id: 0,
-                    anilist: null,
-                })),
+            latestEpisodes: enrichedItems,
         });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
