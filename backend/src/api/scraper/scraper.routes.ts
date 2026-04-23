@@ -18,6 +18,16 @@ const LATEST_REDIS_KEY = 'animekai:latest-updates:enriched';
 const NEW_RELEASES_REDIS_PREFIX = 'animekai:new-releases:enriched';
 const CACHE_TTL_SECONDS = 300; // 5 min fresh window
 
+const buildAnimeKaiFallbackItems = (items: any[]) => {
+    const safeItems = Array.isArray(items) ? items.filter((item) => item?.title) : [];
+    return safeItems.map((item) => ({
+        ...item,
+        id: Number(item?.id || 0) || 0,
+        mal_id: Number(item?.mal_id || item?.id || 0) || 0,
+        anilist: item?.anilist || null,
+    }));
+};
+
 const enrichAnimeKaiItems = async (items: any[]) => {
     const safeItems = Array.isArray(items) ? items.filter((item) => item?.title) : [];
     const results = await Promise.allSettled(
@@ -49,6 +59,8 @@ const enrichAnimeKaiItems = async (items: any[]) => {
             })
         .filter((item) => item?.title);
 };
+
+const getAnimeKaiListItems = (items: any[]) => buildAnimeKaiFallbackItems(items);
 
 /** Read stale data from memory → Redis → empty. Never throws. */
 const getStaleLatestUpdates = async (): Promise<{ latestEpisodes: any[] }> => {
@@ -159,11 +171,11 @@ router.get('/animekai/latest-updates', async (_req, res) => {
     res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     try {
         const rawItems = await animeKaiScraper.getLatestUpdates();
-        const enrichedItems = await enrichAnimeKaiItems(rawItems);
-        const payload = { latestEpisodes: enrichedItems };
+        const listItems = getAnimeKaiListItems(rawItems);
+        const payload = { latestEpisodes: listItems };
 
         // Persist to caches
-        if (enrichedItems.length > 0) {
+        if (listItems.length > 0) {
             latestUpdatesMemCache = payload;
             redis.set(LATEST_REDIS_KEY, payload, { ex: CACHE_TTL_SECONDS }).catch(() => undefined);
         }
@@ -185,10 +197,10 @@ router.get('/recently-updated', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     try {
         const result = await animeKaiScraper.getNewReleases(page, limit);
-        const enrichedItems = await enrichAnimeKaiItems(result.data);
-        const payload = { data: enrichedItems, pagination: result.pagination };
+        const listItems = getAnimeKaiListItems(result.data);
+        const payload = { data: listItems, pagination: result.pagination };
 
-        if (enrichedItems.length > 0) {
+        if (listItems.length > 0) {
             newReleasesMemCache.set(cacheKey, payload);
             redis.set(`${NEW_RELEASES_REDIS_PREFIX}:${cacheKey}`, payload, { ex: CACHE_TTL_SECONDS }).catch(() => undefined);
         }
@@ -213,10 +225,10 @@ router.get('/animekai/new-releases', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     try {
         const result = await animeKaiScraper.getNewReleases(page, limit);
-        const enrichedItems = await enrichAnimeKaiItems(result.data);
-        const payload = { data: enrichedItems, pagination: result.pagination };
+        const listItems = getAnimeKaiListItems(result.data);
+        const payload = { data: listItems, pagination: result.pagination };
 
-        if (enrichedItems.length > 0) {
+        if (listItems.length > 0) {
             newReleasesMemCache.set(cacheKey, payload);
             redis.set(`${NEW_RELEASES_REDIS_PREFIX}:${cacheKey}`, payload, { ex: CACHE_TTL_SECONDS }).catch(() => undefined);
         }

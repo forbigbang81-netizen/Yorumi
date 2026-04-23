@@ -69,12 +69,16 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     const lastSavedProgressRef = useRef<{ at: number; second: number }>({ at: 0, second: -1 });
     const streamErrorRetryRef = useRef<{ url: string; at: number }>({ url: '', at: 0 });
     const autoLoadAttemptKeyRef = useRef<string>('');
-    const extractAnimePaheSession = (value: unknown): string => {
+    const extractDirectScraperSession = (value: unknown): string => {
         const raw = String(value || '').trim();
-        const normalized = raw.startsWith('s:') ? raw.slice(2) : raw;
-        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)
-            ? normalized
-            : '';
+        const normalized = raw
+            .replace(/^s:/i, '')
+            .replace(/^https?:\/\/[^/]+/i, '')
+            .replace(/^\/+/, '')
+            .replace(/^watch\//i, '')
+            .trim();
+        if (!normalized) return '';
+        return /^\d+$/.test(normalized) ? '' : normalized;
     };
 
     const parseEpisodeNumber = (value: unknown): number => {
@@ -114,12 +118,12 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
 
     useEffect(() => {
         const currentId = String(animeId || '');
-        const currentSession = extractAnimePaheSession(currentId);
+        const currentSession = extractDirectScraperSession(currentId);
         const animeMatch = selectedAnime &&
             (
                 String(selectedAnime.id) === currentId ||
                 String(selectedAnime.mal_id) === currentId ||
-                (!!currentSession && extractAnimePaheSession(selectedAnime.scraperId) === currentSession)
+                (!!currentSession && extractDirectScraperSession(selectedAnime.scraperId) === currentSession)
             );
         if (!animeMatch) return;
 
@@ -143,13 +147,13 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         if (location.state?.anime) {
             handleAnimeClick(location.state.anime);
         } else if (animeId) {
-            const animePaheSession = extractAnimePaheSession(animeId);
+            const directScraperSession = extractDirectScraperSession(animeId);
             const ids = isNaN(Number(animeId)) ? animeId : parseInt(animeId);
             const fallbackTitle = decodeSlugTitle(animeSlugTitle);
             handleAnimeClick({
                 mal_id: typeof ids === 'number' ? ids : 0,
                 id: typeof ids === 'number' ? ids : undefined,
-                scraperId: animePaheSession || undefined,
+                scraperId: directScraperSession || undefined,
                 title: fallbackTitle || String(animeId),
             } as Anime);
         }
@@ -160,12 +164,12 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         // STRICT GUARD: Match URL ID with Context Anime ID
         // This prevents race condition where previous anime state triggers a load for the new page
         const currentId = String(animeId);
-        const currentSession = extractAnimePaheSession(currentId);
+        const currentSession = extractDirectScraperSession(currentId);
         const animeMatch = selectedAnime &&
             (
                 String(selectedAnime.id) === currentId ||
                 String(selectedAnime.mal_id) === currentId ||
-                (!!currentSession && extractAnimePaheSession(selectedAnime.scraperId) === currentSession)
+                (!!currentSession && extractDirectScraperSession(selectedAnime.scraperId) === currentSession)
             );
 
         if (!scraperSession) return;

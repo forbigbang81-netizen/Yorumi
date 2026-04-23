@@ -27,6 +27,17 @@ const extractScraperIdFromLink = (link?: string) => {
         .split('?')[0]
         .trim();
 };
+const extractAniKaiScraperId = (value?: string) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    return raw
+        .replace(/^https?:\/\/[^/]+/i, '')
+        .replace(/^\/+/, '')
+        .replace(/^watch\//i, '')
+        .replace(/^\/watch\//i, '')
+        .split('?')[0]
+        .trim();
+};
 const extractAnimePaheSession = (value: unknown) => {
     const raw = String(value || '').trim();
     const normalized = raw.startsWith('s:') ? raw.slice(2) : raw;
@@ -128,7 +139,7 @@ const mapScraperToAnime = (item: any) => {
     return {
         mal_id: 0,
         id: 0,
-        scraperId: item.session || item.id,
+        scraperId: item.session || item.scraperId || item.id,
         title: item.title || 'Unknown',
         title_english: item.title,
         title_romaji: item.title,
@@ -198,12 +209,18 @@ const mapLatestUpdateItemToAnime = (item: any): Anime => {
     anime.title_english = anime.title_english || item.title;
     anime.type = item.type || anime.type || 'TV';
     anime.duration = item.duration || anime.duration;
+    const genericScraperId =
+        String(item.scraperId || '').trim() ||
+        extractAniKaiScraperId(item.link) ||
+        extractAniKaiScraperId(String(anime.scraperId || ''));
     const animePaheSession =
-        extractAnimePaheSession(item.scraperId) ||
+        extractAnimePaheSession(genericScraperId) ||
         extractAnimePaheSession(extractScraperIdFromLink(item.link)) ||
         extractAnimePaheSession(anime.scraperId);
     if (animePaheSession) {
         anime.scraperId = animePaheSession;
+    } else if (genericScraperId) {
+        anime.scraperId = genericScraperId;
     } else {
         delete anime.scraperId;
     }

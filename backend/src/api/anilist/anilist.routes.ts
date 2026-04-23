@@ -231,6 +231,16 @@ const enrichAnimeKaiItems = async (items: any[]) => {
         .filter((item) => item?.title);
 };
 
+const buildAnimeKaiFallbackItems = (items: any[]) => {
+    const safeItems = Array.isArray(items) ? items.filter((item) => item?.title) : [];
+    return safeItems.map((item) => ({
+        ...item,
+        id: Number(item?.id || 0) || 0,
+        mal_id: Number(item?.mal_id || item?.id || 0) || 0,
+        anilist: item?.anilist || null,
+    }));
+};
+
 const buildHomeFastPayload = async () => {
     const scraper = new HiAnimeScraper();
     const animeKaiScraper = new AnimeKaiScraper();
@@ -255,7 +265,7 @@ const buildHomeFastPayload = async () => {
         withTimeout(animeKaiScraper.getTopTrending('week'), 2500, [] as any[]),
         withTimeout(animeKaiScraper.getTopTrending('month'), 2500, [] as any[]),
     ]);
-    const latestEpisodes = await enrichAnimeKaiItems(Array.isArray(latestEpisodesRaw) ? latestEpisodesRaw : []);
+    const latestEpisodes = buildAnimeKaiFallbackItems(Array.isArray(latestEpisodesRaw) ? latestEpisodesRaw : []);
 
     return {
         spotlight: spotlight?.spotlight || [],

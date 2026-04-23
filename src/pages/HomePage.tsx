@@ -21,20 +21,28 @@ export default function HomePage() {
     }, []);
 
     // Navigation Handlers
-    const isAnimePaheSession = (value: unknown) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+    const getDirectScraperRouteId = (value: unknown) => {
+        const raw = String(value || '')
+            .trim()
+            .replace(/^https?:\/\/[^/]+/i, '')
+            .replace(/^\/+/, '')
+            .replace(/^watch\//i, '');
+        if (!raw) return '';
+        const normalized = raw.startsWith('s:') ? raw : `s:${raw}`;
+        const session = normalized.slice(2).trim();
+        return session ? normalized : '';
+    };
 
     const getWatchRouteId = (item: Anime): string | number | undefined => {
-        const rawScraperId = String(item.scraperId || '').trim();
-        if (rawScraperId && isAnimePaheSession(rawScraperId)) {
-            return rawScraperId.startsWith('s:') ? rawScraperId : `s:${rawScraperId}`;
+        const scraperRouteId = getDirectScraperRouteId(item.scraperId);
+        if (scraperRouteId) {
+            return scraperRouteId;
         }
         return item.mal_id || item.id;
     };
 
     const handleAnimeClick = (item: Anime) => {
-        const rawScraperId = String(item.scraperId || '').trim();
-        const animeId = item.id || item.mal_id || (isAnimePaheSession(rawScraperId) ? `s:${rawScraperId}` : undefined);
+        const animeId = item.id || item.mal_id || getDirectScraperRouteId(item.scraperId) || undefined;
         if (!animeId) return;
         navigate(`/anime/details/${animeId}`, { state: { anime: item } });
     };

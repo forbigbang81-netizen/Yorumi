@@ -13,12 +13,16 @@ import { getDisplayTitle } from '../utils/titleLanguage';
 export default function WatchPage() {
     const { id, title } = useParams<{ title: string; id: string }>();
     const { language } = useTitleLanguage();
-    const extractAnimePaheSession = (value: unknown): string => {
+    const extractDirectScraperSession = (value: unknown): string => {
         const raw = String(value || '').trim();
-        const normalized = raw.startsWith('s:') ? raw.slice(2) : raw;
-        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)
-            ? normalized
-            : '';
+        const normalized = raw
+            .replace(/^s:/i, '')
+            .replace(/^https?:\/\/[^/]+/i, '')
+            .replace(/^\/+/, '')
+            .replace(/^watch\//i, '')
+            .trim();
+        if (!normalized) return '';
+        return /^\d+$/.test(normalized) ? '' : normalized;
     };
 
     useEffect(() => {
@@ -80,13 +84,13 @@ export default function WatchPage() {
         navigate
     } = usePlayer(id, title);
 
-    const routeSession = extractAnimePaheSession(id);
+    const routeSession = extractDirectScraperSession(id);
     const animeRecord = anime as Record<string, unknown> | null;
     const animeMatch = !!(
         anime && id && (
             String(anime.id) === String(id) ||
             String(anime.mal_id) === String(id) ||
-            (!!routeSession && extractAnimePaheSession(animeRecord?.scraperId) === routeSession)
+            (!!routeSession && extractDirectScraperSession(animeRecord?.scraperId) === routeSession)
         )
     );
     const isPageLoading = !anime || !animeMatch;

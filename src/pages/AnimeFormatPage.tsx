@@ -22,8 +22,17 @@ export default function AnimeFormatPage() {
     const format = location.pathname.split('/').pop() || '';
     const navigate = useNavigate();
     const { prefetchEpisodes } = useAnime();
-    const isAnimePaheSession = (value: unknown) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+    const getDirectScraperRouteId = (value: unknown) => {
+        const raw = String(value || '')
+            .trim()
+            .replace(/^https?:\/\/[^/]+/i, '')
+            .replace(/^\/+/, '')
+            .replace(/^watch\//i, '');
+        if (!raw) return '';
+        const normalized = raw.startsWith('s:') ? raw : `s:${raw}`;
+        const session = normalized.slice(2).trim();
+        return session ? normalized : '';
+    };
 
     const config = FORMAT_CONFIG[format];
 
@@ -89,16 +98,14 @@ export default function AnimeFormatPage() {
     };
 
     const handleAnimeClick = (item: Anime) => {
-        const id = item.id || item.mal_id;
+        const id = item.id || item.mal_id || getDirectScraperRouteId(item.scraperId);
+        if (!id) return;
         navigate(`/anime/details/${id}`, { state: { anime: item } });
     };
 
     const handleWatchClick = (item: Anime) => {
         const title = slugify(item.title || item.title_english || 'anime');
-        const rawScraperId = String(item.scraperId || '').trim();
-        const id = rawScraperId && isAnimePaheSession(rawScraperId)
-            ? (rawScraperId.startsWith('s:') ? rawScraperId : `s:${rawScraperId}`)
-            : (item.mal_id || item.id);
+        const id = getDirectScraperRouteId(item.scraperId) || (item.mal_id || item.id);
         if (!id) return;
         const latestEpisode = Number(item.latestEpisode || 0);
         const ep = latestEpisode > 0 && item.status !== 'Finished Airing'

@@ -169,10 +169,14 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const normalizeScraperId = (value: unknown): string => {
         const raw = String(value ?? '').trim();
         if (!raw) return '';
-        const normalized = raw.startsWith('s:') ? raw.slice(2) : raw;
-        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)
-            ? normalized
-            : '';
+        const normalized = raw
+            .replace(/^s:/i, '')
+            .replace(/^https?:\/\/[^/]+/i, '')
+            .replace(/^\/+/, '')
+            .replace(/^watch\//i, '')
+            .trim();
+        if (!normalized) return '';
+        return /^\d+$/.test(normalized) ? '' : normalized;
     };
     const hasDirectScraperSession = (value: unknown) => Boolean(normalizeScraperId(value));
     const getAnimeCacheKey = (target: Anime): string | null => {
