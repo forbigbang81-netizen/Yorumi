@@ -25,8 +25,10 @@ const launchBrowser = async (): Promise<Browser> => {
 
     logger.info('Launching shared local Puppeteer instance');
 
-    const localPuppeteerModule = await import('puppeteer-extra') as Record<string, unknown>;
-    const stealthPluginModule = await import('puppeteer-extra-plugin-stealth') as Record<string, unknown>;
+    const localPuppeteerPackage = 'puppeteer-extra';
+    const stealthPluginPackage = 'puppeteer-extra-plugin-stealth';
+    const localPuppeteerModule = await import(localPuppeteerPackage) as Record<string, unknown>;
+    const stealthPluginModule = await import(stealthPluginPackage) as Record<string, unknown>;
     const localPuppeteer = (localPuppeteerModule.default || localPuppeteerModule) as any;
     const StealthPlugin = (stealthPluginModule.default || stealthPluginModule) as any;
 

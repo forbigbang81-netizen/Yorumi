@@ -301,6 +301,19 @@ const clearCacheEntry = (key: string) => {
         // Ignore storage errors.
     }
 };
+const getStaleCached = (key: string) => {
+    if (cache.has(key)) {
+        return cache.get(key)!.data;
+    }
+    try {
+        const raw = localStorage.getItem(`${PERSISTED_CACHE_PREFIX}:${key}`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { data: any; timestamp: number };
+        return parsed?.data ?? null;
+    } catch {
+        return null;
+    }
+};
 
 const getCachedStream = (key: string) => {
     if (streamCache.has(key)) {
@@ -449,6 +462,7 @@ export const animeService = {
         const cacheKey = 'latest-updates-3-10';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
+        const staleCached = getStaleCached(cacheKey);
 
         if (inFlightRequests.has(cacheKey)) {
             return inFlightRequests.get(cacheKey);
@@ -456,8 +470,6 @@ export const animeService = {
 
         const fetchPromise = (async () => {
             try {
-                let result = { data: [] as Anime[] };
-
                 try {
                     const res = await fetchJsonWithTimeout(`${API_BASE}/scraper/animekai/latest-updates`, {}, 10000);
                     if (!res.ok) {
@@ -465,25 +477,33 @@ export const animeService = {
                     }
 
                     const payload = await res.json();
-                    result = {
+                    const result = {
                         data: Array.isArray(payload?.latestEpisodes)
                             ? payload.latestEpisodes.map(mapLatestUpdateItemToAnime)
                             : []
                     };
 
-                    if (result.data.length === 0) {
-                        throw new Error('Latest episodes endpoint returned no items');
+                    if (result.data.length > 0) {
+                        setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                        return result;
                     }
+
+                    throw new Error('Latest episodes endpoint returned no items');
                 } catch (latestEndpointError) {
                     console.warn('[AnimeService] dedicated latest updates endpoint failed', latestEndpointError);
+                    const fallback = await this.getLatestUpdatesPage(1, 10);
+                    if (Array.isArray(fallback?.data) && fallback.data.length > 0) {
+                        const result = { data: fallback.data };
+                        setCache(cacheKey, result, DETAIL_CACHE_TTL);
+                        return result;
+                    }
+
+                    if (staleCached?.data && Array.isArray(staleCached.data) && staleCached.data.length > 0) {
+                        return staleCached;
+                    }
+
                     throw latestEndpointError;
                 }
-
-                if (result.data.length > 0) {
-                    setCache(cacheKey, result, DETAIL_CACHE_TTL);
-                }
-
-                return result;
             } finally {
                 inFlightRequests.delete(cacheKey);
             }

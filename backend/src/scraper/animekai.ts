@@ -1,4 +1,3 @@
-import { ANIME } from '@consumet/extensions';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import type { AnimeSearchResult, Episode, StreamLink } from './aniwatch';
@@ -11,8 +10,6 @@ const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 type TopTrendingRange = 'now' | 'day' | 'week' | 'month';
 
 export class AnimeKaiScraper {
-    private readonly client = new ANIME.AnimeKai();
-
     async close() { }
 
     private getWatchReferer(animeSession: string) {
@@ -25,7 +22,7 @@ export class AnimeKaiScraper {
         return value || undefined;
     }
 
-    private parseLatestUpdateCard($: any, element: cheerio.Element) {
+    private parseLatestUpdateCard($: any, element: any) {
         const $el = $(element);
         const posterLink = String($el.find('a.poster').attr('href') || '').trim();
         const titleEl = $el.find('a.title').first();
@@ -421,28 +418,8 @@ export class AnimeKaiScraper {
     }
 
     async search(query: string): Promise<AnimeSearchResult[]> {
-        try {
-            const response = await this.client.search(query);
-            const items = Array.isArray((response as any)?.results)
-                ? (response as any).results
-                : (Array.isArray(response) ? response : []);
-
-            return items.map((item: any) => ({
-                id: String(item.id || ''),
-                session: String(item.id || ''),
-                title: String(item.title || item.japaneseTitle || 'Unknown'),
-                url: String(item.url || ''),
-                poster: String(item.image || item.poster || ''),
-                type: item.type,
-                episodes: Number(item.episodes || item.sub || item.dub || 0) || undefined,
-                sub: Number(item.sub || 0) || undefined,
-                dub: Number(item.dub || 0) || undefined,
-                year: item.releaseDate ? String(item.releaseDate) : undefined,
-            })).filter((item: AnimeSearchResult) => Boolean(item.session && item.title));
-        } catch (error) {
-            console.error('AnimeKai search error:', error);
-            return [];
-        }
+        void query;
+        return [];
     }
 
     async getAnimeInfo(animeSessionId: string): Promise<{

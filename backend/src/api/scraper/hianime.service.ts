@@ -195,7 +195,7 @@ export class HiAnimeScraper {
 
             const $ = cheerio.load(data);
             const items: any[] = [];
-            const collectLatestItems = (_: number, section: cheerio.Element) => {
+            const collectLatestItems = (_: number, section: any) => {
                 $(section).find('.film_list-wrap .flw-item').each((__, element) => {
                     const $el = $(element);
                     const anchor = $el.find('.film-name a').first();
