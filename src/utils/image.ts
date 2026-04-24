@@ -4,8 +4,8 @@ const IMAGE_PROXY_BASE = `${API_BASE}/image/proxy?url=`;
 const PROXY_HOST_PATTERNS = [
     /(^|\.)animepahe\./i,
     /(^|\.)pahe\./i,
-    /(^|\.)hianime\./i,
-    /(^|\.)aniwatch\./i,
+    /(^|\.)animekai\./i,
+    /(^|\.)anikai\./i,
     /(^|\.)gojo\./i,
     /(^|\.)akamaized\.net$/i,
 ];

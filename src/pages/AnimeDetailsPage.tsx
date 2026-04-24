@@ -117,13 +117,14 @@ export default function AnimeDetailsPage() {
                 navigate('/', { replace: true });
                 return;
             }
+            const fallbackTitle = routeAnime?.title || scraperSession.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
 
             animeHook.handleAnimeClick({
                 ...(routeAnime || {}),
                 id: routeAnime?.id || 0,
                 mal_id: routeAnime?.mal_id || 0,
                 scraperId: scraperSession,
-                title: routeAnime?.title || '',
+                title: fallbackTitle,
                 images: routeAnime?.images || { jpg: { image_url: '', large_image_url: '' } }
             } as Anime);
             return;

@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Github } from 'lucide-react';
+import { animeService } from '../../services/animeService';
 
 const Footer = () => {
     const location = useLocation();
@@ -18,6 +20,21 @@ const Footer = () => {
     const bgHover = isManga ? 'hover:bg-yorumi-manga' : 'hover:bg-yorumi-accent';
 
     const alphabets = ['All', '#', '0-9', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')];
+
+    useEffect(() => {
+        if (isManga) return;
+
+        const warmupId = window.setTimeout(() => {
+            animeService.prefetchAZList('All').catch(() => undefined);
+        }, 250);
+
+        return () => window.clearTimeout(warmupId);
+    }, [isManga]);
+
+    const prefetchLetter = (letter: string) => {
+        if (isManga) return;
+        animeService.prefetchAZList(letter).catch(() => undefined);
+    };
 
     return (
         <footer className="relative bg-[#0a0a0a] pt-12 pb-8 border-t border-white/5 overflow-hidden">
@@ -82,6 +99,9 @@ const Footer = () => {
                             key={abc}
                             to={`/search?q=${encodeURIComponent(abc)}&type=${isManga ? 'manga' : 'anime'}`}
                             onClick={() => window.scrollTo({ top: 0, behavior: 'instant' })}
+                            onMouseEnter={() => prefetchLetter(abc)}
+                            onFocus={() => prefetchLetter(abc)}
+                            onTouchStart={() => prefetchLetter(abc)}
                             className={`px-2.5 py-1.5 rounded-lg text-sm font-semibold bg-white/5 text-gray-300 transition-all duration-200 ${bgHover} hover:text-white border border-transparent hover:border-white/10`}
                         >
                             {abc}

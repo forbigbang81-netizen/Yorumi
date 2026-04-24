@@ -180,7 +180,14 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (!normalized) return '';
         return /^\d+$/.test(normalized) ? '' : normalized;
     };
+    const extractAnimePaheSession = (value: unknown): string => {
+        const normalized = normalizeScraperId(value);
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)
+            ? normalized
+            : '';
+    };
     const hasDirectScraperSession = (value: unknown) => Boolean(normalizeScraperId(value));
+    const hasAnimePaheSession = (value: unknown) => Boolean(extractAnimePaheSession(value));
     const getAnimeCacheKey = (target: Anime): string | null => {
         const mal = Number(target?.mal_id);
         if (Number.isFinite(mal) && mal > 0) return `mal:${mal}`;
@@ -298,18 +305,25 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             if (!raw) return null;
             const parsed = JSON.parse(raw);
             if (!parsed?.session || !Array.isArray(parsed?.episodes) || parsed.episodes.length === 0) return null;
+            const session = extractAnimePaheSession(parsed.session);
+            if (!session) {
+                sessionStorage.removeItem(`${EPISODE_CACHE_PREFIX}:${animeKey}`);
+                return null;
+            }
             // Expire after 30 minutes
             if (typeof parsed.timestamp === 'number' && Date.now() - parsed.timestamp > 30 * 60 * 1000) return null;
-            return { session: parsed.session, episodes: parsed.episodes };
+            return { session, episodes: parsed.episodes };
         } catch {
             return null;
         }
     };
     const writeEpisodeSessionCache = (animeKey: string, session: string, episodes: Episode[]) => {
+        const normalizedSession = extractAnimePaheSession(session);
+        if (!normalizedSession) return;
         try {
             sessionStorage.setItem(
                 `${EPISODE_CACHE_PREFIX}:${animeKey}`,
-                JSON.stringify({ session, episodes, timestamp: Date.now() })
+                JSON.stringify({ session: normalizedSession, episodes, timestamp: Date.now() })
             );
         } catch {
             // Ignore sessionStorage quota errors
@@ -407,6 +421,8 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
     const applyHydratedEpisodes = (targetAnime: Anime, fastData: any) => {
         if (!Array.isArray(fastData?.episodes) || fastData.episodes.length === 0) return false;
+        const session = extractAnimePaheSession(fastData?.scraperSession);
+        if (!session) return false;
 
         const normalizedFastEpisodes = normalizeEpisodesList(fastData.episodes);
         const nextEpisodes = trimEpisodesForAnime(targetAnime, normalizedFastEpisodes);
@@ -414,17 +430,12 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (!hasEnoughEpisodes(targetAnime, nextEpisodes)) return false;
 
         setEpisodes(nextEpisodes);
-        if (fastData?.scraperSession) {
-            const session = String(fastData.scraperSession).trim();
-            if (session) {
-                setScraperSession(session);
-                episodesCache.current.set(session, nextEpisodes);
-                const resolvedKey = getAnimeCacheKey(targetAnime);
-                if (resolvedKey) {
-                    scraperSessionCache.current.set(resolvedKey, session);
-                    writeEpisodeSessionCache(resolvedKey, session, nextEpisodes);
-                }
-            }
+        setScraperSession(session);
+        episodesCache.current.set(session, nextEpisodes);
+        const resolvedKey = getAnimeCacheKey(targetAnime);
+        if (resolvedKey) {
+            scraperSessionCache.current.set(resolvedKey, session);
+            writeEpisodeSessionCache(resolvedKey, session, nextEpisodes);
         }
         setEpLoading(false);
         setEpisodesResolved(true);
@@ -585,7 +596,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                     preloadLogos(data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
                 }
             } catch (e) {
-                console.error('Failed to fetch AniWatch spotlight', e);
+                console.error('Failed to fetch AnimeKai spotlight', e);
             } finally {
                 setSpotlightLoading(false);
             }
@@ -987,8 +998,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         };
 
         // Fast path: when scraperId is already known, avoid extra mapping/search calls.
-        if (anime.scraperId && hasDirectScraperSession(anime.scraperId)) {
-            session = normalizeScraperId(anime.scraperId);
+        const directAnimePaheSession = extractAnimePaheSession(anime.scraperId);
+        if (directAnimePaheSession) {
+            session = directAnimePaheSession;
             if (cacheKey) {
                 scraperSessionCache.current.set(cacheKey, session);
             }
@@ -996,18 +1008,25 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         }
 
         if (!session && cacheKey && scraperSessionCache.current.has(cacheKey)) {
-            const cachedSession = scraperSessionCache.current.get(cacheKey)!;
-            session = cachedSession;
-            sessionFromCache = true;
+            const cachedSession = extractAnimePaheSession(scraperSessionCache.current.get(cacheKey));
+            if (cachedSession) {
+                session = cachedSession;
+                sessionFromCache = true;
+            } else {
+                scraperSessionCache.current.delete(cacheKey);
+            }
         } else if (!session) {
             // 0. Try to get from Firebase Mapping Cache
             if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
                 try {
-                    const cachedSession = await animeService.getAnimeMapping(mappingKey);
+                    const persistedMapping = await animeService.getAnimeMapping(mappingKey);
+                    const cachedSession = extractAnimePaheSession(persistedMapping);
                     if (cachedSession) {
                         session = cachedSession;
                         sessionFromCache = true;
                         if (cacheKey) scraperSessionCache.current.set(cacheKey, cachedSession);
+                    } else if (persistedMapping) {
+                        animeService.clearAnimeMapping(mappingKey).catch(() => undefined);
                     }
                 } catch (e) {
                     console.warn("[AnimeContext] Failed to check mapping cache", e);
@@ -1047,7 +1066,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 // Cached/older mappings can occasionally resolve to a valid session with no episode payload.
                 // Re-resolve once via search before giving up, so users don't need a manual page reload.
                 if (newEpisodes.length === 0 && sessionFromCache) {
-                    if (anime.scraperId && String(anime.scraperId).trim() === session) {
+                    if (extractAnimePaheSession(anime.scraperId) === session) {
                         delete (anime as Partial<Anime>).scraperId;
                     }
                     if (cacheKey) scraperSessionCache.current.delete(cacheKey);
@@ -1136,8 +1155,10 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         const isStale = options?.isStale || (() => false);
         const cacheKey = getAnimeCacheKey(anime);
         if (cacheKey && scraperSessionCache.current.has(cacheKey)) {
-            const session = scraperSessionCache.current.get(cacheKey)!;
-            if (episodesCache.current.has(session)) {
+            const session = extractAnimePaheSession(scraperSessionCache.current.get(cacheKey));
+            if (!session) {
+                scraperSessionCache.current.delete(cacheKey);
+            } else if (episodesCache.current.has(session)) {
                 const cachedEpisodes = episodesCache.current.get(session)!;
                 if (!hasEnoughEpisodes(anime, cachedEpisodes)) {
                     episodesCache.current.delete(session);
@@ -1308,7 +1329,8 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             setSelectedAnime(null);
         }
 
-        if (!applyHydratedEpisodes(hydratedAnime, cachedFast)) {
+        const hydratedEpisodesApplied = applyHydratedEpisodes(hydratedAnime, cachedFast);
+        if (!hydratedEpisodesApplied) {
             setEpisodes([]);
             setScraperSession(null);
             setEpLoading(true);
@@ -1320,7 +1342,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         setError(null);
         setDetailsLoading(!(cachedDetails?.data || cachedFast?.data || hasRenderablePrimaryDetails(anime)));
 
-        if (anime.scraperId && hasDirectScraperSession(anime.scraperId)) {
+        const shouldPreloadEpisodesImmediately = !hydratedEpisodesApplied && Boolean(
+            hasAnimePaheSession(anime.scraperId) ||
+            String(anime.title || '').trim() ||
+            (Number.isFinite(Number(anime.id)) && Number(anime.id) > 0) ||
+            (Number.isFinite(Number(anime.mal_id)) && Number(anime.mal_id) > 0)
+        );
+        if (shouldPreloadEpisodesImmediately) {
             preloadEpisodes(anime, { resetState: false, requestId, isStale: isStaleRequest }).catch(() => undefined);
         }
 
@@ -1458,7 +1486,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     const prefetchEpisodes = (anime: Anime) => {
-        if (anime.scraperId && hasDirectScraperSession(anime.scraperId)) {
+        if (anime.scraperId && hasAnimePaheSession(anime.scraperId)) {
             resolveAndCacheEpisodes(anime).catch(console.error);
             return;
         }

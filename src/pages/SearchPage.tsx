@@ -8,6 +8,7 @@ import MangaCardSkeleton from '../features/manga/components/MangaCardSkeleton';
 import Pagination from '../components/ui/Pagination';
 import type { Anime } from '../types/anime';
 import type { Manga } from '../types/manga';
+import { animeService } from '../services/animeService';
 
 export default function SearchPage() {
     const [searchParams] = useSearchParams();
@@ -47,6 +48,10 @@ export default function SearchPage() {
     }, [query, type, isAZListQuery, executeSearch]);
     const accentColor = type === 'manga' ? 'text-yorumi-manga' : 'text-yorumi-accent';
     const activeBg = type === 'manga' ? 'bg-yorumi-manga' : 'bg-yorumi-accent';
+    const prefetchLetter = (letter: string) => {
+        if (type !== 'anime') return;
+        animeService.prefetchAZList(letter).catch(() => undefined);
+    };
 
     return (
         <div className="container mx-auto px-4 pt-24 pb-12 min-h-screen">
@@ -74,6 +79,9 @@ export default function SearchPage() {
                                 const newQ = abc;
                                 navigate(`/search?q=${encodeURIComponent(newQ)}&type=${type}`);
                             }}
+                            onMouseEnter={() => prefetchLetter(abc)}
+                            onFocus={() => prefetchLetter(abc)}
+                            onTouchStart={() => prefetchLetter(abc)}
                             className={`
                                 min-w-[40px] h-10 px-3 rounded-lg text-sm font-bold flex items-center justify-center transition-all duration-200
                                 ${isActive

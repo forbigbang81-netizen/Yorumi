@@ -1,19 +1,19 @@
 import { Router } from 'express';
 import { scraperService } from './scraper.service';
 import axios from 'axios';
-import { HiAnimeScraper } from './hianime.service';
 import { AnimeKaiScraper } from '../../scraper/animekai';
 import { anilistService } from '../anilist/anilist.service';
 import { redis } from '../mapping/mapper';
 
 const router = Router();
 const upstreamCookieJar = new Map<string, string>();
-const hiAnimeScraper = new HiAnimeScraper();
 const animeKaiScraper = new AnimeKaiScraper();
 
 // ── Resilient in-memory caches (stale-serve on failure) ────────────────────
+let spotlightMemCache: { spotlight: any[] } | null = null;
 let latestUpdatesMemCache: { latestEpisodes: any[] } | null = null;
 const newReleasesMemCache = new Map<string, { data: any[]; pagination: any }>();
+const SPOTLIGHT_REDIS_KEY = 'animekai:spotlight:enriched';
 const LATEST_REDIS_KEY = 'animekai:latest-updates:enriched';
 const NEW_RELEASES_REDIS_PREFIX = 'animekai:new-releases:enriched';
 const CACHE_TTL_SECONDS = 300; // 5 min fresh window
@@ -61,6 +61,33 @@ const enrichAnimeKaiItems = async (items: any[]) => {
 };
 
 const getAnimeKaiListItems = (items: any[]) => buildAnimeKaiFallbackItems(items);
+
+const refreshSpotlightCache = async (): Promise<{ spotlight: any[] }> => {
+    const rawItems = await animeKaiScraper.getSpotlightAnime();
+    const spotlight = await enrichAnimeKaiItems(rawItems);
+    const payload = { spotlight };
+
+    if (spotlight.length > 0) {
+        spotlightMemCache = payload;
+        redis.set(SPOTLIGHT_REDIS_KEY, payload, { ex: CACHE_TTL_SECONDS }).catch(() => undefined);
+    }
+
+    return payload;
+};
+
+const getStaleSpotlight = async (): Promise<{ spotlight: any[] }> => {
+    if (spotlightMemCache && spotlightMemCache.spotlight.length > 0) {
+        return spotlightMemCache;
+    }
+    try {
+        const redisHit = await redis.get<any>(SPOTLIGHT_REDIS_KEY);
+        if (redisHit && Array.isArray(redisHit.spotlight) && redisHit.spotlight.length > 0) {
+            spotlightMemCache = redisHit;
+            return redisHit;
+        }
+    } catch { /* swallow */ }
+    return { spotlight: [] };
+};
 
 /** Read stale data from memory → Redis → empty. Never throws. */
 const getStaleLatestUpdates = async (): Promise<{ latestEpisodes: any[] }> => {
@@ -167,6 +194,36 @@ router.get('/search', async (req, res) => {
 });
 
 // ── Latest Updates (homepage section) — never 500s ─────────────────────────
+router.get('/animekai/spotlight', async (_req, res) => {
+    res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+    try {
+        if (spotlightMemCache && spotlightMemCache.spotlight.length > 0) {
+            res.json(spotlightMemCache);
+            refreshSpotlightCache().catch((error) => {
+                console.error('AnimeKai spotlight background refresh failed:', error?.message || error);
+            });
+            return;
+        }
+
+        const redisHit = await redis.get<any>(SPOTLIGHT_REDIS_KEY).catch(() => null);
+        if (redisHit && Array.isArray(redisHit.spotlight) && redisHit.spotlight.length > 0) {
+            spotlightMemCache = redisHit;
+            res.json(redisHit);
+            refreshSpotlightCache().catch((error) => {
+                console.error('AnimeKai spotlight background refresh failed:', error?.message || error);
+            });
+            return;
+        }
+
+        const payload = await refreshSpotlightCache();
+        res.json(payload);
+    } catch (error: any) {
+        console.error('AnimeKai spotlight scrape failed, serving stale:', error?.message || error);
+        const stale = await getStaleSpotlight();
+        res.json(stale);
+    }
+});
+
 router.get('/animekai/latest-updates', async (_req, res) => {
     res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     try {
@@ -241,6 +298,41 @@ router.get('/animekai/new-releases', async (req, res) => {
             data: [],
             pagination: { current_page: page, last_visible_page: page, has_next_page: false },
         });
+    }
+});
+
+router.get('/animekai/az-list/:letter', async (req, res) => {
+    try {
+        const letter = String(req.params.letter || 'All');
+        const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+        const result = await animeKaiScraper.getAZList(letter, page);
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/animekai/genres', async (_req, res) => {
+    try {
+        const genres = await animeKaiScraper.getGenres();
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=600, stale-while-revalidate=1800');
+        res.json({ genres });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/animekai/genre/:name', async (req, res) => {
+    try {
+        const genre = String(req.params.name || '').trim();
+        const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 24;
+        const result = await animeKaiScraper.getGenreAnime(genre, page, limit);
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
     }
 });
 

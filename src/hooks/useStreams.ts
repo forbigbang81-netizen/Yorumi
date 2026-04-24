@@ -18,6 +18,8 @@ export function useStreams(scraperSession: string | null) {
     const activeLoadRequestRef = useRef(0);
 
     const currentStream = streams[selectedStreamIndex] || null;
+    const isAnimePaheSession = (value: unknown) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
     const normalizeAudio = (value: string) => {
         const lower = String(value || '').trim().toLowerCase();
@@ -40,7 +42,7 @@ export function useStreams(scraperSession: string | null) {
     }, []);
 
     const ensureStreamData = useCallback((episode: Episode): Promise<StreamLink[]> => {
-        if (!scraperSession) return Promise.resolve([]);
+        if (!scraperSession || !isAnimePaheSession(scraperSession)) return Promise.resolve([]);
         if (!streamCache.current.has(episode.session)) {
             const promise = getStreamData(episode, scraperSession)
                 .catch(e => {
@@ -174,7 +176,7 @@ export function useStreams(scraperSession: string | null) {
     // Invalidate cache for a specific episode so the next loadStream call fetches fresh.
     const bustEpisodeCache = useCallback((session: string) => {
         streamCache.current.delete(session);
-        if (scraperSession) {
+        if (scraperSession && isAnimePaheSession(scraperSession)) {
             animeService.invalidateStreamCache(scraperSession, session);
         }
     }, [scraperSession]);

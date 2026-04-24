@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { anilistService } from './anilist.service';
-import { HiAnimeScraper } from '../scraper/hianime.service';
 import { AnimePaheScraper } from '../../scraper/animepahe';
 import { AnimeKaiScraper } from '../../scraper/animekai';
 import { redis } from '../mapping/mapper';
@@ -8,7 +7,7 @@ import { mappingService } from '../mapping/mapping.service';
 import { scraperService } from '../scraper/scraper.service';
 
 const router = Router();
-const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v3';
+const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v4';
 const HOME_FAST_TTL_SECONDS = 120;
 let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
 let homeFastRefreshPromise: Promise<any> | null = null;
@@ -242,7 +241,6 @@ const buildAnimeKaiFallbackItems = (items: any[]) => {
 };
 
 const buildHomeFastPayload = async () => {
-    const scraper = new HiAnimeScraper();
     const animeKaiScraper = new AnimeKaiScraper();
     const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
         try {
@@ -255,7 +253,11 @@ const buildHomeFastPayload = async () => {
         }
     };
     const [spotlight, latestEpisodesRaw, trending, seasonal, monthly, topAnime, topNow, topWeek, topMonth] = await Promise.all([
-        withTimeout(scraper.getEnrichedSpotlight(), 1800, { spotlight: [] }),
+        withTimeout(
+            animeKaiScraper.getSpotlightAnime().then((items) => enrichAnimeKaiItems(Array.isArray(items) ? items : [])),
+            4000,
+            [] as any[]
+        ),
         withTimeout(animeKaiScraper.getLatestUpdates(), 1800, [] as any[]),
         withTimeout(anilistService.getTrendingAnime(1, 10), 4000, { media: [] }),
         withTimeout(anilistService.getPopularThisSeason(1, 10), 4000, { media: [] }),
@@ -268,7 +270,7 @@ const buildHomeFastPayload = async () => {
     const latestEpisodes = buildAnimeKaiFallbackItems(Array.isArray(latestEpisodesRaw) ? latestEpisodesRaw : []);
 
     return {
-        spotlight: spotlight?.spotlight || [],
+        spotlight: Array.isArray(spotlight) ? spotlight : [],
         latestEpisodes,
         trending,
         seasonal,
@@ -297,6 +299,8 @@ const refreshHomeFastCache = async () => {
     })();
     return homeFastRefreshPromise;
 };
+
+export const warmHomeFastCache = async () => refreshHomeFastCache();
 
 router.get('/home-fast', async (_req, res) => {
     try {

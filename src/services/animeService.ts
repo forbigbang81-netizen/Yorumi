@@ -266,6 +266,9 @@ const STREAM_CACHE_TTL = 20 * 60 * 1000; // 20 minutes
 const mappingCache = new Map<string, string>();
 const scraperSearchCache = new Map<string, { data: any[]; timestamp: number }>();
 const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
+const AZ_LIST_CACHE_TTL = 10 * 60 * 1000;
+const ANIMEKAI_GENRES_CACHE_TTL = 12 * 60 * 60 * 1000;
+const ANIMEKAI_GENRE_PAGE_CACHE_TTL = 10 * 60 * 1000;
 const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v3';
 const PERSISTED_STREAM_CACHE_PREFIX = 'yorumi_stream_cache_v1';
 
@@ -390,6 +393,16 @@ const clearCachedStream = (key: string) => {
 
 const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v3:${id}`;
 const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v5:${id}`;
+const normalizeAZListLetter = (letter: string) => {
+    const rawLetter = String(letter || 'All').trim();
+    if (!rawLetter || rawLetter.toLowerCase() === 'all') {
+        return 'All';
+    }
+    if (rawLetter === '#') {
+        return '#';
+    }
+    return rawLetter.toUpperCase();
+};
 const fetchJsonWithTimeout = async (url: string, init: RequestInit = {}, timeoutMs = 2500) => {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -431,7 +444,9 @@ export const animeService = {
 
                 const spotlightAnime = Array.isArray(payload?.spotlight)
                     ? payload.spotlight.map((item: any) => {
-                        const anime = mapAnilistToAnime(item.anilist || {}) as Anime;
+                        const anime = item?.anilist
+                            ? (mapAnilistToAnime(item.anilist) as Anime)
+                            : (mapScraperToAnime(item) as Anime);
                         if (item.banner) anime.anilist_banner_image = item.banner;
                         if (item.poster) {
                             const posterUrl = getDisplayImageUrl(item.poster);
@@ -439,6 +454,11 @@ export const animeService = {
                             anime.images.jpg.large_image_url = posterUrl;
                             anime.anilist_cover_image = posterUrl;
                         }
+                        anime.title = item.title || anime.title;
+                        anime.title_romaji = item.jname || anime.title_romaji;
+                        anime.title_english = anime.title_english || item.title;
+                        anime.type = item.type || anime.type || 'TV';
+                        anime.synopsis = anime.synopsis || item.description || '';
                         if (item.scraperId) anime.scraperId = item.scraperId;
                         return anime;
                     })
@@ -687,45 +707,169 @@ export const animeService = {
         };
     },
 
-    // Get A-Z List from HiAnime Scraper
+    // Get A-Z List from AnimeKai scraper
     async getAZList(letter: string, page: number = 1) {
-        const res = await fetch(`${API_BASE}/hianime/az-list/${encodeURIComponent(letter)}?page=${page}`);
-        const data = await res.json();
+        const normalizedLetter = normalizeAZListLetter(letter);
+        const cacheKey = `animekai-az-list:${normalizedLetter}:${page}`;
+        const cached = getCached(cacheKey, AZ_LIST_CACHE_TTL);
+        if (cached) return cached;
 
-        return {
-            data: data.data?.map((item: any) => ({
-                mal_id: 0,
-                id: 0,
-                scraperId: item.id,
-                title: item.title,
-                images: {
-                    jpg: {
-                        image_url: item.poster,
-                        large_image_url: item.poster
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/scraper/animekai/az-list/${encodeURIComponent(normalizedLetter)}?page=${page}`);
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch A-Z list: ${res.statusText}`);
+                }
+                const data = await res.json();
+
+                const result = {
+                    data: data.data?.map((item: any) => ({
+                        mal_id: 0,
+                        id: 0,
+                        scraperId: item.scraperId || item.id,
+                        title: item.title,
+                        images: {
+                            jpg: {
+                                image_url: getDisplayImageUrl(item.poster),
+                                large_image_url: getDisplayImageUrl(item.poster)
+                            }
+                        },
+                        type: item.type,
+                        type_display: item.type,
+                        score: 0,
+                        status: 'Unknown',
+                        episodes: null,
+                        duration: null,
+                        rating: null,
+                        genres: [],
+                        synopsis: '',
+                        season: null,
+                        year: null,
+                        aired: { string: '' },
+                        studios: [],
+                        members: 0,
+                        rank: 0,
+                        popularity: 0,
+                        favorites: 0,
+                        source: 'Scraper',
+                        is_scraped: true
+                    })) || [],
+                    pagination: data.pagination
+                };
+
+                if (result.data.length > 0) {
+                    setCache(cacheKey, result, AZ_LIST_CACHE_TTL);
+                }
+
+                return result;
+            } catch (error) {
+                const stale = getStaleCached(cacheKey);
+                if (stale) {
+                    return stale;
+                }
+                throw error;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
+    },
+
+    async prefetchAZList(letter: string, page: number = 1) {
+        await this.getAZList(letter, page).catch(() => undefined);
+    },
+
+    async getAnimeKaiGenres() {
+        const cacheKey = 'animekai-genres-v1';
+        const cached = getCached(cacheKey, ANIMEKAI_GENRES_CACHE_TTL);
+        if (cached) return cached;
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/scraper/animekai/genres`);
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch AnimeKai genres: ${res.statusText}`);
+                }
+
+                const payload = await res.json();
+                const result = Array.isArray(payload?.genres) ? payload.genres : [];
+
+                if (result.length > 0) {
+                    setCache(cacheKey, result, ANIMEKAI_GENRES_CACHE_TTL);
+                }
+
+                return result;
+            } catch (error) {
+                const stale = getStaleCached(cacheKey);
+                if (stale) {
+                    return stale;
+                }
+                throw error;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
+    },
+
+    async getAnimeKaiGenrePage(genre: string, page: number = 1, limit: number = 24) {
+        const normalizedGenre = String(genre || '').trim();
+        const cacheKey = `animekai-genre-page:${normalizedGenre.toLowerCase()}:${page}:${limit}`;
+        const cached = getCached(cacheKey, ANIMEKAI_GENRE_PAGE_CACHE_TTL);
+        if (cached) return cached;
+
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/scraper/animekai/genre/${encodeURIComponent(normalizedGenre)}?page=${page}&limit=${limit}`);
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch AnimeKai genre page: ${res.statusText}`);
+                }
+
+                const payload = await res.json();
+                const result = {
+                    genre: payload?.genre || { name: normalizedGenre, slug: normalizedGenre.toLowerCase() },
+                    data: Array.isArray(payload?.data) ? payload.data.map((item: any) => mapScraperToAnime(item)) : [],
+                    pagination: payload?.pagination || {
+                        current_page: page,
+                        last_visible_page: page,
+                        has_next_page: false,
                     }
-                },
-                type: item.type,
-                type_display: item.type,
-                score: 0,
-                status: 'Unknown',
-                episodes: null,
-                duration: null,
-                rating: null,
-                genres: [],
-                synopsis: '',
-                season: null,
-                year: null,
-                aired: { string: '' },
-                studios: [],
-                members: 0,
-                rank: 0,
-                popularity: 0,
-                favorites: 0,
-                source: 'Scraper',
-                is_scraped: true
-            })) || [],
-            pagination: data.pagination
-        };
+                };
+
+                if (result.data.length > 0 || result.genre?.name) {
+                    setCache(cacheKey, result, ANIMEKAI_GENRE_PAGE_CACHE_TTL);
+                }
+
+                return result;
+            } catch (error) {
+                const stale = getStaleCached(cacheKey);
+                if (stale) {
+                    return stale;
+                }
+                throw error;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
+        })();
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
     },
 
     // Get anime details from AniList
@@ -814,7 +958,7 @@ export const animeService = {
         return res.json();
     },
 
-    // Search anime on scraper (HiAnime)
+    // Search anime on scraper
     async searchScraper(title: string) {
         const { data } = await apiClient.get('/scraper/search', {
             params: { q: title },
@@ -1175,19 +1319,20 @@ export const animeService = {
         }).catch(() => undefined);
     },
 
-    // Get spotlight (AniWatch/HiAnime scraper, enriched with AniList data)
+    // Get spotlight (AnimeKai scraper, enriched with AniList data)
     async getSpotlightAnime() {
         try {
-            const res = await fetchJsonWithTimeout(`${API_BASE}/hianime/spotlight`, {}, 2200);
-            if (!res.ok) throw new Error('Failed to fetch AniWatch spotlight');
+            const res = await fetchJsonWithTimeout(`${API_BASE}/scraper/animekai/spotlight`, {}, 5000);
+            if (!res.ok) throw new Error('Failed to fetch AnimeKai spotlight');
             const { spotlight } = await res.json();
 
             // Map to Anime interface
             const data = (spotlight || []).map((item: any) => {
-                // Base metadata from AniList
-                const anime = mapAnilistToAnime(item.anilist || {});
+                const anime = (item?.anilist
+                    ? mapAnilistToAnime(item.anilist)
+                    : mapScraperToAnime(item)) as Anime;
 
-                // Override images with AniWatch/HiAnime high-res versions
+                // Override images with AnimeKai hero art when available.
                 if (item.banner) {
                     anime.anilist_banner_image = item.banner;
                 }
@@ -1197,6 +1342,12 @@ export const animeService = {
                     anime.images.jpg.large_image_url = posterUrl;
                     anime.anilist_cover_image = posterUrl;
                 }
+                anime.title = item.title || anime.title;
+                anime.title_romaji = item.jname || anime.title_romaji;
+                anime.title_english = anime.title_english || item.title;
+                anime.type = item.type || anime.type || 'TV';
+                anime.synopsis = anime.synopsis || item.description || '';
+                if (item.scraperId) anime.scraperId = item.scraperId;
                 return anime;
             });
             if (data.length === 0) {

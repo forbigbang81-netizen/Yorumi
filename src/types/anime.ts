@@ -1,7 +1,7 @@
 export interface Anime {
     mal_id: number;
     id?: number; // AniList ID
-    scraperId?: string; // HiAnime/Scraper ID for hybrid lookup
+    scraperId?: string; // Scraper session ID for hybrid lookup
     title: string;
     title_japanese?: string;
     title_english?: string;
