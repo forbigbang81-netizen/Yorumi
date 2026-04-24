@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAnime } from '../hooks/useAnime';
 import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
+import { animeService } from '../services/animeService';
 
 // Feature Components
 import AnimeDashboard from '../features/anime/components/AnimeDashboard';
@@ -15,55 +16,144 @@ export default function HomePage() {
     const isCatalogFilterView = false;
     const filteredTopAnime = Array.isArray(anime.topAnime) ? anime.topAnime : [];
     const allTimeTitle = 'All-Time Popular';
+    const routeResolutionCache = useRef(new Map<string, Promise<{ routeId: string | number; anime: Anime } | null>>());
 
     useEffect(() => {
         anime.fetchHomeData();
     }, []);
 
     // Navigation Handlers
-    const getDirectScraperRouteId = (value: unknown) => {
+    const getAnimePaheRouteId = (value: unknown) => {
         const raw = String(value || '')
             .trim()
             .replace(/^https?:\/\/[^/]+/i, '')
             .replace(/^\/+/, '')
             .replace(/^watch\//i, '');
         if (!raw) return '';
-        const normalized = raw.startsWith('s:') ? raw : `s:${raw}`;
-        const session = normalized.slice(2).trim();
-        return session ? normalized : '';
+        const session = raw.startsWith('s:') ? raw.slice(2).trim() : raw;
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session)) {
+            return '';
+        }
+        return `s:${session}`;
     };
 
     const getWatchRouteId = (item: Anime): string | number | undefined => {
-        const scraperRouteId = getDirectScraperRouteId(item.scraperId);
+        const scraperRouteId = getAnimePaheRouteId(item.scraperId);
         if (scraperRouteId) {
             return scraperRouteId;
         }
         return item.mal_id || item.id;
     };
 
-    const handleAnimeClick = (item: Anime) => {
-        const animeId = item.id || item.mal_id || getDirectScraperRouteId(item.scraperId) || undefined;
-        if (!animeId) return;
-        navigate(`/anime/details/${animeId}`, { state: { anime: item } });
+    const normalizeTitle = (value: unknown) =>
+        String(value || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+
+    const resolveRouteTarget = async (item: Anime): Promise<{ routeId: string | number; anime: Anime } | null> => {
+        const directRouteId = getWatchRouteId(item);
+        if (directRouteId) {
+            return { routeId: directRouteId, anime: item };
+        }
+
+        const query = item.title_english || item.title_romaji || item.title || item.title_japanese;
+        if (!query) return null;
+
+        const routeKey = [
+            normalizeTitle(query),
+            Number(item.latestEpisode || item.episodes || 0),
+            normalizeTitle(item.type)
+        ].join(':');
+
+        if (!routeResolutionCache.current.has(routeKey)) {
+            routeResolutionCache.current.set(routeKey, (async () => {
+                const search = await animeService.searchAnime(String(query), 1, 8).catch(() => ({ data: [] as Anime[] }));
+                const targetTitles = [
+                    item.title,
+                    item.title_english,
+                    item.title_romaji,
+                    item.title_japanese
+                ]
+                    .map(normalizeTitle)
+                    .filter(Boolean);
+                const targetEpisodes = Number(item.latestEpisode || item.episodes || 0);
+
+                const ranked = (search.data || [])
+                    .filter((candidate: Anime) => Boolean(candidate.id || candidate.mal_id))
+                    .map((candidate: Anime) => {
+                        const candidateTitles = [
+                            candidate.title,
+                            candidate.title_english,
+                            candidate.title_romaji,
+                            candidate.title_japanese
+                        ]
+                            .map(normalizeTitle)
+                            .filter(Boolean);
+
+                        let titleScore = 0;
+                        candidateTitles.forEach((candidateTitle) => {
+                            if (targetTitles.includes(candidateTitle)) {
+                                titleScore = Math.max(titleScore, 100);
+                                return;
+                            }
+                            if (targetTitles.some((targetTitle) =>
+                                targetTitle && (candidateTitle.includes(targetTitle) || targetTitle.includes(candidateTitle))
+                            )) {
+                                titleScore = Math.max(titleScore, 60);
+                            }
+                        });
+
+                        const candidateEpisodes = Number(candidate.episodes || 0);
+                        const episodeScore = targetEpisodes > 0 && candidateEpisodes > 0
+                            ? Math.max(0, 20 - Math.abs(candidateEpisodes - targetEpisodes))
+                            : 0;
+
+                        return {
+                            candidate,
+                            score: titleScore + episodeScore
+                        };
+                    })
+                    .sort((a: { candidate: Anime; score: number }, b: { candidate: Anime; score: number }) => b.score - a.score);
+
+                const bestMatch = ranked.find((entry: { candidate: Anime; score: number }) => entry.score > 0)?.candidate || search.data?.[0];
+                if (!bestMatch) return null;
+
+                return {
+                    routeId: bestMatch.mal_id || bestMatch.id,
+                    anime: { ...item, ...bestMatch }
+                };
+            })());
+        }
+
+        return routeResolutionCache.current.get(routeKey)!;
     };
 
-    const handleWatchClick = (item: Anime, episodeNumber?: number, startSeconds?: number) => {
-        const title = slugify(item.title || item.title_english || 'anime');
-        const id = getWatchRouteId(item);
-        if (!id) return;
+    const handleAnimeClick = async (item: Anime) => {
+        const resolved = await resolveRouteTarget(item);
+        if (!resolved) return;
+        navigate(`/anime/details/${resolved.routeId}`, { state: { anime: resolved.anime } });
+    };
+
+    const handleWatchClick = async (item: Anime, episodeNumber?: number, startSeconds?: number) => {
+        const resolved = await resolveRouteTarget(item);
+        if (!resolved) return;
+
+        const title = slugify(resolved.anime.title || resolved.anime.title_english || item.title || 'anime');
+        const id = resolved.routeId;
 
         let targetEp = episodeNumber;
-        const knownLatestEpisode = Number(item.latestEpisode || 0);
+        const knownLatestEpisode = Number(resolved.anime.latestEpisode || item.latestEpisode || 0);
 
         if (!targetEp) {
             // Smart Logic:
             // If Finished -> Play Episode 1
             // If Airing -> Play Latest Episode
-            if (knownLatestEpisode > 0 && item.status !== 'Finished Airing') {
+            if (knownLatestEpisode > 0 && resolved.anime.status !== 'Finished Airing') {
                 targetEp = knownLatestEpisode as any;
-            } else if (item.status === 'Finished Airing') {
+            } else if (resolved.anime.status === 'Finished Airing') {
                 targetEp = 1;
-            } else if (item.status === 'Currently Airing') {
+            } else if (resolved.anime.status === 'Currently Airing') {
                 // Use 'latest' keyword - let the player determine the actual number
                 // based on the loaded episode list
                 targetEp = 'latest' as any;
@@ -75,7 +165,14 @@ export default function HomePage() {
 
         const resume = Number.isFinite(startSeconds) ? Math.max(0, Math.floor(startSeconds || 0)) : 0;
         const url = `/anime/watch/${title}/${id}?ep=${targetEp}${resume > 0 ? `&t=${resume}` : ''}`;
-        navigate(url, { state: { anime: item } });
+        navigate(url, { state: { anime: resolved.anime } });
+    };
+
+    const handleAnimeHover = (item: Anime) => {
+        anime.prefetchEpisodes(item);
+        if (!getWatchRouteId(item)) {
+            resolveRouteTarget(item).catch(() => undefined);
+        }
     };
 
     // Scroll to top on mount
@@ -111,7 +208,7 @@ export default function HomePage() {
                     onWatchClick={handleWatchClick}
                     onViewAll={anime.openViewAll}
                     onRemoveFromHistory={anime.removeFromHistory}
-                    onAnimeHover={anime.prefetchEpisodes}
+                    onAnimeHover={handleAnimeHover}
                 />
             </div>
         );
@@ -156,7 +253,7 @@ export default function HomePage() {
                 onPageChange={anime.changeViewAllPage}
                 onBack={anime.closeViewAll}
                 onAnimeClick={handleAnimeClick}
-                onAnimeHover={anime.prefetchEpisodes}
+                onAnimeHover={handleAnimeHover}
             />
         );
     }
@@ -171,7 +268,7 @@ export default function HomePage() {
                 onPageChange={anime.changeViewAllPage}
                 onBack={anime.closeViewAll}
                 onAnimeClick={handleAnimeClick}
-                onAnimeHover={anime.prefetchEpisodes}
+                onAnimeHover={handleAnimeHover}
             />
         );
     }
@@ -186,7 +283,7 @@ export default function HomePage() {
                 onPageChange={anime.changeViewAllPage}
                 onBack={anime.closeViewAll}
                 onAnimeClick={handleAnimeClick}
-                onAnimeHover={anime.prefetchEpisodes}
+                onAnimeHover={handleAnimeHover}
             />
         );
     }
@@ -201,7 +298,7 @@ export default function HomePage() {
                 onPageChange={anime.changeViewAllPage}
                 onBack={anime.closeViewAll}
                 onAnimeClick={handleAnimeClick}
-                onAnimeHover={anime.prefetchEpisodes}
+                onAnimeHover={handleAnimeHover}
             />
         );
     }
@@ -233,7 +330,7 @@ export default function HomePage() {
                 onWatchClick={handleWatchClick}
                 onViewAll={anime.openViewAll}
                 onRemoveFromHistory={anime.removeFromHistory}
-                onAnimeHover={anime.prefetchEpisodes}
+                onAnimeHover={handleAnimeHover}
             />
         </div>
     );

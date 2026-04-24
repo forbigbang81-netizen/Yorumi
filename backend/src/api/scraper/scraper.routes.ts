@@ -104,6 +104,19 @@ const getStaleLatestUpdates = async (): Promise<{ latestEpisodes: any[] }> => {
     return { latestEpisodes: [] };
 };
 
+const refreshLatestUpdatesCache = async (): Promise<{ latestEpisodes: any[] }> => {
+    const rawItems = await animeKaiScraper.getLatestUpdates();
+    const latestEpisodes = getAnimeKaiListItems(rawItems);
+    const payload = { latestEpisodes };
+
+    if (latestEpisodes.length > 0) {
+        latestUpdatesMemCache = payload;
+        redis.set(LATEST_REDIS_KEY, payload, { ex: CACHE_TTL_SECONDS }).catch(() => undefined);
+    }
+
+    return payload;
+};
+
 const getStaleNewReleases = async (key: string): Promise<{ data: any[]; pagination: any } | null> => {
     const mem = newReleasesMemCache.get(key);
     if (mem && mem.data.length > 0) return mem;
@@ -227,16 +240,25 @@ router.get('/animekai/spotlight', async (_req, res) => {
 router.get('/animekai/latest-updates', async (_req, res) => {
     res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     try {
-        const rawItems = await animeKaiScraper.getLatestUpdates();
-        const listItems = getAnimeKaiListItems(rawItems);
-        const payload = { latestEpisodes: listItems };
-
-        // Persist to caches
-        if (listItems.length > 0) {
-            latestUpdatesMemCache = payload;
-            redis.set(LATEST_REDIS_KEY, payload, { ex: CACHE_TTL_SECONDS }).catch(() => undefined);
+        if (latestUpdatesMemCache && latestUpdatesMemCache.latestEpisodes.length > 0) {
+            res.json(latestUpdatesMemCache);
+            refreshLatestUpdatesCache().catch((error) => {
+                console.error('AnimeKai latest-updates background refresh failed:', error?.message || error);
+            });
+            return;
         }
 
+        const redisHit = await redis.get<any>(LATEST_REDIS_KEY).catch(() => null);
+        if (redisHit && Array.isArray(redisHit.latestEpisodes) && redisHit.latestEpisodes.length > 0) {
+            latestUpdatesMemCache = redisHit;
+            res.json(redisHit);
+            refreshLatestUpdatesCache().catch((error) => {
+                console.error('AnimeKai latest-updates background refresh failed:', error?.message || error);
+            });
+            return;
+        }
+
+        const payload = await refreshLatestUpdatesCache();
         res.json(payload);
     } catch (error: any) {
         console.error('AnimeKai latest-updates scrape failed, serving stale:', error?.message || error);
