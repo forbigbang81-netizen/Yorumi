@@ -9,6 +9,7 @@ import VideoPlayer from '../features/player/components/VideoPlayer';
 import PlayerControls from '../features/player/components/PlayerControls';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
+import { getAnimeDetailsRouteId } from '../utils/animeNavigation';
 
 export default function WatchPage() {
     const { id, title } = useParams<{ title: string; id: string }>();
@@ -149,6 +150,12 @@ export default function WatchPage() {
     const animeData = animeRecord as Record<string, unknown>;
     const displayTitle = getDisplayTitle(animeData, language);
     const backdropImage = getBackdropImage(animeData);
+    const detailsRouteId = getAnimeDetailsRouteId(anime || {});
+    const handleDetailsClick = () => {
+        const targetId = detailsRouteId || id;
+        if (!targetId) return;
+        navigate(`/anime/details/${targetId}`, anime ? { state: { anime } } : undefined);
+    };
 
     return (
         <div className="watch-viewport relative flex flex-col w-full bg-[#0a0a0a] text-white overflow-hidden pt-14">
@@ -176,7 +183,7 @@ export default function WatchPage() {
                     <ChevronRight className="w-4 h-4 text-gray-600 shrink-0" />
                     
                     <div 
-                        onClick={() => navigate(`/anime/details/${id}`)}
+                        onClick={handleDetailsClick}
                         className="text-sm font-medium text-gray-400 hover:text-white transition-colors cursor-pointer truncate max-w-[200px]"
                     >
                         {displayTitle}

@@ -66,7 +66,11 @@ const TrailersSkeleton = () => (
 const DetailsPageSkeleton = () => (
     <div className="min-h-screen bg-[#0a0a0a] pb-20 fade-in animate-in duration-300">
         {/* Banner Skeleton */}
-        <div className="h-[40vh] md:h-[60vh] relative bg-white/5 animate-pulse" />
+        <div className="h-[40vh] md:h-[60vh] relative bg-white/5 animate-pulse">
+            <div className="absolute inset-x-0 top-[72px] z-10 px-4 md:px-10">
+                <div className="h-5 w-64 bg-white/10 rounded" />
+            </div>
+        </div>
         
         {/* Content Skeleton */}
         <div className="container mx-auto px-4 md:px-6 -mt-24 md:-mt-32 relative z-10">
@@ -257,16 +261,7 @@ export default function AnimeDetailsPage() {
     return (
         <div className="min-h-screen bg-[#0a0a0a] pb-20 fade-in animate-in duration-300">
             {/* Banner Section */}
-            <DetailsHero
-                anime={selectedAnime}
-                onBack={() => {
-                    if (location.state?.fromRandom) {
-                        navigate('/', { replace: true });
-                    } else {
-                        navigate(-1);
-                    }
-                }}
-            />
+            <DetailsHero anime={selectedAnime} />
 
             {/* Content Section */}
             <div className="container mx-auto px-4 md:px-6 -mt-24 md:-mt-32 relative z-10">
