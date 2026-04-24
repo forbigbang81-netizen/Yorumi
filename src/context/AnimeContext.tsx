@@ -180,13 +180,26 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (!normalized) return '';
         return /^\d+$/.test(normalized) ? '' : normalized;
     };
+    const toPositiveNumber = (value: unknown): number => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    };
+    const getPreferredDetailsId = (target: Partial<Anime> | null | undefined): string | number | undefined => {
+        const anilistId = toPositiveNumber(target?.id);
+        if (anilistId > 0) return anilistId;
+
+        const malId = toPositiveNumber(target?.mal_id);
+        if (malId > 0) return malId;
+
+        const scraperId = normalizeScraperId(target?.scraperId);
+        return scraperId ? `s:${scraperId}` : undefined;
+    };
     const extractAnimePaheSession = (value: unknown): string => {
         const normalized = normalizeScraperId(value);
         return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)
             ? normalized
             : '';
     };
-    const hasDirectScraperSession = (value: unknown) => Boolean(normalizeScraperId(value));
     const hasAnimePaheSession = (value: unknown) => Boolean(extractAnimePaheSession(value));
     const getAnimeCacheKey = (target: Anime): string | null => {
         const mal = Number(target?.mal_id);
@@ -1201,9 +1214,29 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             const { session, eps } = await episodePreloadInFlight.current.get(inFlightKey)!;
             if (isStale()) return;
             if (session) setScraperSession(session);
-            if (eps.length > 0) setEpisodes(eps);
-            setEpLoading(false);
-            setEpisodesResolved(true);
+            if (eps.length > 0) {
+                setEpisodes(eps);
+                setEpLoading(false);
+                setEpisodesResolved(true);
+                return;
+            }
+
+            // If an early seed preload finishes empty, retry once with the
+            // current anime payload before surfacing "No episodes found."
+            setEpLoading(true);
+            setEpisodesResolved(false);
+            try {
+                const { session: retrySession, eps: retryEpisodes } = await resolveAndCacheEpisodes(anime);
+                if (isStale()) return;
+                if (retrySession) setScraperSession(retrySession);
+                if (retryEpisodes.length > 0) setEpisodes(retryEpisodes);
+            } catch (e) {
+                console.error('Failed to retry episode preload', e);
+            } finally {
+                if (isStale()) return;
+                setEpLoading(false);
+                setEpisodesResolved(true);
+            }
             return;
         }
 
@@ -1311,13 +1344,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         const isStaleRequest = () => requestId !== detailsRequestIdRef.current;
         let currentAnime = anime;
 
-        let detailsId: string | number | undefined = anime.id || anime.mal_id;
-        if (anime.scraperId && hasDirectScraperSession(anime.scraperId) && (!detailsId || detailsId === 0)) {
-            const normalizedScraperId = normalizeScraperId(anime.scraperId);
-            if (normalizedScraperId) {
-                detailsId = `s:${normalizedScraperId}`;
-            }
-        }
+        let detailsId: string | number | undefined = getPreferredDetailsId(anime);
 
         const cachedDetails = detailsId ? animeService.peekAnimeDetailsCache(detailsId) : null;
         const cachedFast = detailsId ? animeService.peekAnimeDetailsFastCache(detailsId) : null;
@@ -1353,12 +1380,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            detailsId = anime.id || anime.mal_id;
-            if (anime.scraperId && hasDirectScraperSession(anime.scraperId) && (!detailsId || detailsId === 0)) {
-                const normalizedScraperId = normalizeScraperId(anime.scraperId);
-                if (!normalizedScraperId) throw new Error('Could not identify scraper ID');
-                detailsId = `s:${normalizedScraperId}`;
-            }
+            detailsId = getPreferredDetailsId(anime);
             if (!detailsId) throw new Error('Could not identify anime ID');
 
             let fastPromiseSettled = false;

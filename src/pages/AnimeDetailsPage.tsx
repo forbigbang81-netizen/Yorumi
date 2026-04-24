@@ -100,6 +100,10 @@ export default function AnimeDetailsPage() {
     const navigate = useNavigate();
     const location = useLocation();
     const animeHook = useAnime();
+    const toPositiveNumber = (value: unknown): number => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    };
     const isAnimePaheSession = (value: unknown) =>
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
@@ -136,10 +140,12 @@ export default function AnimeDetailsPage() {
 
         const parsedId = Number.parseInt(id, 10);
         if (Number.isFinite(parsedId) && parsedId > 0) {
+            const seededAnilistId = toPositiveNumber(routeAnime?.id) || parsedId;
+            const seededMalId = toPositiveNumber(routeAnime?.mal_id) || parsedId;
             animeHook.handleAnimeClick({
                 ...(routeAnime || {}),
-                id: routeAnime?.id || parsedId,
-                mal_id: parsedId
+                id: seededAnilistId,
+                mal_id: seededMalId
             } as Anime);
         } else {
             navigate('/', { replace: true });
