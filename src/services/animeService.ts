@@ -270,7 +270,8 @@ const AZ_LIST_CACHE_TTL = 10 * 60 * 1000;
 const ANIMEKAI_GENRES_CACHE_TTL = 12 * 60 * 60 * 1000;
 const ANIMEKAI_GENRE_PAGE_CACHE_TTL = 10 * 60 * 1000;
 const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v3';
-const PERSISTED_STREAM_CACHE_PREFIX = 'yorumi_stream_cache_v1';
+const STREAM_CACHE_VERSION = 'v2';
+const PERSISTED_STREAM_CACHE_PREFIX = `yorumi_stream_cache_${STREAM_CACHE_VERSION}`;
 
 const readPersistedCache = (key: string, ttl: number) => {
     try {
@@ -393,6 +394,12 @@ const clearCachedStream = (key: string) => {
 
 const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v3:${id}`;
 const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v5:${id}`;
+const getStreamCacheKey = (animeSession: string, episodeSession: string) =>
+    `streams:${STREAM_CACHE_VERSION}:${animeSession}:${episodeSession}`;
+const isAnimePaheOnlyStream = (item: any) => {
+    const provider = String(item?.provider || '').trim().toLowerCase();
+    return !provider || provider === 'animepahe';
+};
 const normalizeAZListLetter = (letter: string) => {
     const rawLetter = String(letter || 'All').trim();
     if (!rawLetter || rawLetter.toLowerCase() === 'all') {
@@ -1160,7 +1167,7 @@ export const animeService = {
 
     // Get stream links from scraper
     async getStreams(animeSession: string, episodeSession: string) {
-        const cacheKey = `streams:${animeSession}:${episodeSession}`;
+        const cacheKey = getStreamCacheKey(animeSession, episodeSession);
         const cached = getCachedStream(cacheKey);
         if (cached) return cached;
 
@@ -1188,10 +1195,13 @@ export const animeService = {
                             : item?.subtitles,
                     }))
                     : data;
-                if (Array.isArray(normalized) && normalized.length > 0) {
-                    setCachedStream(cacheKey, normalized);
+                const filtered = Array.isArray(normalized) && extractAnimePaheSession(animeSession)
+                    ? normalized.filter((item: any) => isAnimePaheOnlyStream(item))
+                    : normalized;
+                if (Array.isArray(filtered) && filtered.length > 0) {
+                    setCachedStream(cacheKey, filtered);
                 }
-                return normalized;
+                return filtered;
             } finally {
                 inFlightRequests.delete(cacheKey);
             }
@@ -1205,12 +1215,12 @@ export const animeService = {
         if (!animeSession) return;
 
         if (episodeSession) {
-            clearCachedStream(`streams:${animeSession}:${episodeSession}`);
-            inFlightRequests.delete(`streams:${animeSession}:${episodeSession}`);
+            clearCachedStream(getStreamCacheKey(animeSession, episodeSession));
+            inFlightRequests.delete(getStreamCacheKey(animeSession, episodeSession));
             return;
         }
 
-        const prefix = `streams:${animeSession}:`;
+        const prefix = `streams:${STREAM_CACHE_VERSION}:${animeSession}:`;
         Array.from(streamCache.keys())
             .filter((key) => key.startsWith(prefix))
             .forEach((key) => clearCachedStream(key));

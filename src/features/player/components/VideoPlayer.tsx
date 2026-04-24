@@ -266,13 +266,13 @@ export default function VideoPlayer({
                 </div>
             ) : streamExhausted ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">
-                    <p className="mt-4 text-red-400">Failed to load playable sources</p>
-                    <p className="text-sm text-gray-500 mt-2">Try selecting another provider or episode.</p>
+                    <p className="mt-4 text-red-400">AnimePahe stream unavailable</p>
+                    <p className="text-sm text-gray-500 mt-2">Reload this episode to try AnimePahe again.</p>
                 </div>
             ) : !hasPlayableSource ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">
                     <LoadingSpinner />
-                    <p className="mt-4 text-gray-400 animate-pulse">Trying another source...</p>
+                    <p className="mt-4 text-gray-400 animate-pulse">Retrying AnimePahe stream...</p>
                 </div>
             ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">

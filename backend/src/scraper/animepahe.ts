@@ -785,41 +785,153 @@ export class AnimePaheScraper {
         }
     }
 
+    private normalizePlayLinkUrl(url: string): string {
+        const raw = String(url || '').trim();
+        if (!raw) return '';
+        if (raw.startsWith('//')) return `https:${raw}`;
+        if (raw.startsWith('/')) return `${BASE_URL}${raw}`;
+        return raw;
+    }
+
+    private extractPlayPageLinks(html: string): Array<{ kwik: string; quality: string; audio: string }> {
+        const $ = cheerio.load(String(html || ''));
+        const links: Array<{ kwik: string; quality: string; audio: string }> = [];
+
+        $('#resolutionMenu button, #resolutionMenu a, button[data-src][data-resolution], a[data-src][data-resolution]').each((_, element) => {
+            const $element = $(element);
+            const kwik = String($element.attr('data-src') || $element.attr('href') || '').trim();
+            if (!kwik) return;
+
+            links.push({
+                kwik,
+                quality: String($element.attr('data-resolution') || $element.text() || '').trim(),
+                audio: String($element.attr('data-audio') || '').trim(),
+            });
+        });
+
+        return links;
+    }
+
+    private mapPlayPageLinks(links: Array<{ kwik: string; quality: string; audio: string }>): StreamLink[] {
+        const seen = new Set<string>();
+
+        return links.flatMap((link) => {
+            const kwikUrl = this.normalizePlayLinkUrl(link.kwik);
+            if (!kwikUrl) return [];
+
+            const quality =
+                String(link.quality || '')
+                    .replace(/[^\d]/g, '')
+                    .trim() || '720';
+            const audio = String(link.audio || 'sub').trim() || 'sub';
+            const dedupeKey = `${kwikUrl}::${quality}::${audio.toLowerCase()}`;
+            if (seen.has(dedupeKey)) return [];
+            seen.add(dedupeKey);
+
+            return [{
+                quality,
+                audio,
+                provider: 'animepahe',
+                server: 'kwik',
+                url: kwikUrl,
+                isHls: false
+            }];
+        });
+    }
+
     async getLinks(animeSession: string, episodeSession: string): Promise<StreamLink[]> {
+        const fullUrl = `${BASE_URL}/play/${animeSession}/${episodeSession}`;
+
+        try {
+            const htmlResponse = await axios.get(fullUrl, {
+                headers: {
+                    ...this.requestHeaders,
+                    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                },
+                timeout: 15000,
+                responseType: 'text',
+            });
+
+            const fastLinks = this.mapPlayPageLinks(this.extractPlayPageLinks(String(htmlResponse.data || '')));
+            if (fastLinks.length > 0) {
+                return fastLinks;
+            }
+        } catch {
+            // Fall through to browser-backed page resolution.
+        }
+
         const browser = await this.getBrowser();
         const page = await browser.newPage();
         await page.setUserAgent(this.requestHeaders['User-Agent']);
 
-        const fullUrl = `${BASE_URL}/play/${animeSession}/${episodeSession}`;
+        const extractLinksFromPage = async (): Promise<Array<{ kwik: string; quality: string; audio: string }>> => {
+            const liveLinks = await page.evaluate(() => {
+                const elements = Array.from(
+                    document.querySelectorAll('#resolutionMenu button, #resolutionMenu a, button[data-src][data-resolution], a[data-src][data-resolution]')
+                );
 
-        try {
-            await page.goto(fullUrl, { waitUntil: 'domcontentloaded' });
+                return elements
+                    .map((element) => ({
+                        kwik: element.getAttribute('data-src') || element.getAttribute('href') || '',
+                        quality: element.getAttribute('data-resolution') || element.textContent || '',
+                        audio: element.getAttribute('data-audio') || '',
+                    }))
+                    .filter((entry) => Boolean(entry.kwik));
+            });
 
-            // Wait for buttons to load
-            await page.waitForSelector('#resolutionMenu button', { timeout: 10000 });
-
-            // Extract Kwik links
-            const buttons = await page.$$('#resolutionMenu button');
-            const links: { kwik: string, quality: string, audio: string }[] = [];
-
-            for (const btn of buttons) {
-                const kwik = await btn.evaluate(el => el.getAttribute('data-src'));
-                const quality = await btn.evaluate(el => el.getAttribute('data-resolution'));
-                const audio = await btn.evaluate(el => el.getAttribute('data-audio'));
-                if (kwik) links.push({ kwik, quality: quality || '', audio: audio || '' });
+            if (liveLinks.length > 0) {
+                return liveLinks;
             }
 
-            // Resolve links lazily: iframe playback only needs kwik URL, so avoid
-            // expensive per-quality deep-resolution for much faster startup.
-            return links.map((link) => ({
-                quality: link.quality,
-                audio: link.audio,
-                url: link.kwik,
-                isHls: false
-            }));
+            return this.extractPlayPageLinks(await page.content());
+        };
 
+        try {
+            await page.setRequestInterception(true);
+            page.on('request', (req) => {
+                const resourceType = req.resourceType();
+                if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                    req.abort();
+                } else {
+                    req.continue();
+                }
+            });
+
+            for (let navigationAttempt = 0; navigationAttempt < 2; navigationAttempt += 1) {
+                if (navigationAttempt === 0) {
+                    await page.goto(fullUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                } else {
+                    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+                }
+
+                await this.waitForChallengeBypass(page, 70000);
+
+                for (let readAttempt = 0; readAttempt < 4; readAttempt += 1) {
+                    const links = this.mapPlayPageLinks(await extractLinksFromPage());
+                    if (links.length > 0) {
+                        return links;
+                    }
+
+                    if (readAttempt === 0) {
+                        try {
+                            await page.waitForSelector('#resolutionMenu button[data-src], #resolutionMenu a[data-src]', { timeout: 5000 });
+                            const waitedLinks = this.mapPlayPageLinks(await extractLinksFromPage());
+                            if (waitedLinks.length > 0) {
+                                return waitedLinks;
+                            }
+                        } catch {
+                            // Keep polling below.
+                        }
+                    }
+
+                    await new Promise((resolve) => setTimeout(resolve, 1500 * (readAttempt + 1)));
+                }
+            }
+
+            console.warn(`AnimePahe play page yielded no stream links for ${animeSession}/${episodeSession}`);
+            return [];
         } catch (error) {
-            console.error('Error getting links:', error);
+            console.error('Error getting AnimePahe links:', error);
             return [];
         } finally {
             await page.close();

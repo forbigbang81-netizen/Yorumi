@@ -68,6 +68,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     const lastDurationSecondRef = useRef(0);
     const lastSavedProgressRef = useRef<{ at: number; second: number }>({ at: 0, second: -1 });
     const streamErrorRetryRef = useRef<{ url: string; at: number }>({ url: '', at: 0 });
+    const streamFetchRetryKeyRef = useRef<string>('');
     const autoLoadAttemptKeyRef = useRef<string>('');
     const extractDirectScraperSession = (value: unknown): string => {
         const raw = String(value || '').trim();
@@ -109,10 +110,12 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         lastPlaybackSecondRef.current = null;
         lastDurationSecondRef.current = 0;
         lastSavedProgressRef.current = { at: 0, second: -1 };
+        streamFetchRetryKeyRef.current = '';
         autoLoadAttemptKeyRef.current = '';
     }, [animeId]);
 
     useEffect(() => {
+        streamFetchRetryKeyRef.current = '';
         autoLoadAttemptKeyRef.current = '';
     }, [scraperSession]);
 
@@ -241,10 +244,24 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
 
     // When loading finishes with no stream result → immediately show exhausted (no retry loop).
     useEffect(() => {
-        if (!currentEpisode || currentStream || streamLoading || hasResolvedStreams) return;
+        if (!currentEpisode) return;
+        if (currentStream || streamLoading || hasResolvedStreams) {
+            setStreamExhausted(false);
+            return;
+        }
         if (String(currentEpisode.episodeNumber) !== String(epNumParam)) return;
+
+        const retryKey = `${String(scraperSession || '')}:${String(currentEpisode.session || currentEpisode.episodeNumber || '')}`;
+        if (streamFetchRetryKeyRef.current !== retryKey) {
+            streamFetchRetryKeyRef.current = retryKey;
+            setStreamExhausted(false);
+            bustEpisodeCache(currentEpisode.session);
+            loadStream(currentEpisode);
+            return;
+        }
+
         setStreamExhausted(true);
-    }, [currentEpisode, currentStream, streamLoading, hasResolvedStreams, epNumParam]);
+    }, [currentEpisode, currentStream, streamLoading, hasResolvedStreams, epNumParam, scraperSession, bustEpisodeCache, loadStream]);
 
     const flushWatchTime = useCallback(() => {
         if (!selectedAnime) return;
@@ -292,6 +309,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         setStartAtOverrideSeconds(keepResumeFromCurrent && second > 0 ? second : null);
         setIsPlayerReady(false);
         setStreamExhausted(false);
+        streamFetchRetryKeyRef.current = '';
         streamErrorRetryRef.current = { url: '', at: 0 };
         lastPlaybackSecondRef.current = keepResumeFromCurrent ? lastPlaybackSecondRef.current : null;
         lastDurationSecondRef.current = keepResumeFromCurrent ? lastDurationSecondRef.current : 0;

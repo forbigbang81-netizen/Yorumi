@@ -231,7 +231,7 @@ export class ScraperService {
 
     async getStreams(animeSession: string, epSession: string) {
         this.trackHotStream(animeSession, epSession);
-        const key = `streams:v6:${animeSession}:${epSession}`;
+        const key = `streams:v7:${animeSession}:${epSession}`;
         return this.getOrLoad(
             key,
             5 * 60 * 1000,

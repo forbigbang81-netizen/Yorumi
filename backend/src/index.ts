@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import app from './app';
-import { HiAnimeScraper } from './api/scraper/hianime.service';
+import { warmHomeFastCache } from './api/anilist/anilist.routes';
 import { warmSpotlightCache } from './api/scraper/manga.service';
 import { warmupAnimeDatabase } from './api/logo/fanart.service';
 import { startScraperWarmer } from './api/scraper/scraper-warmer';
@@ -13,12 +13,10 @@ if (shouldRunStandaloneServer) {
     const startServer = async () => {
         logger.info('Starting Yorumi backend server');
 
-        const hianimeScraper = new HiAnimeScraper();
-
         try {
             logger.info('Warming anime homepage caches');
             await Promise.race([
-                hianimeScraper.getEnrichedSpotlight(),
+                warmHomeFastCache(),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Cache warming timeout')), 10000)
                 )
@@ -44,7 +42,7 @@ if (shouldRunStandaloneServer) {
 
         setInterval(() => {
             logger.info('Running scheduled homepage cache refresh');
-            hianimeScraper.getEnrichedSpotlight()
+            warmHomeFastCache()
                 .catch((error) => logger.error('Scheduled homepage cache refresh failed', error));
         }, 10 * 60 * 1000);
     };
