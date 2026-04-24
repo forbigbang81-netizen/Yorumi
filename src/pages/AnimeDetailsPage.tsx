@@ -141,7 +141,7 @@ export default function AnimeDetailsPage() {
         }
     }, [id, location.state, navigate]);
 
-    const { selectedAnime, episodes, epLoading, episodesResolved, detailsLoading, error, watchedEpisodes, markEpisodeComplete } = animeHook;
+    const { selectedAnime, episodes, epLoading, episodesResolved, episodesBackgroundLoading, detailsLoading, error, watchedEpisodes, markEpisodeComplete } = animeHook;
     const { isInWatchList, addToWatchList, removeFromWatchList } = useWatchList();
     const { isFavorite, addFavorite, removeFavorite } = useFavoriteAnime();
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
@@ -246,7 +246,7 @@ export default function AnimeDetailsPage() {
     const hasEpisodes = episodes.length > 0;
     const hasCharacters = Boolean(selectedAnime.characters?.edges?.length);
     const hasTrailers = Boolean(selectedAnime.trailer);
-    const isEpisodesResolving = !hasEpisodes && (!episodesResolved || epLoading || detailsLoading);
+    const isEpisodesResolving = !hasEpisodes && (!episodesResolved || epLoading || detailsLoading || episodesBackgroundLoading);
     const expectedEpisodeCount = Number(selectedAnime.episodes || 0);
     const episodeSkeletonCount = Math.min(
         20,
@@ -339,7 +339,7 @@ export default function AnimeDetailsPage() {
                                             navigate(`/anime/watch/${title}/${id}?ep=${ep.episodeNumber}`);
                                         }}
                                     />
-                                ) : episodesResolved && !epLoading && !detailsLoading ? (
+                                ) : episodesResolved && !epLoading && !detailsLoading && !episodesBackgroundLoading ? (
                                     <div className="py-6 border-t border-white/10 mt-6 text-gray-500 text-center">No episodes found.</div>
                                 ) : (
                                     <EpisodesSkeleton count={episodeSkeletonCount} />

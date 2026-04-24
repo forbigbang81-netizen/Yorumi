@@ -25,6 +25,7 @@ interface AnimeContextType {
     scraperSession: string | null;
     epLoading: boolean;
     episodesResolved: boolean;
+    episodesBackgroundLoading: boolean;
     detailsLoading: boolean;
     loading: boolean;
     spotlightLoading: boolean;
@@ -153,6 +154,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const [scraperSession, setScraperSession] = useState<string | null>(null);
     const [epLoading, setEpLoading] = useState(false);
     const [episodesResolved, setEpisodesResolved] = useState(false);
+    const [episodesBackgroundLoading, setEpisodesBackgroundLoading] = useState(false);
     const [detailsLoading, setDetailsLoading] = useState(false);
     const [episodeSearchQuery, setEpisodeSearchQuery] = useState('');
 
@@ -1312,6 +1314,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             setEpLoading(true);
             setEpisodesResolved(false);
         }
+        setEpisodesBackgroundLoading(false);
 
         setWatchedEpisodes(new Set());
         setError(null);
@@ -1330,7 +1333,15 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             }
             if (!detailsId) throw new Error('Could not identify anime ID');
 
-            const fastPromise = animeService.getAnimeDetailsFast(detailsId).catch(() => null);
+            let fastPromiseSettled = false;
+            const fastPromise = animeService.getAnimeDetailsFast(detailsId)
+                .catch(() => null)
+                .finally(() => {
+                    fastPromiseSettled = true;
+                    if (!isStaleRequest()) {
+                        setEpisodesBackgroundLoading(false);
+                    }
+                });
             const cachedFastResult = cachedFast
                 ? Promise.resolve(cachedFast)
                 : Promise.race<any>([
@@ -1344,6 +1355,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 currentAnime = hydrateFastDetails(initialFastResult, currentAnime);
                 setSelectedAnime(currentAnime);
                 episodesApplied = applyHydratedEpisodes(currentAnime, initialFastResult);
+            }
+            if (!initialFastResult && !fastPromiseSettled && !isStaleRequest()) {
+                setEpisodesBackgroundLoading(true);
             }
 
             const detailsData = await animeService.getAnimeDetails(detailsId);
@@ -1392,6 +1406,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             console.error('Failed to fetch details', err);
             setError('Failed to load anime details');
             setDetailsLoading(false);
+            setEpisodesBackgroundLoading(false);
             if (!anime.images) {
                 setEpLoading(false);
                 setEpisodesResolved(true);
@@ -1515,6 +1530,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         <AnimeContext.Provider value={{
             topAnime, spotlightAnime, latestUpdates, trendingAnime, popularSeason, popularMonth, topTenToday, topTenWeek, topTenMonth, selectedAnime,
             showAnimeDetails, showWatchModal, episodes, scraperSession, epLoading, episodesResolved,
+            episodesBackgroundLoading,
             detailsLoading, loading, spotlightLoading, latestUpdatesLoading, trendingLoading, popularSeasonLoading, popularMonthLoading, topTenLoading, currentPage, lastVisiblePage,
             error, episodeSearchQuery, viewAllAnime, viewAllLoading, viewAllPagination,
             viewMode, setEpisodeSearchQuery, handleAnimeClick, startWatching,
