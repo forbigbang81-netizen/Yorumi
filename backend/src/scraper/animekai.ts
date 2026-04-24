@@ -626,8 +626,37 @@ export class AnimeKaiScraper {
     }
 
     async search(query: string): Promise<AnimeSearchResult[]> {
-        void query;
-        return [];
+        const normalizedQuery = String(query || '').replace(/\s+/g, ' ').trim();
+        if (!normalizedQuery) return [];
+
+        try {
+            const { data } = await axios.get(`${ANIMEKAI_HOME_BASE}/browser`, {
+                params: { keyword: normalizedQuery },
+                timeout: 20000,
+                proxy: false,
+                headers: {
+                    'User-Agent': BROWSER_UA,
+                    Referer: `${ANIMEKAI_HOME_BASE}/`,
+                },
+            });
+            const $ = cheerio.load(data);
+            const items = this.collectListItems($, ['.aitem', '.film_list-wrap .flw-item']);
+
+            return items.map((item) => ({
+                id: item.scraperId,
+                session: item.scraperId,
+                title: item.title,
+                url: `/watch/${item.scraperId}`,
+                poster: item.poster,
+                type: item.type,
+                episodes: item.episodes,
+                sub: item.sub,
+                dub: item.dub,
+            }));
+        } catch (error) {
+            console.error('AnimeKai search error:', error);
+            return [];
+        }
     }
 
     async getAnimeInfo(animeSessionId: string): Promise<{

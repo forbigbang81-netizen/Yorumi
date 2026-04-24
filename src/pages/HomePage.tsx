@@ -23,7 +23,7 @@ export default function HomePage() {
     }, []);
 
     // Navigation Handlers
-    const getAnimePaheRouteId = (value: unknown) => {
+    const getDirectScraperRouteId = (value: unknown) => {
         const raw = String(value || '')
             .trim()
             .replace(/^https?:\/\/[^/]+/i, '')
@@ -31,18 +31,16 @@ export default function HomePage() {
             .replace(/^watch\//i, '');
         if (!raw) return '';
         const session = raw.startsWith('s:') ? raw.slice(2).trim() : raw;
-        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session)) {
-            return '';
-        }
+        if (!session || /^\d+$/.test(session)) return '';
         return `s:${session}`;
     };
 
     const getWatchRouteId = (item: Anime): string | number | undefined => {
-        const scraperRouteId = getAnimePaheRouteId(item.scraperId);
+        const scraperRouteId = getDirectScraperRouteId(item.scraperId);
         if (scraperRouteId) {
             return scraperRouteId;
         }
-        return item.mal_id || item.id;
+        return item.id || item.mal_id;
     };
 
     const normalizeTitle = (value: unknown) =>
@@ -120,7 +118,7 @@ export default function HomePage() {
                 if (!bestMatch) return null;
 
                 return {
-                    routeId: bestMatch.mal_id || bestMatch.id,
+                    routeId: bestMatch.id || bestMatch.mal_id,
                     anime: { ...item, ...bestMatch }
                 };
             })());

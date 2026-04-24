@@ -165,9 +165,38 @@ export class ScraperService {
 
     async search(query: string) {
         const normalized = query.toLowerCase().trim();
-        return this.getOrLoad(`search:v3:${normalized}`, 2 * 60 * 1000, async () => {
-            const fast = await this.fastScraper.search(query);
-            return Array.isArray(fast) ? fast : [];
+        return this.getOrLoad(`search:v4:${normalized}`, 2 * 60 * 1000, async () => {
+            const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
+                try {
+                    return await Promise.race([
+                        promise,
+                        new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs)),
+                    ]);
+                } catch {
+                    return fallback;
+                }
+            };
+            const [animePahe, animeKai] = await Promise.all([
+                withTimeout(this.fastScraper.search(query), 7000, []),
+                withTimeout(this.animeKaiScraper.search(query), 7000, []),
+            ]);
+            const seen = new Set<string>();
+            const merged: any[] = [];
+
+            const addItems = (items: unknown) => {
+                if (!Array.isArray(items)) return;
+                items.forEach((item: any) => {
+                    const session = String(item?.session || '').trim();
+                    if (!session || seen.has(session)) return;
+                    seen.add(session);
+                    merged.push(item);
+                });
+            };
+
+            addItems(animePahe);
+            addItems(animeKai);
+
+            return merged;
         });
     }
 

@@ -393,7 +393,7 @@ const clearCachedStream = (key: string) => {
 };
 
 const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v3:${id}`;
-const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v5:${id}`;
+const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v6:${id}`;
 const getStreamCacheKey = (animeSession: string, episodeSession: string) =>
     `streams:${STREAM_CACHE_VERSION}:${animeSession}:${episodeSession}`;
 const isAnimePaheOnlyStream = (item: any) => {
