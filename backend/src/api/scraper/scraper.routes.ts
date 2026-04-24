@@ -174,6 +174,10 @@ const normalizeEpisodeSession = (animeSessionRaw: string, raw: string) => {
     };
 
     const decoded = tryDecode(tryDecode(source));
+    if (decoded.includes('$token=')) {
+        return decoded;
+    }
+
     const pairMatch = decoded.match(/([^?#]+)\?ep=([^&#]+)/i);
     if (pairMatch?.[1] && pairMatch?.[2]) {
         const base = pairMatch[1].trim().replace(/\/+$/, '');
@@ -390,7 +394,8 @@ router.get('/episodes', async (req, res) => {
 
 router.get('/streams', async (req, res) => {
     try {
-        const animeSession = req.query.anime_session as string;
+        const animeSessionRaw = req.query.anime_session as string;
+        const animeSession = animeSessionRaw?.startsWith('s:') ? animeSessionRaw.substring(2) : animeSessionRaw;
         const epSessionRaw = req.query.ep_session as string;
         const epSession = normalizeEpisodeSession(animeSession, epSessionRaw);
 

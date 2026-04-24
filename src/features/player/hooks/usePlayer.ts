@@ -259,7 +259,7 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     // excessive Vercel serverless CPU usage. Each prefetch call spins up a Puppeteer
     // browser instance on the backend, which causes rapid CPU spikes on every episode load.
 
-    // When loading finishes with no stream result, keep retrying AnimePahe with backoff
+    // When loading finishes with no stream result, retry with backoff
     // instead of dropping the player into a dead-end state after one miss.
     useEffect(() => {
         if (!currentEpisode) {

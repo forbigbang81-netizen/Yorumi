@@ -270,7 +270,7 @@ const AZ_LIST_CACHE_TTL = 10 * 60 * 1000;
 const ANIMEKAI_GENRES_CACHE_TTL = 12 * 60 * 60 * 1000;
 const ANIMEKAI_GENRE_PAGE_CACHE_TTL = 10 * 60 * 1000;
 const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v3';
-const STREAM_CACHE_VERSION = 'v2';
+const STREAM_CACHE_VERSION = 'v4';
 const PERSISTED_STREAM_CACHE_PREFIX = `yorumi_stream_cache_${STREAM_CACHE_VERSION}`;
 
 const readPersistedCache = (key: string, ttl: number) => {
@@ -393,7 +393,7 @@ const clearCachedStream = (key: string) => {
 };
 
 const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v3:${id}`;
-const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v6:${id}`;
+const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v7:${id}`;
 const getStreamCacheKey = (animeSession: string, episodeSession: string) =>
     `streams:${STREAM_CACHE_VERSION}:${animeSession}:${episodeSession}`;
 const isAnimePaheOnlyStream = (item: any) => {
@@ -1162,7 +1162,7 @@ export const animeService = {
     },
 
     invalidateAnimeDetailsFast(id: number | string) {
-        clearCacheEntry(`anime-details-fast:v4:${id}`);
+        clearCacheEntry(getAnimeDetailsFastCacheKey(id));
     },
 
     // Get stream links from scraper

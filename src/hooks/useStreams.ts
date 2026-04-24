@@ -18,8 +18,16 @@ export function useStreams(scraperSession: string | null) {
     const activeLoadRequestRef = useRef(0);
 
     const currentStream = streams[selectedStreamIndex] || null;
-    const isAnimePaheSession = (value: unknown) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+    const normalizeDirectScraperSession = (value: unknown) => {
+        const normalized = String(value || '')
+            .trim()
+            .replace(/^s:/i, '')
+            .replace(/^https?:\/\/[^/]+/i, '')
+            .replace(/^\/+/, '')
+            .replace(/^watch\//i, '');
+        if (!normalized || /^\d+$/.test(normalized)) return '';
+        return normalized;
+    };
 
     const normalizeAudio = (value: string) => {
         const lower = String(value || '').trim().toLowerCase();
@@ -42,9 +50,10 @@ export function useStreams(scraperSession: string | null) {
     }, []);
 
     const ensureStreamData = useCallback((episode: Episode): Promise<StreamLink[]> => {
-        if (!scraperSession || !isAnimePaheSession(scraperSession)) return Promise.resolve([]);
+        const activeSession = normalizeDirectScraperSession(scraperSession);
+        if (!activeSession) return Promise.resolve([]);
         if (!streamCache.current.has(episode.session)) {
-            const promise = getStreamData(episode, scraperSession)
+            const promise = getStreamData(episode, activeSession)
                 .then((data) => {
                     if (!Array.isArray(data) || data.length === 0) {
                         streamCache.current.delete(episode.session);
@@ -185,8 +194,9 @@ export function useStreams(scraperSession: string | null) {
     // Invalidate cache for a specific episode so the next loadStream call fetches fresh.
     const bustEpisodeCache = useCallback((session: string) => {
         streamCache.current.delete(session);
-        if (scraperSession && isAnimePaheSession(scraperSession)) {
-            animeService.invalidateStreamCache(scraperSession, session);
+        const activeSession = normalizeDirectScraperSession(scraperSession);
+        if (activeSession) {
+            animeService.invalidateStreamCache(activeSession, session);
         }
     }, [scraperSession]);
 

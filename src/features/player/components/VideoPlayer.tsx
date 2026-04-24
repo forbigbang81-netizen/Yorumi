@@ -268,7 +268,7 @@ export default function VideoPlayer({
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20">
                     <LoadingSpinner />
                     <p className="mt-4 text-gray-400 animate-pulse">
-                        {streamExhausted ? 'Still retrying AnimePahe stream...' : 'Retrying AnimePahe stream...'}
+                        {streamExhausted ? 'Still retrying stream...' : 'Retrying stream...'}
                     </p>
                 </div>
             ) : (

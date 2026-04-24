@@ -22,6 +22,79 @@ export class ScraperService {
         return this.isAnimePaheSession(session) ? this.fastScraper : this.animeKaiScraper;
     }
 
+    private normalizeTitle(value: unknown) {
+        return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    private parseEpisodeNumber(value: unknown) {
+        const raw = String(value || '').trim();
+        const match = raw.match(/\$ep=(\d+(?:\.\d+)?)/i)
+            || raw.match(/[?&]ep=(\d+(?:\.\d+)?)/i)
+            || raw.match(/(?:^|[^\d])(\d+(?:\.\d+)?)(?:[^\d]|$)/);
+        const parsed = Number(match?.[1] || raw);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    }
+
+    private async resolveAnimePaheStreamTarget(animeSession: string, epSession: string) {
+        if (this.isAnimePaheSession(animeSession)) {
+            return { animeSession, epSession };
+        }
+
+        const episodeNumber = this.parseEpisodeNumber(epSession);
+        if (!episodeNumber) return null;
+
+        const info = await this.animeKaiScraper.getAnimeInfo(animeSession);
+        const title = String(info?.title || '').trim();
+        if (!title) return null;
+
+        const candidates = await this.fastScraper.search(title).catch(() => []);
+        const targetTitle = this.normalizeTitle(title);
+        const targetEpisodes = Number(info?.episodes || 0);
+        const targetYear = Number(info?.year || 0);
+
+        const ranked = (Array.isArray(candidates) ? candidates : [])
+            .filter((candidate) => this.isAnimePaheSession(String(candidate?.session || '')))
+            .map((candidate) => {
+                const candidateTitle = this.normalizeTitle(candidate?.title);
+                const candidateEpisodes = Number(candidate?.episodes || 0);
+                const candidateYear = Number(candidate?.year || 0);
+                let score = 0;
+
+                if (candidateTitle && targetTitle) {
+                    if (candidateTitle === targetTitle) score += 100;
+                    else if (candidateTitle.includes(targetTitle) || targetTitle.includes(candidateTitle)) score += 60;
+                }
+                if (targetEpisodes > 0 && candidateEpisodes > 0) {
+                    const diff = Math.abs(candidateEpisodes - targetEpisodes);
+                    if (diff === 0) score += 40;
+                    else if (diff <= 2) score += 20;
+                    else score -= 30;
+                }
+                if (targetYear > 0 && candidateYear > 0) {
+                    const diff = Math.abs(candidateYear - targetYear);
+                    if (diff === 0) score += 10;
+                    else if (diff > 1) score -= 15;
+                }
+
+                return { candidate, score };
+            })
+            .sort((a, b) => b.score - a.score);
+
+        const best = ranked.find((entry) => entry.score > 0)?.candidate || ranked[0]?.candidate;
+        const resolvedAnimeSession = String(best?.session || '').trim();
+        if (!this.isAnimePaheSession(resolvedAnimeSession)) return null;
+
+        const episodes = await this.fastScraper.getEpisodes(resolvedAnimeSession).catch(() => ({ episodes: [] }));
+        const resolvedEpisode = Array.isArray(episodes?.episodes)
+            ? episodes.episodes.find((episode: any) => Number(episode?.episodeNumber) === episodeNumber)
+            : null;
+
+        const resolvedEpSession = String(resolvedEpisode?.session || '').trim();
+        if (!resolvedEpSession) return null;
+
+        return { animeSession: resolvedAnimeSession, epSession: resolvedEpSession };
+    }
+
     private async getOrLoad<T>(
         key: string,
         ttlMs: number,
@@ -147,7 +220,7 @@ export class ScraperService {
 
     private async fetchStreamLinksWithRetries(animeSession: string, epSession: string) {
         const scraper = this.getEpisodeScraper(animeSession);
-        const maxAttempts = this.isAnimePaheSession(animeSession) ? 3 : 1;
+        const maxAttempts = this.isAnimePaheSession(animeSession) ? 2 : 1;
 
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
             const links = await scraper.getLinks(animeSession, epSession);
@@ -156,7 +229,7 @@ export class ScraperService {
             }
 
             if (attempt < maxAttempts - 1) {
-                await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+                await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
             }
         }
 
@@ -165,7 +238,7 @@ export class ScraperService {
 
     async search(query: string) {
         const normalized = query.toLowerCase().trim();
-        return this.getOrLoad(`search:v4:${normalized}`, 2 * 60 * 1000, async () => {
+        return this.getOrLoad(`search:v5:${normalized}`, 2 * 60 * 1000, async () => {
             const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
                 try {
                     return await Promise.race([
@@ -277,12 +350,15 @@ export class ScraperService {
     }
 
     async getStreams(animeSession: string, epSession: string) {
-        this.trackHotStream(animeSession, epSession);
-        const key = `streams:v7:${animeSession}:${epSession}`;
+        const target = await this.resolveAnimePaheStreamTarget(animeSession, epSession);
+        if (!target) return [];
+
+        this.trackHotStream(target.animeSession, target.epSession);
+        const key = `streams:v8:${target.animeSession}:${target.epSession}`;
         return this.getOrLoad(
             key,
             5 * 60 * 1000,
-            async () => this.fetchStreamLinksWithRetries(animeSession, epSession),
+            async () => this.fetchStreamLinksWithRetries(target.animeSession, target.epSession),
             {
                 shouldCache: (value) => Array.isArray(value) && value.length > 0,
                 allowCached: (value) => Array.isArray(value) && value.length > 0,
