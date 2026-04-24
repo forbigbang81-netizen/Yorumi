@@ -45,6 +45,13 @@ export function useStreams(scraperSession: string | null) {
         if (!scraperSession || !isAnimePaheSession(scraperSession)) return Promise.resolve([]);
         if (!streamCache.current.has(episode.session)) {
             const promise = getStreamData(episode, scraperSession)
+                .then((data) => {
+                    if (!Array.isArray(data) || data.length === 0) {
+                        streamCache.current.delete(episode.session);
+                        return [];
+                    }
+                    return data;
+                })
                 .catch(e => {
                     console.error('Failed to load stream', e);
                     streamCache.current.delete(episode.session);
@@ -118,6 +125,8 @@ export function useStreams(scraperSession: string | null) {
                 setAllStreams(streamData);
                 setStreams(nextStreams);
                 setIsAutoQuality(true);
+            } else {
+                streamCache.current.delete(episode.session);
             }
         } catch (e) {
             if (activeLoadRequestRef.current !== requestId) {

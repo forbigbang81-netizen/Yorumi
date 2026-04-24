@@ -145,6 +145,24 @@ export class ScraperService {
         }
     }
 
+    private async fetchStreamLinksWithRetries(animeSession: string, epSession: string) {
+        const scraper = this.getEpisodeScraper(animeSession);
+        const maxAttempts = this.isAnimePaheSession(animeSession) ? 3 : 1;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            const links = await scraper.getLinks(animeSession, epSession);
+            if (Array.isArray(links) && links.length > 0) {
+                return links;
+            }
+
+            if (attempt < maxAttempts - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+            }
+        }
+
+        return [];
+    }
+
     async search(query: string) {
         const normalized = query.toLowerCase().trim();
         return this.getOrLoad(`search:v3:${normalized}`, 2 * 60 * 1000, async () => {
@@ -235,10 +253,7 @@ export class ScraperService {
         return this.getOrLoad(
             key,
             5 * 60 * 1000,
-            async () => {
-                const links = await this.getEpisodeScraper(animeSession).getLinks(animeSession, epSession);
-                return Array.isArray(links) ? links : [];
-            },
+            async () => this.fetchStreamLinksWithRetries(animeSession, epSession),
             {
                 shouldCache: (value) => Array.isArray(value) && value.length > 0,
                 allowCached: (value) => Array.isArray(value) && value.length > 0,

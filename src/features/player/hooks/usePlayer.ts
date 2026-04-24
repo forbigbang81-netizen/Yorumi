@@ -70,6 +70,9 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     const streamErrorRetryRef = useRef<{ url: string; at: number }>({ url: '', at: 0 });
     const streamFetchRetryKeyRef = useRef<string>('');
     const autoLoadAttemptKeyRef = useRef<string>('');
+    const streamRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const streamRetryStateRef = useRef<{ key: string; attempts: number }>({ key: '', attempts: 0 });
+    const STREAM_RETRY_DELAYS_MS = [1000, 2000, 3500, 5500, 8000];
     const extractDirectScraperSession = (value: unknown): string => {
         const raw = String(value || '').trim();
         const normalized = raw
@@ -96,6 +99,18 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
             .replace(/\s+/g, ' ')
             .trim();
 
+    const clearScheduledStreamRetry = useCallback(() => {
+        if (streamRetryTimeoutRef.current) {
+            clearTimeout(streamRetryTimeoutRef.current);
+            streamRetryTimeoutRef.current = null;
+        }
+    }, []);
+
+    const resetScheduledStreamRetry = useCallback(() => {
+        clearScheduledStreamRetry();
+        streamRetryStateRef.current = { key: '', attempts: 0 };
+    }, [clearScheduledStreamRetry]);
+
     // --- Effects ---
 
     // Clear streams on mount/id change
@@ -112,12 +127,14 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         lastSavedProgressRef.current = { at: 0, second: -1 };
         streamFetchRetryKeyRef.current = '';
         autoLoadAttemptKeyRef.current = '';
-    }, [animeId]);
+        resetScheduledStreamRetry();
+    }, [animeId, clearStreams, resetScheduledStreamRetry]);
 
     useEffect(() => {
         streamFetchRetryKeyRef.current = '';
         autoLoadAttemptKeyRef.current = '';
-    }, [scraperSession]);
+        resetScheduledStreamRetry();
+    }, [scraperSession, resetScheduledStreamRetry]);
 
     useEffect(() => {
         const currentId = String(animeId || '');
@@ -242,26 +259,51 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
     // excessive Vercel serverless CPU usage. Each prefetch call spins up a Puppeteer
     // browser instance on the backend, which causes rapid CPU spikes on every episode load.
 
-    // When loading finishes with no stream result → immediately show exhausted (no retry loop).
+    // When loading finishes with no stream result, keep retrying AnimePahe with backoff
+    // instead of dropping the player into a dead-end state after one miss.
     useEffect(() => {
-        if (!currentEpisode) return;
+        if (!currentEpisode) {
+            resetScheduledStreamRetry();
+            return;
+        }
         if (currentStream || streamLoading || hasResolvedStreams) {
             setStreamExhausted(false);
+            resetScheduledStreamRetry();
             return;
         }
         if (String(currentEpisode.episodeNumber) !== String(epNumParam)) return;
 
         const retryKey = `${String(scraperSession || '')}:${String(currentEpisode.session || currentEpisode.episodeNumber || '')}`;
-        if (streamFetchRetryKeyRef.current !== retryKey) {
-            streamFetchRetryKeyRef.current = retryKey;
-            setStreamExhausted(false);
-            bustEpisodeCache(currentEpisode.session);
-            loadStream(currentEpisode);
+        if (streamRetryStateRef.current.key !== retryKey) {
+            resetScheduledStreamRetry();
+            streamRetryStateRef.current = { key: retryKey, attempts: 0 };
+        }
+
+        const attempt = streamRetryStateRef.current.attempts;
+        const delay = STREAM_RETRY_DELAYS_MS[Math.min(attempt, STREAM_RETRY_DELAYS_MS.length - 1)];
+        setStreamExhausted(attempt >= STREAM_RETRY_DELAYS_MS.length - 1);
+
+        if (streamRetryTimeoutRef.current) {
             return;
         }
 
-        setStreamExhausted(true);
-    }, [currentEpisode, currentStream, streamLoading, hasResolvedStreams, epNumParam, scraperSession, bustEpisodeCache, loadStream]);
+        streamRetryTimeoutRef.current = setTimeout(() => {
+            streamRetryTimeoutRef.current = null;
+            streamRetryStateRef.current = {
+                key: retryKey,
+                attempts: attempt + 1,
+            };
+            streamFetchRetryKeyRef.current = retryKey;
+            bustEpisodeCache(currentEpisode.session);
+            loadStream(currentEpisode);
+        }, delay);
+    }, [currentEpisode, currentStream, streamLoading, hasResolvedStreams, epNumParam, scraperSession, bustEpisodeCache, loadStream, resetScheduledStreamRetry]);
+
+    useEffect(() => {
+        return () => {
+            clearScheduledStreamRetry();
+        };
+    }, [clearScheduledStreamRetry]);
 
     const flushWatchTime = useCallback(() => {
         if (!selectedAnime) return;
@@ -311,9 +353,10 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         setStreamExhausted(false);
         streamFetchRetryKeyRef.current = '';
         streamErrorRetryRef.current = { url: '', at: 0 };
+        resetScheduledStreamRetry();
         lastPlaybackSecondRef.current = keepResumeFromCurrent ? lastPlaybackSecondRef.current : null;
         lastDurationSecondRef.current = keepResumeFromCurrent ? lastDurationSecondRef.current : 0;
-    }, []);
+    }, [resetScheduledStreamRetry]);
 
     // Flush watch-time when stream/episode changes or unmounting.
     useEffect(() => {
@@ -373,8 +416,13 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         streamErrorRetryRef.current = { url, at: now };
         const second = Math.max(0, Math.floor(lastPlaybackSecondRef.current || 0));
         if (second > 0) setStartAtOverrideSeconds(second);
-        tryNextStream();
-    }, [currentStream?.url, tryNextStream]);
+        const switchedSource = tryNextStream();
+        if (!switchedSource && currentEpisode) {
+            resetScheduledStreamRetry();
+            bustEpisodeCache(currentEpisode.session);
+            loadStream(currentEpisode);
+        }
+    }, [currentEpisode, currentStream?.url, tryNextStream, resetScheduledStreamRetry, bustEpisodeCache, loadStream]);
 
     // --- Actions ---
 
