@@ -1,7 +1,59 @@
 import { Router } from 'express';
 import { getAnimeLogo, batchGetAnimeLogos } from './fanart.service';
+import { anilistService } from '../anilist/anilist.service';
 
 const router = Router();
+
+/**
+ * GET /api/logo/resolve?title=...&year=...&episodes=...&format=...
+ * Resolve an anime title to AniList, then fetch the Fanart.tv logo.
+ */
+router.get('/resolve', async (req, res) => {
+    try {
+        const title = String(req.query.title || '').replace(/\s+/g, ' ').trim();
+
+        if (!title) {
+            return res.status(400).json({
+                error: 'Query parameter title is required',
+                logo: null,
+                source: 'fallback',
+                cached: false
+            });
+        }
+
+        const year = Number(req.query.year || 0) || undefined;
+        const episodes = Number(req.query.episodes || 0) || undefined;
+        const format = String(req.query.format || '').trim() || undefined;
+        const match = await anilistService.findBestAnimeMatch({
+            titles: [title],
+            year,
+            episodes,
+            format,
+            perPage: 5
+        });
+        const anilistId = Number(match?.id || 0);
+
+        if (!anilistId) {
+            return res.json({
+                anilistId: null,
+                logo: null,
+                source: 'fallback',
+                cached: false
+            });
+        }
+
+        const result = await getAnimeLogo(anilistId);
+        res.json({ ...result, anilistId });
+    } catch (error) {
+        console.error('[Logo API] Resolve error:', error);
+        res.status(500).json({
+            error: 'Failed to resolve logo',
+            logo: null,
+            source: 'fallback',
+            cached: false
+        });
+    }
+});
 
 /**
  * GET /api/logo/:anilistId

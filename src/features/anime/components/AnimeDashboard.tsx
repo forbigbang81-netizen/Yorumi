@@ -74,6 +74,7 @@ export default function AnimeDashboard({
                     isLoading={spotlightLoading}
                     onAnimeClick={onAnimeClick}
                     onWatchClick={onWatchClick}
+                    onAnimeHover={onAnimeHover}
                 />
             )}
 

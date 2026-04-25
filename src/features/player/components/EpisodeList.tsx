@@ -30,8 +30,7 @@ export default function EpisodeList({
         .filter(num => num > parseFloat(currentEpNumber))
         .sort((a, b) => a - b)[0];
 
-    const getPreviewImage = (ep: Episode, metaThumbnail?: string | null) =>
-        ep.snapshot || metaThumbnail || fallbackThumbnail;
+    const getPreviewImage = (ep: Episode) => ep.snapshot || '';
 
     // Auto-scroll to active episode
     const activeEpRef = useRef<HTMLButtonElement>(null);
@@ -52,14 +51,6 @@ export default function EpisodeList({
             const diff = parseFloat(a.episodeNumber) - parseFloat(b.episodeNumber);
             return sortAsc ? diff : -diff;
         });
-
-    const fallbackThumbnail =
-        anime?.images?.jpg?.large_image_url ||
-        anime?.images?.jpg?.image_url ||
-        anime?.anilist_cover_image ||
-        '';
-
-
 
     const getEpisodeMeta = (ep: Episode) => {
         const episodeNumber = parseFloat(String(ep.episodeNumber));
@@ -197,7 +188,7 @@ export default function EpisodeList({
                             const meta = getEpisodeMeta(ep);
                             const cleanTitle = ep.title && ep.title.trim().toLowerCase() !== 'untitled' ? ep.title : null;
                             const displayTitle = meta?.title?.replace(/^Episode \d+[\s-]*:?/i, '').trim() || cleanTitle || `Episode ${ep.episodeNumber}`;
-                            const previewImage = getPreviewImage(ep, meta?.thumbnail);
+                            const previewImage = getPreviewImage(ep);
 
                             return (
                                 <button
@@ -224,15 +215,7 @@ export default function EpisodeList({
                                                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                                                         loading="lazy"
                                                         onError={(event) => {
-                                                            const target = event.currentTarget;
-                                                            const fallback = fallbackThumbnail;
-
-                                                            if (fallback && target.src !== fallback) {
-                                                                target.src = fallback;
-                                                                return;
-                                                            }
-
-                                                            target.style.display = 'none';
+                                                            event.currentTarget.style.display = 'none';
                                                         }}
                                                     />
                                                 ) : (

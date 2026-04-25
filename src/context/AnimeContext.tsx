@@ -6,6 +6,7 @@ import { storage } from '../utils/storage';
 import { preloadLogos } from '../components/anime/AnimeLogoImage';
 import { useAuth } from './AuthContext';
 import { getDisplayImageUrl } from '../utils/image';
+import { isAnimePaheSessionId } from '../utils/animeNavigation';
 
 interface AnimeContextType {
     // State
@@ -338,7 +339,13 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     const getExpectedEpisodeCount = (anime: Anime) => {
-        return Number(anime.latestEpisode || anime.episodes || 0);
+        const latestEpisode = Number(anime.latestEpisode || 0);
+        if (latestEpisode > 0) return latestEpisode;
+
+        const status = String(anime.status || '').toUpperCase();
+        if (status === 'RELEASING') return 0;
+
+        return Number(anime.episodes || 0);
     };
 
     const getAnimeSeasonNumber = (anime: Partial<Anime> | null | undefined) => {
@@ -420,7 +427,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const hydrateFastDetails = (fastData: any, fallbackAnime: Anime): Anime => {
         const hydratedAnime = (fastData?.data ? { ...fallbackAnime, ...fastData.data } : { ...fallbackAnime }) as Anime;
         const fastSession = String(fastData?.scraperSession || '').trim();
-        if (fastSession) {
+        if (isAnimePaheSessionId(fastSession)) {
             hydratedAnime.scraperId = fastSession;
         }
         return hydratedAnime;
@@ -429,20 +436,23 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const applyHydratedEpisodes = (targetAnime: Anime, fastData: any) => {
         if (!Array.isArray(fastData?.episodes) || fastData.episodes.length === 0) return false;
         const session = extractDirectScraperSession(fastData?.scraperSession);
-        if (!session) return false;
+        if (!isAnimePaheSessionId(session)) return false;
 
         const normalizedFastEpisodes = normalizeEpisodesList(fastData.episodes);
         const nextEpisodes = trimEpisodesForAnime(targetAnime, normalizedFastEpisodes);
-
-        if (!hasEnoughEpisodes(targetAnime, nextEpisodes)) return false;
+        if (nextEpisodes.length === 0) return false;
 
         setEpisodes(nextEpisodes);
         setScraperSession(session);
-        episodesCache.current.set(session, nextEpisodes);
+        if (hasEnoughEpisodes(targetAnime, nextEpisodes)) {
+            episodesCache.current.set(session, nextEpisodes);
+        }
         const resolvedKey = getAnimeCacheKey(targetAnime);
         if (resolvedKey) {
             scraperSessionCache.current.set(resolvedKey, session);
-            writeEpisodeSessionCache(resolvedKey, session, nextEpisodes);
+            if (hasEnoughEpisodes(targetAnime, nextEpisodes)) {
+                writeEpisodeSessionCache(resolvedKey, session, nextEpisodes);
+            }
         }
         setEpLoading(false);
         setEpisodesResolved(true);
@@ -596,14 +606,26 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             }
 
             try {
-                const { data } = await animeService.getSpotlightAnime();
-                if (data && data.length > 0) {
-                    setSpotlightAnime(data);
-                    writeHomeCache('spotlight', data);
-                    preloadLogos(data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                const retryDelays = [0, 1000, 2500];
+                for (const delay of retryDelays) {
+                    if (delay > 0) {
+                        await new Promise((resolve) => window.setTimeout(resolve, delay));
+                    }
+
+                    try {
+                        const { data } = await animeService.getSpotlightAnime();
+                        if (data && data.length > 0) {
+                            setSpotlightAnime(data);
+                            writeHomeCache('spotlight', data);
+                            preloadLogos(data.map((a: Anime) => a.id || a.mal_id).filter(Boolean));
+                            return;
+                        }
+                    } catch (e) {
+                        if (delay === retryDelays[retryDelays.length - 1]) {
+                            console.error('Failed to fetch AnimeKai spotlight', e);
+                        }
+                    }
                 }
-            } catch (e) {
-                console.error('Failed to fetch AnimeKai spotlight', e);
             } finally {
                 setSpotlightLoading(false);
             }
@@ -801,7 +823,9 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         // Helper to extract season number
         const getSeason = (title: string) => {
-            const match = title.match(/season\s*(\d+)|(\d+)(st|nd|rd|th)\s*season/i);
+            const match =
+                title.match(/season\s*(\d+)|(\d+)(st|nd|rd|th)\s*season/i) ||
+                title.trim().match(/(?:^|\s)([2-9])$/i);
             return match ? parseInt(match[1] || match[2]) : 1;
         };
 
@@ -950,46 +974,66 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
             const queryList = buildScraperQueries(anime);
 
             try {
-                const results = await Promise.all(
-                    queryList.map(q => animeService.searchScraper(q).then(res => res || []).catch(() => []))
-                );
+                const candidateMap = new Map<string, any>();
+                const rankCandidates = () => {
+                    const allCandidates = Array.from(candidateMap.values())
+                        .filter((candidate: any) => isAnimePaheSessionId(candidate?.session));
 
-                const allCandidates = Array.from(new Map(
-                    results.flat().map((c: any) => [c.session, c])
-                ).values());
+                    const strictCandidates = allCandidates.filter((candidate) => isStrictCandidate(candidate, anime));
+                    const hasStrictMatches = strictCandidates.length > 0;
+                    const candidatePool = hasStrictMatches ? strictCandidates : allCandidates;
+                    const targetEpisodes = Number(anime.episodes || 0);
+                    const ranked = candidatePool
+                        .map((candidate) => ({
+                            candidate,
+                            score: getScore(candidate, anime),
+                            diff: (targetEpisodes > 0 && Number(candidate?.episodes || 0) > 0)
+                                ? Math.abs(Number(candidate.episodes) - targetEpisodes)
+                                : Number.MAX_SAFE_INTEGER,
+                        }))
+                        .sort((a, b) => {
+                            if (b.score !== a.score) return b.score - a.score;
+                            return a.diff - b.diff;
+                        });
 
-                if (allCandidates.length === 0) return null;
+                    const best = hasStrictMatches
+                        ? ranked[0]
+                        : (
+                            ranked.find((entry) => {
+                                if (entry.score <= 0) return false;
+                                if (targetEpisodes <= 0) return true;
+                                const cEps = Number(entry.candidate?.episodes || 0);
+                                if (cEps <= 0) return true;
+                                return cEps <= targetEpisodes + 1;
+                            }) || ranked.find((entry) => entry.score > 0)
+                        );
 
-                const strictCandidates = allCandidates.filter((candidate) => isStrictCandidate(candidate, anime));
-                const hasStrictMatches = strictCandidates.length > 0;
-                const candidatePool = hasStrictMatches ? strictCandidates : allCandidates;
+                    return { best, ranked };
+                };
 
-                const targetEpisodes = Number(anime.episodes || 0);
-                const ranked = candidatePool
-                    .map((candidate) => ({
-                        candidate,
-                        score: getScore(candidate, anime),
-                        diff: (targetEpisodes > 0 && Number(candidate?.episodes || 0) > 0)
-                            ? Math.abs(Number(candidate.episodes) - targetEpisodes)
-                            : Number.MAX_SAFE_INTEGER,
-                    }))
-                    .sort((a, b) => {
-                        if (b.score !== a.score) return b.score - a.score;
-                        return a.diff - b.diff;
+                for (let index = 0; index < queryList.length; index += 3) {
+                    const results = await Promise.all(
+                        queryList.slice(index, index + 3).map(q => animeService.searchAnimePahe(q).then(res => res || []).catch(() => []))
+                    );
+
+                    results.flat().forEach((candidate: any) => {
+                        const session = String(candidate?.session || '').trim();
+                        if (isAnimePaheSessionId(session) && !candidateMap.has(session)) {
+                            candidateMap.set(session, candidate);
+                        }
                     });
 
-                // Strict pool should not be rejected by legacy score penalties.
-                const best = hasStrictMatches
-                    ? ranked[0]
-                    : (
-                        ranked.find((entry) => {
-                            if (entry.score <= 0) return false;
-                            if (targetEpisodes <= 0) return true;
-                            const cEps = Number(entry.candidate?.episodes || 0);
-                            if (cEps <= 0) return true;
-                            return cEps <= targetEpisodes + 1;
-                        }) || ranked.find((entry) => entry.score > 0)
-                    );
+                    const { best } = rankCandidates();
+                    if (best?.candidate && best.score >= 80) {
+                        if (cacheKey) scraperSessionCache.current.set(cacheKey, best.candidate.session);
+                        if (USE_PERSISTED_MAPPING_CACHE && mappingKey !== null) {
+                            animeService.saveAnimeMapping(mappingKey, best.candidate.session).catch(console.error);
+                        }
+                        return best.candidate.session;
+                    }
+                }
+
+                const { best } = rankCandidates();
 
                 if (best?.candidate) {
                     if (cacheKey) scraperSessionCache.current.set(cacheKey, best.candidate.session);
@@ -1006,7 +1050,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         // Fast path: when scraperId is already known, avoid extra mapping/search calls.
         const directScraperSession = extractDirectScraperSession(anime.scraperId);
-        if (directScraperSession) {
+        if (directScraperSession && isAnimePaheSessionId(directScraperSession)) {
             session = directScraperSession;
             if (cacheKey) {
                 scraperSessionCache.current.set(cacheKey, session);
@@ -1016,7 +1060,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         if (!session && cacheKey && scraperSessionCache.current.has(cacheKey)) {
             const cachedSession = extractDirectScraperSession(scraperSessionCache.current.get(cacheKey));
-            if (cachedSession) {
+            if (cachedSession && isAnimePaheSessionId(cachedSession)) {
                 session = cachedSession;
                 sessionFromCache = true;
             } else {
@@ -1028,7 +1072,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                 try {
                     const persistedMapping = await animeService.getAnimeMapping(mappingKey);
                     const cachedSession = extractDirectScraperSession(persistedMapping);
-                    if (cachedSession) {
+                    if (cachedSession && isAnimePaheSessionId(cachedSession)) {
                         session = cachedSession;
                         sessionFromCache = true;
                         if (cacheKey) scraperSessionCache.current.set(cacheKey, cachedSession);
@@ -1088,8 +1132,11 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
                         const remappedRawEpisodes = remappedData?.episodes || remappedData?.ep_details || (Array.isArray(remappedData) ? remappedData : []);
                         const remappedNormalizedEpisodes = normalizeEpisodesList(remappedRawEpisodes);
                         const remappedEpisodes = trimEpisodesForAnime(anime, remappedNormalizedEpisodes);
-                        if (hasEnoughEpisodes(anime, remappedEpisodes)) {
-                            episodesCache.current.set(remappedSession, remappedEpisodes);
+                        if (remappedEpisodes.length > 0) {
+                            if (hasEnoughEpisodes(anime, remappedEpisodes)) {
+                                episodesCache.current.set(remappedSession, remappedEpisodes);
+                                if (cacheKey) writeEpisodeSessionCache(cacheKey, remappedSession, remappedEpisodes);
+                            }
                             return { session: remappedSession, eps: remappedEpisodes };
                         }
                     }
@@ -1184,7 +1231,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         if (cacheKey) {
             const sessionCached = readEpisodeSessionCache(cacheKey);
             if (sessionCached) {
-                if (!hasEnoughEpisodes(anime, sessionCached.episodes)) {
+                if (!isAnimePaheSessionId(sessionCached.session) || !hasEnoughEpisodes(anime, sessionCached.episodes)) {
                     try {
                         sessionStorage.removeItem(`${EPISODE_CACHE_PREFIX}:${cacheKey}`);
                     } catch {
@@ -1364,7 +1411,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         setDetailsLoading(!(cachedDetails?.data || cachedFast?.data || hasRenderablePrimaryDetails(anime)));
 
         const shouldPreloadEpisodesImmediately = !hydratedEpisodesApplied && Boolean(
-            extractDirectScraperSession(anime.scraperId) ||
+            isAnimePaheSessionId(extractDirectScraperSession(anime.scraperId)) ||
             String(anime.title || '').trim() ||
             (Number.isFinite(Number(anime.id)) && Number(anime.id) > 0) ||
             (Number.isFinite(Number(anime.mal_id)) && Number(anime.mal_id) > 0)
@@ -1502,7 +1549,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     const prefetchEpisodes = (anime: Anime) => {
-        if (anime.scraperId && extractDirectScraperSession(anime.scraperId)) {
+        if (anime.scraperId && isAnimePaheSessionId(extractDirectScraperSession(anime.scraperId))) {
             resolveAndCacheEpisodes(anime).catch(console.error);
             return;
         }

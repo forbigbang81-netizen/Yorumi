@@ -433,7 +433,6 @@ export function usePlayer(animeId: string | undefined, animeSlugTitle?: string) 
         if (Number.isFinite(episodeNumber) && episodeNumber > 0) {
             markEpisodeComplete(episodeNumber);
         }
-        bustEpisodeCache(ep.session);
         resetEpisodePlaybackState(false);
         setSearchParams({ ep: String(ep.episodeNumber) });
         loadStream(ep);

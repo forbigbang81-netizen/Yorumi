@@ -7,6 +7,7 @@ import AnimeCard from '../features/anime/components/AnimeCard';
 import AnimeCardSkeleton from '../features/anime/components/AnimeCardSkeleton';
 import Pagination from '../components/ui/Pagination';
 import { useAnime } from '../hooks/useAnime';
+import { getDirectScraperRouteId } from '../utils/animeNavigation';
 
 const FORMAT_CONFIG: Record<string, { label: string; anilistFormat: string | undefined }> = {
     popular:  { label: 'Most Popular', anilistFormat: undefined },
@@ -22,16 +23,9 @@ export default function AnimeFormatPage() {
     const format = location.pathname.split('/').pop() || '';
     const navigate = useNavigate();
     const { prefetchEpisodes } = useAnime();
-    const getDirectScraperRouteId = (value: unknown) => {
-        const raw = String(value || '')
-            .trim()
-            .replace(/^https?:\/\/[^/]+/i, '')
-            .replace(/^\/+/, '')
-            .replace(/^watch\//i, '');
-        if (!raw) return '';
-        const session = raw.startsWith('s:') ? raw.slice(2).trim() : raw;
-        if (!session || /^\d+$/.test(session)) return '';
-        return `s:${session}`;
+    const toPositiveNumber = (value: unknown): number => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
     };
 
     const config = FORMAT_CONFIG[format];
@@ -98,14 +92,14 @@ export default function AnimeFormatPage() {
     };
 
     const handleAnimeClick = (item: Anime) => {
-        const id = item.id || item.mal_id || getDirectScraperRouteId(item.scraperId);
+        const id = toPositiveNumber(item.id) || toPositiveNumber(item.mal_id) || getDirectScraperRouteId(item.scraperId);
         if (!id) return;
         navigate(`/anime/details/${id}`, { state: { anime: item } });
     };
 
     const handleWatchClick = (item: Anime) => {
         const title = slugify(item.title || item.title_english || 'anime');
-        const id = getDirectScraperRouteId(item.scraperId) || (item.id || item.mal_id);
+        const id = getDirectScraperRouteId(item.scraperId) || toPositiveNumber(item.id) || toPositiveNumber(item.mal_id);
         if (!id) return;
         const latestEpisode = Number(item.latestEpisode || 0);
         const ep = latestEpisode > 0 && item.status !== 'Finished Airing'

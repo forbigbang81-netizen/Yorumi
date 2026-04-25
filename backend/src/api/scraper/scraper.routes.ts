@@ -64,7 +64,15 @@ const getAnimeKaiListItems = (items: any[]) => buildAnimeKaiFallbackItems(items)
 
 const refreshSpotlightCache = async (): Promise<{ spotlight: any[] }> => {
     const rawItems = await animeKaiScraper.getSpotlightAnime();
-    const spotlight = await enrichAnimeKaiItems(rawItems);
+    if (rawItems.length === 0) {
+        throw new Error('AnimeKai spotlight returned no items');
+    }
+
+    const rawSpotlight = buildAnimeKaiFallbackItems(rawItems);
+    const spotlight = await Promise.race([
+        enrichAnimeKaiItems(rawItems),
+        new Promise<any[]>((resolve) => setTimeout(() => resolve(rawSpotlight), 2500)),
+    ]);
     const payload = { spotlight };
 
     if (spotlight.length > 0) {
@@ -237,7 +245,26 @@ router.get('/animekai/spotlight', async (_req, res) => {
     } catch (error: any) {
         console.error('AnimeKai spotlight scrape failed, serving stale:', error?.message || error);
         const stale = await getStaleSpotlight();
+        if (!Array.isArray(stale.spotlight) || stale.spotlight.length === 0) {
+            res.set('Cache-Control', 'no-store');
+            res.status(503).json({ error: 'AnimeKai spotlight temporarily unavailable' });
+            return;
+        }
         res.json(stale);
+    }
+});
+
+router.get('/search/animepahe', async (req, res) => {
+    try {
+        const query = req.query.q as string;
+        if (!query) {
+            return res.status(400).json({ error: 'Query parameter q is required' });
+        }
+        const result = await scraperService.searchAnimePahe(query);
+        res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
     }
 });
 

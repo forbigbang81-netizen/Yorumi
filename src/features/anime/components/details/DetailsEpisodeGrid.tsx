@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Episode } from '../../../../types/anime';
 
 interface DetailsEpisodeGridProps {
@@ -10,23 +10,14 @@ interface DetailsEpisodeGridProps {
 export default function DetailsEpisodeGrid({ episodes, watchedEpisodes, onEpisodeClick }: DetailsEpisodeGridProps) {
     const ITEMS_PER_PAGE = 30;
     const [page, setPage] = useState(1);
+    const totalPages = Math.ceil(episodes.length / ITEMS_PER_PAGE);
+    const currentPage = Math.min(page, totalPages || 1);
 
     if (episodes.length === 0) {
         return <div className="text-gray-500 text-center py-4">No episodes found.</div>;
     }
 
-    const totalPages = Math.ceil(episodes.length / ITEMS_PER_PAGE);
-    const visibleEpisodes = episodes.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
-
-    useEffect(() => {
-        setPage(1);
-    }, [episodes.length, episodes[0]?.session, episodes[episodes.length - 1]?.session]);
-
-    useEffect(() => {
-        if (page > totalPages) {
-            setPage(totalPages || 1);
-        }
-    }, [page, totalPages]);
+    const visibleEpisodes = episodes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
     return (
         <div className="py-6 border-t border-white/10 mt-6">
@@ -55,8 +46,8 @@ export default function DetailsEpisodeGrid({ episodes, watchedEpisodes, onEpisod
                     <div className="flex flex-col items-center gap-4 mt-6">
                         <div className="flex flex-wrap justify-center gap-2">
                             <button
-                                onClick={() => setPage((current) => Math.max(1, current - 1))}
-                                disabled={page === 1}
+                                onClick={() => setPage(Math.max(1, currentPage - 1))}
+                                disabled={currentPage === 1}
                                 className="min-w-10 rounded-md bg-white/10 px-3 py-1 text-sm text-gray-300 transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                                 Prev
@@ -66,15 +57,15 @@ export default function DetailsEpisodeGrid({ episodes, watchedEpisodes, onEpisod
                                     key={pageNumber}
                                     onClick={() => setPage(pageNumber)}
                                     className={`min-w-8 rounded-full px-2 py-1 text-sm transition-colors ${
-                                        page === pageNumber ? 'bg-yorumi-500 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                                        currentPage === pageNumber ? 'bg-yorumi-500 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
                                     }`}
                                 >
                                     {pageNumber}
                                 </button>
                             ))}
                             <button
-                                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                                disabled={page === totalPages}
+                                onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                                disabled={currentPage === totalPages}
                                 className="min-w-10 rounded-md bg-white/10 px-3 py-1 text-sm text-gray-300 transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                                 Next

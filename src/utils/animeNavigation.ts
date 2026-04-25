@@ -9,6 +9,9 @@ const toPositiveNumber = (value: unknown): number => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
 
+export const isAnimePaheSessionId = (value: unknown): boolean =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+
 export const getDirectScraperRouteId = (value: unknown): string => {
     const raw = String(value || '')
         .trim()
@@ -20,7 +23,7 @@ export const getDirectScraperRouteId = (value: unknown): string => {
 
     const normalized = raw.startsWith('s:') ? raw : `s:${raw}`;
     const session = normalized.slice(2).trim();
-    return session ? normalized : '';
+    return isAnimePaheSessionId(session) ? normalized : '';
 };
 
 export const getAnimeDetailsRouteId = (item: AnimeRouteTarget): string | number | '' => {

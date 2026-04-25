@@ -7,7 +7,7 @@ import { mappingService } from '../mapping/mapping.service';
 import { scraperService } from '../scraper/scraper.service';
 
 const router = Router();
-const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v4';
+const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v5';
 const HOME_FAST_TTL_SECONDS = 120;
 let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
 let homeFastRefreshPromise: Promise<any> | null = null;
@@ -18,10 +18,20 @@ const isAnimePaheSession = (value: unknown) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 const isGenericScraperSession = (value: unknown) => /^[a-z0-9-]+$/i.test(String(value || '').trim());
 const normalizeTitleToken = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-const hasExplicitSeasonMarker = (title: string) =>
-    /\bseason\s*\d+\b/i.test(String(title || '')) || /\b\d+(st|nd|rd|th)\s*season\b/i.test(String(title || ''));
+const hasExplicitSeasonMarker = (title: string) => {
+    const value = String(title || '');
+    return (
+        /\bseason\s*\d+\b/i.test(value) ||
+        /\b\d+(st|nd|rd|th)\s*season\b/i.test(value) ||
+        /(?:^|\s)[2-9]$/i.test(value.trim())
+    );
+};
 const getSeasonNumber = (title: string) => {
-    const match = String(title || '').match(/\bseason\s*(\d+)\b/i) || String(title || '').match(/\b(\d+)(st|nd|rd|th)\s*season\b/i);
+    const value = String(title || '');
+    const match =
+        value.match(/\bseason\s*(\d+)\b/i) ||
+        value.match(/\b(\d+)(st|nd|rd|th)\s*season\b/i) ||
+        value.trim().match(/(?:^|\s)([2-9])$/i);
     return match ? parseInt(match[1], 10) : 1;
 };
 const getTargetSeasonNumber = (details: any) =>
@@ -114,27 +124,39 @@ const rankAgainstAnime = (details: any, candidate: any) => {
 };
 const findRankedScraperCandidates = async (details: any) => {
     const titles = buildScraperQueries(details);
-    const resultSets = await Promise.all(
-        titles.map((title) => scraperService.search(title).catch(() => []))
-    );
     const candidateMap = new Map<string, any>();
-
-    resultSets.forEach((found) => {
-        if (!Array.isArray(found)) return;
-        found.forEach((candidate) => {
-            if (candidate?.session && !candidateMap.has(String(candidate.session))) {
-                candidateMap.set(String(candidate.session), candidate);
-            }
-        });
-    });
-
-    return [...candidateMap.values()]
+    const rankCandidates = () => [...candidateMap.values()]
         .map((candidate) => ({
             candidate,
             score: rankAgainstAnime(details, candidate),
         }))
         .filter((entry) => entry.score > 0)
         .sort((a, b) => b.score - a.score);
+
+    const searchAndAdd = async (batch: string[]) => {
+        const resultSets = await Promise.all(
+            batch.map((title) => scraperService.searchAnimePahe(title).catch(() => []))
+        );
+
+        resultSets.forEach((found) => {
+            if (!Array.isArray(found)) return;
+            found.forEach((candidate) => {
+                if (candidate?.session && isAnimePaheSession(candidate.session) && !candidateMap.has(String(candidate.session))) {
+                    candidateMap.set(String(candidate.session), candidate);
+                }
+            });
+        });
+    };
+
+    for (let index = 0; index < titles.length; index += 3) {
+        await searchAndAdd(titles.slice(index, index + 3));
+        const ranked = rankCandidates();
+        if (ranked[0]?.score >= 90) {
+            return ranked;
+        }
+    }
+
+    return rankCandidates();
 };
 const pickPreferredScraperCandidate = (
     details: any,
@@ -183,8 +205,16 @@ const isCompatibleResolvedSession = (
 
     return bestScore - currentEntry.score <= 80;
 };
-const getExpectedEpisodeCount = (details: any) =>
-    Number(details?.nextAiringEpisode?.episode ? details.nextAiringEpisode.episode - 1 : (details?.episodes || 0));
+const getExpectedEpisodeCount = (details: any) => {
+    if (details?.nextAiringEpisode?.episode) {
+        return Number(details.nextAiringEpisode.episode - 1);
+    }
+
+    const status = String(details?.status || '').toUpperCase();
+    if (status === 'RELEASING') return 0;
+
+    return Number(details?.episodes || 0);
+};
 const hasSufficientEpisodes = (details: any, episodes: any[]) => {
     if (!Array.isArray(episodes) || episodes.length === 0) return false;
     const expectedEpisodes = getExpectedEpisodeCount(details);
@@ -254,8 +284,16 @@ const buildHomeFastPayload = async () => {
     };
     const [spotlight, latestEpisodesRaw, trending, seasonal, monthly, topAnime, topNow, topWeek, topMonth] = await Promise.all([
         withTimeout(
-            animeKaiScraper.getSpotlightAnime().then((items) => enrichAnimeKaiItems(Array.isArray(items) ? items : [])),
-            4000,
+            animeKaiScraper.getSpotlightAnime().then(async (items) => {
+                const rawItems = Array.isArray(items) ? items : [];
+                if (rawItems.length === 0) return [];
+                const rawSpotlight = buildAnimeKaiFallbackItems(rawItems);
+                return Promise.race([
+                    enrichAnimeKaiItems(rawItems),
+                    new Promise<any[]>((resolve) => setTimeout(() => resolve(rawSpotlight), 2500)),
+                ]);
+            }),
+            5000,
             [] as any[]
         ),
         withTimeout(animeKaiScraper.getLatestUpdates(), 1800, [] as any[]),
@@ -290,6 +328,9 @@ const refreshHomeFastCache = async () => {
     homeFastRefreshPromise = (async () => {
         try {
             const payload = await buildHomeFastPayload();
+            if (!Array.isArray(payload.spotlight) || payload.spotlight.length === 0) {
+                throw new Error('Home fast payload missing AnimeKai spotlight');
+            }
             homeFastMemoryCache = { data: payload, timestamp: Date.now() };
             await redis.set(HOME_FAST_CACHE_KEY, payload, { ex: HOME_FAST_TTL_SECONDS });
             return payload;
@@ -311,11 +352,14 @@ router.get('/home-fast', async (_req, res) => {
         }
 
         const redisHit = await redis.get<any>(HOME_FAST_CACHE_KEY).catch(() => null);
-        if (redisHit) {
+        if (redisHit && Array.isArray(redisHit.spotlight) && redisHit.spotlight.length > 0) {
             homeFastMemoryCache = { data: redisHit, timestamp: Date.now() };
             res.json(redisHit);
             refreshHomeFastCache().catch(() => undefined);
             return;
+        }
+        if (redisHit) {
+            redis.del(HOME_FAST_CACHE_KEY).catch(() => undefined);
         }
 
         const fresh = await refreshHomeFastCache();
@@ -567,7 +611,7 @@ router.get('/anime/:id/fast', async (req, res) => {
         }
 
         // Fast path: serve composed response from Redis (skip for scraper IDs)
-        const composedCacheKey = `fast-composed:v3:${id}`;
+        const composedCacheKey = `fast-composed:v4:${id}`;
         if (!id.startsWith('s:')) {
             try {
                 const composedCached = await redis.get<any>(composedCacheKey).catch(() => null);

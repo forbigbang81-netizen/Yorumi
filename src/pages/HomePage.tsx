@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useAnime } from '../hooks/useAnime';
 import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
@@ -9,6 +9,7 @@ import { animeService } from '../services/animeService';
 import AnimeDashboard from '../features/anime/components/AnimeDashboard';
 import AnimeGridPage from '../features/anime/components/AnimeGridPage';
 import ContinueWatching from '../features/anime/components/ContinueWatching';
+import { getDirectScraperRouteId } from '../utils/animeNavigation';
 
 export default function HomePage() {
     const navigate = useNavigate();
@@ -17,22 +18,16 @@ export default function HomePage() {
     const filteredTopAnime = Array.isArray(anime.topAnime) ? anime.topAnime : [];
     const allTimeTitle = 'All-Time Popular';
     const routeResolutionCache = useRef(new Map<string, Promise<{ routeId: string | number; anime: Anime } | null>>());
+    const resolvedRouteCache = useRef(new Map<string, { routeId: string | number; anime: Anime }>());
 
     useEffect(() => {
         anime.fetchHomeData();
     }, []);
 
     // Navigation Handlers
-    const getDirectScraperRouteId = (value: unknown) => {
-        const raw = String(value || '')
-            .trim()
-            .replace(/^https?:\/\/[^/]+/i, '')
-            .replace(/^\/+/, '')
-            .replace(/^watch\//i, '');
-        if (!raw) return '';
-        const session = raw.startsWith('s:') ? raw.slice(2).trim() : raw;
-        if (!session || /^\d+$/.test(session)) return '';
-        return `s:${session}`;
+    const toPositiveNumber = (value: unknown): number => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
     };
 
     const getWatchRouteId = (item: Anime): string | number | undefined => {
@@ -40,7 +35,7 @@ export default function HomePage() {
         if (scraperRouteId) {
             return scraperRouteId;
         }
-        return item.id || item.mal_id;
+        return toPositiveNumber(item.id) || toPositiveNumber(item.mal_id) || undefined;
     };
 
     const normalizeTitle = (value: unknown) =>
@@ -49,20 +44,35 @@ export default function HomePage() {
             .replace(/[^a-z0-9]+/g, ' ')
             .trim();
 
-    const resolveRouteTarget = async (item: Anime): Promise<{ routeId: string | number; anime: Anime } | null> => {
+    const getRouteResolutionKey = useCallback((item: Anime) => {
+        const query = item.title_english || item.title_romaji || item.title || item.title_japanese;
+        if (!query) return '';
+        return [
+            normalizeTitle(query),
+            Number(item.latestEpisode || item.episodes || 0),
+            normalizeTitle(item.type)
+        ].join(':');
+    }, []);
+
+    const getImmediateRouteTarget = useCallback((item: Anime): { routeId: string | number; anime: Anime } | null => {
         const directRouteId = getWatchRouteId(item);
         if (directRouteId) {
             return { routeId: directRouteId, anime: item };
         }
 
+        const routeKey = getRouteResolutionKey(item);
+        return routeKey ? resolvedRouteCache.current.get(routeKey) || null : null;
+    }, [getRouteResolutionKey]);
+
+    const resolveRouteTarget = useCallback(async (item: Anime): Promise<{ routeId: string | number; anime: Anime } | null> => {
+        const immediate = getImmediateRouteTarget(item);
+        if (immediate) return immediate;
+
         const query = item.title_english || item.title_romaji || item.title || item.title_japanese;
         if (!query) return null;
 
-        const routeKey = [
-            normalizeTitle(query),
-            Number(item.latestEpisode || item.episodes || 0),
-            normalizeTitle(item.type)
-        ].join(':');
+        const routeKey = getRouteResolutionKey(item);
+        if (!routeKey) return null;
 
         if (!routeResolutionCache.current.has(routeKey)) {
             routeResolutionCache.current.set(routeKey, (async () => {
@@ -117,24 +127,26 @@ export default function HomePage() {
                 const bestMatch = ranked.find((entry: { candidate: Anime; score: number }) => entry.score > 0)?.candidate || search.data?.[0];
                 if (!bestMatch) return null;
 
-                return {
+                const resolved = {
                     routeId: bestMatch.id || bestMatch.mal_id,
                     anime: { ...item, ...bestMatch }
                 };
+                resolvedRouteCache.current.set(routeKey, resolved);
+                return resolved;
             })());
         }
 
         return routeResolutionCache.current.get(routeKey)!;
-    };
+    }, [getImmediateRouteTarget, getRouteResolutionKey]);
 
     const handleAnimeClick = async (item: Anime) => {
-        const resolved = await resolveRouteTarget(item);
+        const resolved = getImmediateRouteTarget(item) || await resolveRouteTarget(item);
         if (!resolved) return;
         navigate(`/anime/details/${resolved.routeId}`, { state: { anime: resolved.anime } });
     };
 
     const handleWatchClick = async (item: Anime, episodeNumber?: number, startSeconds?: number) => {
-        const resolved = await resolveRouteTarget(item);
+        const resolved = getImmediateRouteTarget(item) || await resolveRouteTarget(item);
         if (!resolved) return;
 
         const title = slugify(resolved.anime.title || resolved.anime.title_english || item.title || 'anime');
@@ -172,6 +184,14 @@ export default function HomePage() {
             resolveRouteTarget(item).catch(() => undefined);
         }
     };
+
+    useEffect(() => {
+        anime.spotlightAnime.slice(0, 8).forEach((item) => {
+            if (!getWatchRouteId(item)) {
+                resolveRouteTarget(item).catch(() => undefined);
+            }
+        });
+    }, [anime.spotlightAnime, resolveRouteTarget]);
 
     // Scroll to top on mount
     useEffect(() => {

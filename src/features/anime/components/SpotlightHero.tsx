@@ -12,11 +12,12 @@ interface SpotlightHeroProps {
     isLoading?: boolean;
     onAnimeClick: (anime: Anime) => void;
     onWatchClick: (anime: Anime) => void;
+    onAnimeHover?: (anime: Anime) => void;
 }
 
 
 
-const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = false, onAnimeClick, onWatchClick }) => {
+const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = false, onAnimeClick, onWatchClick, onAnimeHover }) => {
     const { language } = useTitleLanguage();
     // Embla Carousel hook with Autoplay
     const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -43,6 +44,13 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
         };
     }, [emblaApi, onSelect]);
 
+    useEffect(() => {
+        const activeAnime = animeList[selectedIndex];
+        if (activeAnime) {
+            onAnimeHover?.(activeAnime);
+        }
+    }, [animeList, onAnimeHover, selectedIndex]);
+
     const handleNext = useCallback(() => {
         if (emblaApi) emblaApi.scrollNext();
     }, [emblaApi]);
@@ -55,13 +63,9 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
         if (emblaApi) emblaApi.scrollTo(index);
     }, [emblaApi]);
 
-    // Show skeleton only while the hero is actively loading.
-    if (isLoading) {
+    // Keep the hero's space reserved until spotlight data is available.
+    if (isLoading || animeList.length === 0) {
         return <SpotlightSkeleton />;
-    }
-
-    if (animeList.length === 0) {
-        return null;
     }
 
     return (
@@ -140,6 +144,9 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
                                                 <AnimeLogoImage
                                                     anilistId={anime.id || anime.mal_id}
                                                     title={getDisplayTitle(anime as unknown as Record<string, unknown>, language)}
+                                                    year={anime.year}
+                                                    episodes={anime.latestEpisode || anime.episodes}
+                                                    format={anime.type}
                                                     className="drop-shadow-2xl max-h-full origin-left object-contain"
                                                     size="medium"
                                                     style={{ maxHeight: 'inherit' }}
@@ -187,6 +194,8 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
 
                                             <div className="flex gap-4 pointer-events-auto z-20">
                                                 <button
+                                                    onMouseEnter={() => onAnimeHover?.(anime)}
+                                                    onFocus={() => onAnimeHover?.(anime)}
                                                     onClick={() => onWatchClick(anime)}
                                                     className="bg-yorumi-accent text-yorumi-bg px-6 md:px-8 py-3 md:py-3.5 rounded-full font-bold hover:bg-white transition-all duration-300 transform hover:scale-105 flex items-center gap-3 shadow-[0_0_20px_rgba(61,180,242,0.3)] hover:shadow-[0_0_30px_rgba(61,180,242,0.6)] text-sm md:text-base"
                                                 >
@@ -196,6 +205,8 @@ const SpotlightHero: React.FC<SpotlightHeroProps> = ({ animeList, isLoading = fa
                                                     Watch Now
                                                 </button>
                                                 <button
+                                                    onMouseEnter={() => onAnimeHover?.(anime)}
+                                                    onFocus={() => onAnimeHover?.(anime)}
                                                     onClick={() => onAnimeClick(anime)}
                                                     className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-6 md:px-8 py-3 md:py-3.5 rounded-full font-bold hover:bg-white/20 transition-all duration-300 flex items-center gap-2 text-sm md:text-base"
                                                 >

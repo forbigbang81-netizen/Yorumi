@@ -45,8 +45,15 @@ const extractAnimePaheSession = (value: unknown) => {
         ? normalized
         : '';
 };
-const getExpectedEpisodeCount = (anime?: Partial<Anime> | null) =>
-    Number(anime?.latestEpisode || anime?.episodes || 0);
+const getExpectedEpisodeCount = (anime?: Partial<Anime> | null) => {
+    const latestEpisode = Number(anime?.latestEpisode || 0);
+    if (latestEpisode > 0) return latestEpisode;
+
+    const status = String(anime?.status || '').toUpperCase();
+    if (status === 'RELEASING') return 0;
+
+    return Number(anime?.episodes || 0);
+};
 type LatestUpdatesResult = { data: Anime[] };
 type LatestUpdatesPageResult = {
     data: Anime[];
@@ -393,7 +400,7 @@ const clearCachedStream = (key: string) => {
 };
 
 const getAnimeDetailsCacheKey = (id: number | string) => `anime-details:v3:${id}`;
-const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v7:${id}`;
+const getAnimeDetailsFastCacheKey = (id: number | string) => `anime-details-fast:v8:${id}`;
 const getStreamCacheKey = (animeSession: string, episodeSession: string) =>
     `streams:${STREAM_CACHE_VERSION}:${animeSession}:${episodeSession}`;
 const isAnimePaheOnlyStream = (item: any) => {
@@ -433,7 +440,7 @@ export const animeService = {
     },
 
     async getHomeFastData() {
-        const cacheKey = 'home-fast-data-v4';
+        const cacheKey = 'home-fast-data-v5';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
@@ -914,6 +921,9 @@ export const animeService = {
             const cachedAnime = (cached as any)?.data as Anime | null | undefined;
             const cachedEpisodes = Array.isArray((cached as any)?.episodes) ? (cached as any).episodes : [];
             const cachedSession = String((cached as any)?.scraperSession || '').trim();
+            if (cachedSession && cachedEpisodes.length > 0) {
+                return cached;
+            }
             if (hasSufficientEpisodePayload(cachedAnime, { episodes: cachedEpisodes })) {
                 return cached;
             }
@@ -933,15 +943,16 @@ export const animeService = {
                 }
                 const payload = await res.json();
                 const mappedAnime = payload?.anime ? (mapAnilistToAnime(payload.anime) as Anime) : null;
-                if (mappedAnime && payload?.scraperSession) {
-                    mappedAnime.scraperId = String(payload.scraperSession);
+                const animePaheSession = extractAnimePaheSession(payload?.scraperSession);
+                if (mappedAnime && animePaheSession) {
+                    mappedAnime.scraperId = animePaheSession;
                 }
                 const result = {
                     data: mappedAnime,
                     episodes: Array.isArray(payload?.episodes) ? payload.episodes : [],
-                    scraperSession: payload?.scraperSession ? String(payload.scraperSession) : null,
+                    scraperSession: animePaheSession || null,
                 };
-                if (hasSufficientEpisodePayload(mappedAnime, result) || (result.scraperSession && result.episodes.length === 0)) {
+                if (hasSufficientEpisodePayload(mappedAnime, result) || Boolean(result.scraperSession)) {
                     setCache(cacheKey, result, DETAIL_CACHE_TTL);
                 }
                 return result;
@@ -971,6 +982,32 @@ export const animeService = {
             params: { q: title },
         });
         return data;
+    },
+
+    async searchAnimePahe(title: string) {
+        const normalizedTitle = title.trim().toLowerCase();
+        const cacheKey = `animepahe-search:${normalizedTitle}`;
+        const cached = getCached(cacheKey, SCRAPER_SEARCH_TTL);
+        if (cached) return cached;
+        if (inFlightRequests.has(cacheKey)) {
+            return inFlightRequests.get(cacheKey);
+        }
+
+        const fetchPromise = apiClient.get('/scraper/search/animepahe', {
+            params: { q: title },
+        })
+            .then(({ data }) => {
+                if (Array.isArray(data) && data.length > 0) {
+                    setCache(cacheKey, data, SCRAPER_SEARCH_TTL);
+                }
+                return data;
+            })
+            .finally(() => {
+                inFlightRequests.delete(cacheKey);
+            });
+
+        inFlightRequests.set(cacheKey, fetchPromise);
+        return fetchPromise;
     },
 
     // Get popular this season from AniList (Deduplicated)

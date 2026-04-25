@@ -2,22 +2,28 @@ import { useState, useEffect } from 'react';
 import { API_BASE } from '../../config/api';
 
 interface AnimeLogoImageProps {
-    anilistId: number;
+    anilistId?: number | null;
     title: string;
+    year?: number;
+    episodes?: number | null;
+    format?: string;
     className?: string;
     style?: React.CSSProperties;
     size?: 'small' | 'medium' | 'large'; // small: 80px, medium: 120px, large: 160px
 }
 
-const LOGO_CACHE_KEY = 'yorumi_logo_cache';
+const LOGO_CACHE_KEY = 'yorumi_logo_cache_v2';
 
 // Hydrate logo cache from localStorage on module load
-function loadCacheFromStorage(): Map<number, string | null> {
+function loadCacheFromStorage(): Map<string, string | null> {
     try {
         const stored = localStorage.getItem(LOGO_CACHE_KEY);
         if (stored) {
             const parsed = JSON.parse(stored);
-            const entries = Object.entries(parsed).map(([k, v]) => [parseInt(k), v] as [number, string | null]);
+            const entries = Object.entries(parsed).map(([k, v]) => [
+                k.includes(':') ? k : `id:${parseInt(k, 10)}`,
+                typeof v === 'string' ? v : null
+            ] as [string, string | null]);
             console.log(`[LogoCache] Hydrated ${entries.length} logos from storage`);
             return new Map(entries);
         }
@@ -29,7 +35,17 @@ function loadCacheFromStorage(): Map<number, string | null> {
 
 // Shared logo cache - hydrated from localStorage
 const logoCache = loadCacheFromStorage();
-const pendingRequests = new Map<number, Promise<string | null>>();
+const pendingRequests = new Map<string, Promise<string | null>>();
+
+const getPositiveId = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const getTitleCacheKey = (title: string) => {
+    const normalized = title.replace(/\s+/g, ' ').trim().toLowerCase();
+    return normalized ? `title:${normalized}` : null;
+};
 
 // Debounced save to localStorage
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -37,7 +53,7 @@ function persistCache() {
     if (saveTimeout) clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
         try {
-            const obj: Record<number, string | null> = {};
+            const obj: Record<string, string | null> = {};
             logoCache.forEach((v, k) => { obj[k] = v; });
             localStorage.setItem(LOGO_CACHE_KEY, JSON.stringify(obj));
             console.log('[LogoCache] Persisted to storage');
@@ -53,7 +69,10 @@ function persistCache() {
  */
 export async function preloadLogos(anilistIds: number[]): Promise<void> {
     // Filter out already cached IDs
-    const uncachedIds = anilistIds.filter(id => !logoCache.has(id));
+    const uncachedIds = anilistIds
+        .map(getPositiveId)
+        .filter((id): id is number => Boolean(id))
+        .filter(id => !logoCache.has(`id:${id}`));
 
     if (uncachedIds.length === 0) {
         return; // All cached, no logging needed
@@ -74,10 +93,10 @@ export async function preloadLogos(anilistIds: number[]): Promise<void> {
             for (const [id, result] of Object.entries(data)) {
                 const logoResult = result as { logo: string | null; source: 'fanart' | 'fallback' };
                 if (logoResult.source === 'fanart' && logoResult.logo) {
-                    logoCache.set(parseInt(id), logoResult.logo);
+                    logoCache.set(`id:${parseInt(id, 10)}`, logoResult.logo);
                     newCount++;
                 } else {
-                    logoCache.set(parseInt(id), null);
+                    logoCache.set(`id:${parseInt(id, 10)}`, null);
                 }
             }
             if (newCount > 0) {
@@ -90,7 +109,7 @@ export async function preloadLogos(anilistIds: number[]): Promise<void> {
     }
 }
 
-export default function AnimeLogoImage({ anilistId, title, className = '', size = 'medium', style }: AnimeLogoImageProps) {
+export default function AnimeLogoImage({ anilistId, title, year, episodes, format, className = '', size = 'medium', style }: AnimeLogoImageProps) {
     const [logoUrl, setLogoUrl] = useState<string | null>(null);
     const [hasError, setHasError] = useState(false);
 
@@ -108,11 +127,20 @@ export default function AnimeLogoImage({ anilistId, title, className = '', size 
         let isMounted = true;
         setLogoUrl(null);
         setHasError(false);
+        const resolvedId = getPositiveId(anilistId);
+        const cacheKey = resolvedId ? `id:${resolvedId}` : getTitleCacheKey(title);
+
+        if (!cacheKey) {
+            setHasError(true);
+            return () => {
+                isMounted = false;
+            };
+        }
 
         const fetchLogo = async () => {
             // Check cache first
-            if (logoCache.has(anilistId)) {
-                const cached = logoCache.get(anilistId);
+            if (logoCache.has(cacheKey)) {
+                const cached = logoCache.get(cacheKey);
                 if (isMounted) {
                     if (cached) {
                         setLogoUrl(cached);
@@ -125,8 +153,8 @@ export default function AnimeLogoImage({ anilistId, title, className = '', size 
             }
 
             // Check if there's already a pending request for this ID
-            if (pendingRequests.has(anilistId)) {
-                const result = await pendingRequests.get(anilistId);
+            if (pendingRequests.has(cacheKey)) {
+                const result = await pendingRequests.get(cacheKey);
                 if (isMounted) {
                     if (result) {
                         setLogoUrl(result);
@@ -141,7 +169,14 @@ export default function AnimeLogoImage({ anilistId, title, className = '', size 
             // Make new request
             const fetchPromise = (async () => {
                 try {
-                    const logoEndpoint = `${API_BASE}/logo/${anilistId}`;
+                    const params = new URLSearchParams();
+                    params.set('title', title);
+                    if (year) params.set('year', String(year));
+                    if (episodes) params.set('episodes', String(episodes));
+                    if (format) params.set('format', format);
+                    const logoEndpoint = resolvedId
+                        ? `${API_BASE}/logo/${resolvedId}`
+                        : `${API_BASE}/logo/resolve?${params.toString()}`;
                     const response = await fetch(logoEndpoint);
 
                     if (!response.ok) {
@@ -151,25 +186,28 @@ export default function AnimeLogoImage({ anilistId, title, className = '', size 
                     const data = await response.json();
 
                     if (data.logo && data.source === 'fanart') {
-                        logoCache.set(anilistId, data.logo);
+                        logoCache.set(cacheKey, data.logo);
+                        if (data.anilistId) {
+                            logoCache.set(`id:${data.anilistId}`, data.logo);
+                        }
                         persistCache();
                         return data.logo;
                     } else {
-                        logoCache.set(anilistId, null);
+                        logoCache.set(cacheKey, null);
                         persistCache();
                         return null;
                     }
                 } catch (error) {
                     console.warn('[AnimeLogoImage] Failed to fetch logo:', error);
-                    logoCache.set(anilistId, null);
+                    logoCache.set(cacheKey, null);
                     persistCache();
                     return null;
                 } finally {
-                    pendingRequests.delete(anilistId);
+                    pendingRequests.delete(cacheKey);
                 }
             })();
 
-            pendingRequests.set(anilistId, fetchPromise);
+            pendingRequests.set(cacheKey, fetchPromise);
             const result = await fetchPromise;
 
             if (isMounted) {
@@ -187,7 +225,7 @@ export default function AnimeLogoImage({ anilistId, title, className = '', size 
         return () => {
             isMounted = false;
         };
-    }, [anilistId]);
+    }, [anilistId, title, year, episodes, format]);
 
     // If logo is available and no error, show the logo
     if (logoUrl && !hasError) {

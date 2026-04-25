@@ -238,7 +238,7 @@ export class ScraperService {
 
     async search(query: string) {
         const normalized = query.toLowerCase().trim();
-        return this.getOrLoad(`search:v5:${normalized}`, 2 * 60 * 1000, async () => {
+        return this.getOrLoad(`search:v6:${normalized}`, 2 * 60 * 1000, async () => {
             const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
                 try {
                     return await Promise.race([
@@ -271,6 +271,24 @@ export class ScraperService {
 
             return merged;
         });
+    }
+
+    async searchAnimePahe(query: string) {
+        const normalized = query.toLowerCase().trim();
+        return this.getOrLoad(
+            `search:animepahe:v1:${normalized}`,
+            5 * 60 * 1000,
+            async () => {
+                const results = await this.fastScraper.search(query);
+                return Array.isArray(results)
+                    ? results.filter((item: any) => this.isAnimePaheSession(String(item?.session || '')))
+                    : [];
+            },
+            {
+                shouldCache: (value) => Array.isArray(value) && value.length > 0,
+                allowCached: (value) => Array.isArray(value) && value.length > 0,
+            }
+        );
     }
 
     async getEpisodes(session: string) {

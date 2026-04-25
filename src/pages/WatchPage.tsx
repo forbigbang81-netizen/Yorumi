@@ -212,7 +212,6 @@ export default function WatchPage() {
                                 {/* Video Player Card - Maximized & End-to-End Alignment */}
                                 <div className="shrink-0 w-full aspect-video flex items-center justify-center overflow-hidden relative">
                                     <VideoPlayer
-                                        key={epNum}
                                         streamUrl={currentStream?.url}
                                         episodeSession={currentEpisode?.session ?? epNum}
                                         isHls={currentStream?.isHls}

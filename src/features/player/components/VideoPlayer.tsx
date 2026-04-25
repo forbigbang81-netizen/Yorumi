@@ -35,8 +35,14 @@ export default function VideoPlayer({
     const onLoadRef = useRef(onLoad);
     const startAtRef = useRef(startAtSeconds);
     const hasAppliedStartRef = useRef(false);
-    onLoadRef.current = onLoad;
-    startAtRef.current = startAtSeconds;
+
+    useEffect(() => {
+        onLoadRef.current = onLoad;
+    }, [onLoad]);
+
+    useEffect(() => {
+        startAtRef.current = startAtSeconds;
+    }, [startAtSeconds]);
 
     const isHlsStream = isHls || (() => {
         if (!streamUrl) return false;
@@ -72,6 +78,14 @@ export default function VideoPlayer({
             const hls = new Hls({
                 enableWorker: true,
                 lowLatencyMode: true,
+                startFragPrefetch: true,
+                maxBufferLength: 12,
+                maxMaxBufferLength: 24,
+                maxBufferSize: 30 * 1000 * 1000,
+                backBufferLength: 30,
+                liveSyncDurationCount: 2,
+                liveMaxLatencyDurationCount: 4,
+                progressive: true,
             });
             hlsRef.current = hls;
             hls.loadSource(streamUrl);
