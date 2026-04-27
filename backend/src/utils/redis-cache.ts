@@ -64,7 +64,6 @@ export async function acquireLock(key: string, ttlSeconds: number): Promise<bool
             return result === 'OK';
         } catch (error) {
             console.warn(`[acquireLock] Redis lock failed for "${key}"`, error);
-            return false;
         }
     }
 
@@ -81,7 +80,6 @@ export async function releaseLock(key: string): Promise<void> {
     if (redis) {
         try {
             await redis.del(key);
-            return;
         } catch (error) {
             console.warn(`[releaseLock] Redis unlock failed for "${key}"`, error);
         }

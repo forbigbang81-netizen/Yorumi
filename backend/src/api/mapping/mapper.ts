@@ -10,31 +10,104 @@ type RedisLike = {
     hget<T>(key: string, field: string): Promise<T | null>;
     hset(key: string, value: Record<string, unknown>): Promise<unknown>;
 };
+type MemoryEntry = { value: unknown; expiresAt: number | null };
 
 const hasRedisConfig = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 
-const redis: RedisLike = hasRedisConfig
+const upstashRedis = hasRedisConfig
     ? new Redis({
         url: process.env.UPSTASH_REDIS_REST_URL!,
         token: process.env.UPSTASH_REDIS_REST_TOKEN!,
     })
-    : {
-        async get<T>() {
-            return null;
-        },
-        async set() {
-            return null;
-        },
-        async del() {
-            return null;
-        },
-        async hget<T>() {
-            return null;
-        },
-        async hset() {
-            return null;
-        },
-    };
+    : null;
+
+const memoryStore = new Map<string, MemoryEntry>();
+const memoryHashStore = new Map<string, Map<string, unknown>>();
+
+function getTtlMs(options?: Record<string, unknown>) {
+    const ex = Number(options?.ex);
+    return Number.isFinite(ex) && ex > 0 ? ex * 1000 : null;
+}
+
+function getMemoryValue<T>(key: string): T | null {
+    const entry = memoryStore.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
+        memoryStore.delete(key);
+        return null;
+    }
+    return entry.value as T;
+}
+
+function setMemoryValue(key: string, value: unknown, options?: Record<string, unknown>) {
+    if (options?.nx && getMemoryValue(key) !== null) return null;
+    const ttlMs = getTtlMs(options);
+    memoryStore.set(key, {
+        value,
+        expiresAt: ttlMs === null ? null : Date.now() + ttlMs,
+    });
+    return 'OK';
+}
+
+const redis: RedisLike = {
+    async get<T>(key: string) {
+        if (upstashRedis) {
+            try {
+                return await upstashRedis.get<T>(key);
+            } catch (error) {
+                console.warn(`[redis] Read failed for "${key}", using memory fallback`, error);
+            }
+        }
+        return getMemoryValue<T>(key);
+    },
+    async set(key: string, value: unknown, options?: Record<string, unknown>) {
+        if (upstashRedis) {
+            try {
+                return await upstashRedis.set(key, value, options);
+            } catch (error) {
+                console.warn(`[redis] Write failed for "${key}", using memory fallback`, error);
+            }
+        }
+        return setMemoryValue(key, value, options);
+    },
+    async del(key: string) {
+        memoryStore.delete(key);
+        memoryHashStore.delete(key);
+        if (upstashRedis) {
+            try {
+                return await upstashRedis.del(key);
+            } catch (error) {
+                console.warn(`[redis] Delete failed for "${key}"`, error);
+            }
+        }
+        return null;
+    },
+    async hget<T>(key: string, field: string) {
+        if (upstashRedis) {
+            try {
+                return await upstashRedis.hget<T>(key, field);
+            } catch (error) {
+                console.warn(`[redis] Hash read failed for "${key}.${field}", using memory fallback`, error);
+            }
+        }
+        return (memoryHashStore.get(key)?.get(field) as T | undefined) ?? null;
+    },
+    async hset(key: string, value: Record<string, unknown>) {
+        if (upstashRedis) {
+            try {
+                return await upstashRedis.hset(key, value);
+            } catch (error) {
+                console.warn(`[redis] Hash write failed for "${key}", using memory fallback`, error);
+            }
+        }
+        const hash = memoryHashStore.get(key) ?? new Map<string, unknown>();
+        for (const [field, fieldValue] of Object.entries(value)) {
+            hash.set(field, fieldValue);
+        }
+        memoryHashStore.set(key, hash);
+        return null;
+    },
+};
 
 const ANILIST_ENDPOINT = 'https://graphql.anilist.co';
 
