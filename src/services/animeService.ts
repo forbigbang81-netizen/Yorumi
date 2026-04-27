@@ -185,6 +185,7 @@ const mapScraperToAnime = (item: any) => {
 
 const mapTopTenItemToAnime = (item: any, index: number): Anime => {
     const anime = mapAnilistToAnime(item.anilist || {}) as Anime;
+    const score = typeof item.score === 'number' ? item.score : parseFloat(item.score || '0');
     if (item.poster) {
         const posterUrl = getDisplayImageUrl(item.poster);
         anime.images.jpg.image_url = posterUrl;
@@ -196,10 +197,11 @@ const mapTopTenItemToAnime = (item: any, index: number): Anime => {
         anime.id = fallbackId || anime.id || 0;
         anime.mal_id = fallbackId || anime.mal_id || 0;
         anime.title = item.title || anime.title;
-        anime.score = anime.score || 0;
         anime.type = anime.type || 'TV';
         anime.episodes = anime.episodes ?? (item.sub || null);
     }
+    anime.score = Number.isFinite(score) && score > 0 ? score : anime.score || 0;
+    anime.rating = item.rating || anime.rating;
     if (!anime.mal_id) {
         anime.mal_id = (parseInt(item.dataId || '', 10) || 0) || (index + 1);
     }
@@ -289,7 +291,7 @@ const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
 const AZ_LIST_CACHE_TTL = 10 * 60 * 1000;
 const ANIMEKAI_GENRES_CACHE_TTL = 12 * 60 * 60 * 1000;
 const ANIMEKAI_GENRE_PAGE_CACHE_TTL = 10 * 60 * 1000;
-const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v3';
+const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v5';
 const STREAM_CACHE_VERSION = 'v4';
 const PERSISTED_STREAM_CACHE_PREFIX = `yorumi_stream_cache_${STREAM_CACHE_VERSION}`;
 
@@ -1357,7 +1359,7 @@ export const animeService = {
 
     // Get AnimeKai Top Trending for the home sidebar.
     async getAnimeKaiTopTrending(range: 'now' | 'week' | 'month') {
-        const cacheKey = `animekai-top-trending-${range}`;
+        const cacheKey = `animekai-top-trending-v3-${range}`;
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 

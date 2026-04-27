@@ -409,7 +409,11 @@ router.get('/animekai/top-trending', async (req, res) => {
         const range = ['now', 'day', 'week', 'month'].includes(requestedRange)
             ? requestedRange as 'now' | 'day' | 'week' | 'month'
             : 'now';
-        const top10 = await animeKaiScraper.getTopTrending(range);
+        const rawTop10 = await animeKaiScraper.getTopTrending(range);
+        const top10 = await Promise.race([
+            enrichAnimeKaiItems(rawTop10),
+            new Promise<any[]>((resolve) => setTimeout(() => resolve(buildAnimeKaiFallbackItems(rawTop10)), 5000)),
+        ]);
         res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
         res.json({ top10 });
     } catch (error: any) {

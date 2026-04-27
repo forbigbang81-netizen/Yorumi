@@ -19,6 +19,7 @@ type AnimeKaiListItem = {
     dub?: number;
     link: string;
     scraperId: string;
+    dataId?: string;
 };
 type AnimeKaiSpotlightItem = AnimeKaiListItem & {
     banner?: string;
@@ -311,10 +312,11 @@ export class AnimeKaiScraper {
             const tabId = range === 'now' ? 'trending' : range;
             const items: AnimeKaiListItem[] = [];
 
-            $(`#trending-anime .tab-body[data-id="${tabId}"] > a.aitem`).each((_, element) => {
+            $(`#trending-anime .tab-body[data-id="${tabId}"] > a.aitem`).slice(0, 10).each((_, element) => {
                 const $el = $(element);
                 const href = String($el.attr('href') || '').trim();
                 const scraperId = href.replace(/^\/watch\//, '').trim();
+                const dataId = String($el.find('.num').first().attr('data-tip') || '').trim();
                 const titleEl = $el.find('.detail .title').first();
                 const title = String(titleEl.text() || '').trim();
                 const jname = String(titleEl.attr('data-jp') || '').trim();
@@ -336,6 +338,7 @@ export class AnimeKaiScraper {
                     dub: dub || undefined,
                     link: `${ANIMEKAI_HOME_BASE}${href}`,
                     scraperId,
+                    dataId: dataId || undefined,
                 });
             });
 

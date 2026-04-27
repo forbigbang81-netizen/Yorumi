@@ -7,7 +7,7 @@ import { mappingService } from '../mapping/mapping.service';
 import { scraperService } from '../scraper/scraper.service';
 
 const router = Router();
-const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v5';
+const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v7';
 const HOME_FAST_TTL_SECONDS = 120;
 let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
 let homeFastRefreshPromise: Promise<any> | null = null;
@@ -323,9 +323,39 @@ const buildHomeFastPayload = async () => {
         withTimeout(anilistService.getPopularThisSeason(1, 10), 4000, { media: [] }),
         withTimeout(anilistService.getPopularThisMonth(1, 10), 4000, { media: [] }),
         withTimeout(anilistService.getTopAnime(1, 18), 4000, { media: [], pageInfo: { lastPage: 1, currentPage: 1, hasNextPage: false } }),
-        withTimeout(animeKaiScraper.getTopTrending('now'), 2500, [] as any[]),
-        withTimeout(animeKaiScraper.getTopTrending('week'), 2500, [] as any[]),
-        withTimeout(animeKaiScraper.getTopTrending('month'), 2500, [] as any[]),
+        withTimeout(
+            animeKaiScraper.getTopTrending('now').then((items) => {
+                const rawItems = Array.isArray(items) ? items : [];
+                return Promise.race([
+                    enrichAnimeKaiItems(rawItems),
+                    new Promise<any[]>((resolve) => setTimeout(() => resolve(buildAnimeKaiFallbackItems(rawItems)), 5000)),
+                ]);
+            }),
+            6500,
+            [] as any[]
+        ),
+        withTimeout(
+            animeKaiScraper.getTopTrending('week').then((items) => {
+                const rawItems = Array.isArray(items) ? items : [];
+                return Promise.race([
+                    enrichAnimeKaiItems(rawItems),
+                    new Promise<any[]>((resolve) => setTimeout(() => resolve(buildAnimeKaiFallbackItems(rawItems)), 5000)),
+                ]);
+            }),
+            6500,
+            [] as any[]
+        ),
+        withTimeout(
+            animeKaiScraper.getTopTrending('month').then((items) => {
+                const rawItems = Array.isArray(items) ? items : [];
+                return Promise.race([
+                    enrichAnimeKaiItems(rawItems),
+                    new Promise<any[]>((resolve) => setTimeout(() => resolve(buildAnimeKaiFallbackItems(rawItems)), 5000)),
+                ]);
+            }),
+            6500,
+            [] as any[]
+        ),
     ]);
     const latestEpisodes = buildAnimeKaiFallbackItems(Array.isArray(latestEpisodesRaw) ? latestEpisodesRaw : []);
 
