@@ -12,6 +12,14 @@ const toPositiveNumber = (value: unknown): number => {
 export const isAnimePaheSessionId = (value: unknown): boolean =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
+export const isGenericScraperSessionId = (value: unknown): boolean =>
+    /^[a-z0-9-]+$/i.test(String(value || '').trim());
+
+export const isSupportedScraperSessionId = (value: unknown): boolean => {
+    const normalized = String(value || '').trim();
+    return isAnimePaheSessionId(normalized) || isGenericScraperSessionId(normalized);
+};
+
 export const getDirectScraperRouteId = (value: unknown): string => {
     const raw = String(value || '')
         .trim()
@@ -22,8 +30,8 @@ export const getDirectScraperRouteId = (value: unknown): string => {
     if (!raw) return '';
 
     const normalized = raw.startsWith('s:') ? raw : `s:${raw}`;
-    const session = normalized.slice(2).trim();
-    return isAnimePaheSessionId(session) ? normalized : '';
+    const session = normalized.slice(2).trim().split(/[?#]/)[0];
+    return isSupportedScraperSessionId(session) ? `s:${session}` : '';
 };
 
 export const getAnimeDetailsRouteId = (item: AnimeRouteTarget): string | number | '' => {

@@ -268,6 +268,20 @@ router.get('/search/animepahe', async (req, res) => {
     }
 });
 
+router.get('/search/animekai', async (req, res) => {
+    try {
+        const query = req.query.q as string;
+        if (!query) {
+            return res.status(400).json({ error: 'Query parameter q is required' });
+        }
+        const result = await scraperService.searchAnimeKai(query);
+        res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.get('/animekai/latest-updates', async (_req, res) => {
     res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     try {
@@ -411,7 +425,10 @@ router.get('/episodes', async (req, res) => {
         }
         // Support hybrid s: IDs (strip prefix)
         const realSession = session.startsWith('s:') ? session.substring(2) : session;
-        const result = await scraperService.getEpisodes(realSession);
+        const result = await Promise.race([
+            scraperService.getEpisodes(realSession),
+            new Promise((resolve) => setTimeout(() => resolve({ episodes: [], lastPage: 1 }), 30_000)),
+        ]);
         res.set('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
         res.json(result);
     } catch (error: any) {

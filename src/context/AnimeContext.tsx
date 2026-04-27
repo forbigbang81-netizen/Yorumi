@@ -6,7 +6,7 @@ import { storage } from '../utils/storage';
 import { preloadLogos } from '../components/anime/AnimeLogoImage';
 import { useAuth } from './AuthContext';
 import { getDisplayImageUrl } from '../utils/image';
-import { isAnimePaheSessionId } from '../utils/animeNavigation';
+import { isAnimePaheSessionId, isSupportedScraperSessionId } from '../utils/animeNavigation';
 
 interface AnimeContextType {
     // State
@@ -306,7 +306,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     // SessionStorage-backed episode cache (survives in-app navigation)
-    const EPISODE_CACHE_PREFIX = 'yorumi_ep_cache';
+    const EPISODE_CACHE_PREFIX = 'yorumi_ep_cache_v2';
     const readEpisodeSessionCache = (animeKey: string): { session: string; episodes: Episode[] } | null => {
         try {
             const raw = sessionStorage.getItem(`${EPISODE_CACHE_PREFIX}:${animeKey}`);
@@ -833,22 +833,27 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         const getScore = (candidate: any, target: Anime) => {
             let score = 0;
             const canTitle = candidate.title || '';
-            const tgtTitle = target.title || '';
+            const targetTitles = buildScraperQueries(target);
 
             // 1. Text Similarity (strict + loose variant checks)
             const canNorm = normalize(canTitle);
-            const tgtNorm = normalize(tgtTitle);
             const canLoose = normalizeLoose(canTitle);
-            const tgtLoose = normalizeLoose(tgtTitle);
-            if (
-                canNorm.includes(tgtNorm) || tgtNorm.includes(canNorm) ||
-                canLoose.includes(tgtLoose) || tgtLoose.includes(canLoose)
-            ) {
+            const matchedTitle = targetTitles.find((title) => {
+                const tgtNorm = normalize(title);
+                const tgtLoose = normalizeLoose(title);
+                return (
+                    canNorm.includes(tgtNorm) || tgtNorm.includes(canNorm) ||
+                    canLoose.includes(tgtLoose) || tgtLoose.includes(canLoose)
+                );
+            });
+            if (matchedTitle) {
                 score += 10;
+            } else {
+                return -100;
             }
 
             // 2. Season Matching
-            const targetSeason = getSeason(tgtTitle) || (target.season ? 1 : 1); // Default to 1 if not specified
+            const targetSeason = getSeason(matchedTitle) || (target.season ? 1 : 1); // Default to 1 if not specified
             const candidateSeason = getSeason(canTitle);
 
             // Explicit Season Mismatch is a huge penalty
@@ -904,25 +909,27 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
 
         const isStrictCandidate = (candidate: any, target: Anime) => {
             const canTitle = String(candidate?.title || '').trim();
-            const tgtTitle = String(target?.title_english || target?.title_romaji || target?.title || '').trim();
-            if (!canTitle || !tgtTitle) return false;
+            const targetTitles = buildScraperQueries(target);
+            if (!canTitle || targetTitles.length === 0) return false;
 
             const canNorm = normalize(canTitle);
-            const tgtNorm = normalize(tgtTitle);
             const canLoose = normalizeLoose(canTitle);
-            const tgtLoose = normalizeLoose(tgtTitle);
-            const titleMatch =
-                canNorm.includes(tgtNorm) ||
-                tgtNorm.includes(canNorm) ||
-                canLoose.includes(tgtLoose) ||
-                tgtLoose.includes(canLoose);
-            if (!titleMatch) return false;
+            const matchedTitle = targetTitles.find((title) => {
+                const tgtNorm = normalize(title);
+                const tgtLoose = normalizeLoose(title);
+                return (
+                    canNorm.includes(tgtNorm) ||
+                    tgtNorm.includes(canNorm) ||
+                    canLoose.includes(tgtLoose) ||
+                    tgtLoose.includes(canLoose)
+                );
+            });
+            if (!matchedTitle) return false;
 
-            const targetSeason = getSeason(tgtTitle);
+            const targetSeason = getSeason(matchedTitle);
             const candidateSeason = getSeason(canTitle);
             const seasonMatch =
                 targetSeason <= 1 ||
-                candidateSeason <= 1 ||
                 candidateSeason === targetSeason;
             if (!seasonMatch) return false;
 
@@ -1411,7 +1418,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
         setDetailsLoading(!(cachedDetails?.data || cachedFast?.data || hasRenderablePrimaryDetails(anime)));
 
         const shouldPreloadEpisodesImmediately = !hydratedEpisodesApplied && Boolean(
-            isAnimePaheSessionId(extractDirectScraperSession(anime.scraperId)) ||
+            isSupportedScraperSessionId(extractDirectScraperSession(anime.scraperId)) ||
             String(anime.title || '').trim() ||
             (Number.isFinite(Number(anime.id)) && Number(anime.id) > 0) ||
             (Number.isFinite(Number(anime.mal_id)) && Number(anime.mal_id) > 0)
@@ -1549,7 +1556,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     };
 
     const prefetchEpisodes = (anime: Anime) => {
-        if (anime.scraperId && isAnimePaheSessionId(extractDirectScraperSession(anime.scraperId))) {
+        if (anime.scraperId && isSupportedScraperSessionId(extractDirectScraperSession(anime.scraperId))) {
             resolveAndCacheEpisodes(anime).catch(console.error);
             return;
         }

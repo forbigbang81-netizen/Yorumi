@@ -54,10 +54,19 @@ export interface AnimeInfo {
 export class AnimePaheScraper {
     private browser: Browser | null = null;
     private readonly requestHeaders = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0',
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
         'Accept-Language': 'en-US,en;q=0.9',
+        'Cookie': '__ddg2_=;',
+        'DNT': '1',
         'Referer': BASE_URL,
+        'Sec-CH-UA': '"Not A(Brand";v="99", "Microsoft Edge";v="121", "Chromium";v="121"',
+        'Sec-CH-UA-Mobile': '?0',
+        'Sec-CH-UA-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+        'X-Requested-With': 'XMLHttpRequest',
     };
     private readonly EPISODE_FETCH_CONCURRENCY = 6;
 
@@ -103,24 +112,7 @@ export class AnimePaheScraper {
         try {
             const response = await axios.get(url, {
                 headers: this.requestHeaders,
-                timeout: 10000,
-                responseType: 'json',
-            });
-            return response.data ?? null;
-        } catch (error) {
-            return null;
-        }
-    }
-
-    private async fetchApiJsonWithCookies(url: string, cookieHeader: string, referer?: string): Promise<any | null> {
-        try {
-            const response = await axios.get(url, {
-                headers: {
-                    ...this.requestHeaders,
-                    ...(referer ? { Referer: referer } : {}),
-                    ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-                },
-                timeout: 15000,
+                timeout: 7000,
                 responseType: 'json',
             });
             return response.data ?? null;
@@ -139,7 +131,6 @@ export class AnimePaheScraper {
     async search(query: string): Promise<AnimeSearchResult[]> {
         const searchUrl = `${API_URL}?m=search&q=${encodeURIComponent(query)}`;
 
-        // Fast path: direct API call via axios (no browser spin-up)
         const apiResponse = await this.fetchApiJson(searchUrl);
         if (apiResponse && Array.isArray(apiResponse.data)) {
             return apiResponse.data.map((item: any) => ({
@@ -156,61 +147,7 @@ export class AnimePaheScraper {
             }));
         }
 
-        // Fallback: Puppeteer path for protected responses
-        const browser = await this.getBrowser();
-        const page = await browser.newPage();
-        await page.setUserAgent(this.requestHeaders['User-Agent']);
-
-        try {
-            console.log(`Searching: ${searchUrl}`);
-
-            // Go directly to search URL
-            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-
-            // Wait for potential DDoS guard to resolve
-            // We check if the body looks like JSON (starts with {)
-            try {
-                await page.waitForFunction(
-                    () => document.body.innerText.trim().startsWith('{'),
-                    { timeout: 8000 } // Give it 8s max to resolve
-                );
-            } catch (e) {
-                console.log('Timeout waiting for JSON expectation, trying to parse anyway...');
-            }
-
-            const responseText = await page.evaluate(() => document.body.innerText);
-
-            let response: any;
-            try {
-                response = JSON.parse(responseText);
-            } catch (e) {
-                console.error("Failed to parse search JSON:", responseText);
-                return [];
-            }
-
-            console.log("Search Response:", JSON.stringify(response));
-
-            if (response && response.data) {
-                return response.data.map((item: any) => ({
-                    id: item.id,
-                    session: item.session,
-                    title: item.title,
-                    url: `/anime/${item.session}`,
-                    poster: item.poster,
-                    status: item.status,
-                    type: item.type,
-                    episodes: item.episodes,
-                    year: item.year,
-                    score: item.score
-                }));
-            }
-            return [];
-        } catch (error) {
-            console.error('Error during search:', error);
-            return [];
-        } finally {
-            await page.close();
-        }
+        return [];
     }
 
     private parseAnimeInfoFromHtml(html: string): AnimeInfo | null {
@@ -395,90 +332,6 @@ export class AnimePaheScraper {
                 complete: true,
             };
         };
-        const fetchEpisodesViaSolvedBrowserCookies = async () => {
-            const browser = await this.getBrowser();
-            const page = await browser.newPage();
-            await page.setUserAgent(this.requestHeaders['User-Agent']);
-
-            try {
-                await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                await this.waitForChallengeBypass(page, 70000);
-
-                let first: any | null = null;
-                let cookieHeader = '';
-                const apiWaitStartedAt = Date.now();
-                while (Date.now() - apiWaitStartedAt < 90000) {
-                    const cookies = await page.cookies();
-                    cookieHeader = cookies
-                        .map((cookie) => `${cookie.name}=${cookie.value}`)
-                        .join('; ')
-                        .trim();
-
-                    if (cookieHeader) {
-                        first = await this.fetchApiJsonWithCookies(buildEpisodesApiUrl(pageNum), cookieHeader, animeUrl);
-                        if (first && Array.isArray(first?.data)) {
-                            break;
-                        }
-                    }
-
-                    await new Promise((resolve) => setTimeout(resolve, 3000));
-                }
-
-                if (!first || !Array.isArray(first?.data)) return null;
-
-                const lastPage = Number(first?.last_page || 1);
-                const pages = [first];
-
-                for (let currentPage = pageNum + 1; currentPage <= lastPage; currentPage += 1) {
-                    let next: any | null = null;
-
-                    for (let attempt = 0; attempt < 3; attempt += 1) {
-                        const latestCookies = await page.cookies();
-                        const latestCookieHeader = latestCookies
-                            .map((cookie) => `${cookie.name}=${cookie.value}`)
-                            .join('; ')
-                            .trim();
-
-                        next = await this.fetchApiJsonWithCookies(
-                            buildEpisodesApiUrl(currentPage),
-                            latestCookieHeader || cookieHeader,
-                            animeUrl
-                        );
-
-                        if (next && Array.isArray(next?.data)) {
-                            break;
-                        }
-
-                        await new Promise((resolve) => setTimeout(resolve, 2000));
-                    }
-
-                    if (!next || !Array.isArray(next?.data)) {
-                        return {
-                            episodes: dedupeAndSortEpisodes(
-                                pages.flatMap((payload: any) => Array.isArray(payload?.data) ? mapApiEpisodes(payload.data) : [])
-                            ),
-                            lastPage,
-                            complete: false,
-                        };
-                    }
-
-                    pages.push(next);
-                }
-
-                return {
-                    episodes: dedupeAndSortEpisodes(
-                        pages.flatMap((payload: any) => Array.isArray(payload?.data) ? mapApiEpisodes(payload.data) : [])
-                    ),
-                    lastPage,
-                    complete: true,
-                };
-            } catch (error) {
-                return null;
-            } finally {
-                await page.close();
-            }
-        };
-
         const apiResult = await fetchEpisodesViaApi();
         if (apiResult?.episodes.length) {
             if (apiResult.complete && isCompletePayload(apiResult.episodes, apiResult.lastPage)) {
@@ -487,15 +340,7 @@ export class AnimePaheScraper {
             console.warn(`AnimePahe API returned partial episode list for ${animeSessionId}: ${apiResult.episodes.length}/${apiResult.lastPage} pages`);
         }
 
-        const solvedCookieResult = await fetchEpisodesViaSolvedBrowserCookies();
-        if (solvedCookieResult?.episodes.length) {
-            if (solvedCookieResult.complete && isCompletePayload(solvedCookieResult.episodes, solvedCookieResult.lastPage)) {
-                return { episodes: solvedCookieResult.episodes, lastPage: solvedCookieResult.lastPage };
-            }
-            console.warn(`AnimePahe solved-cookie episode fetch incomplete for ${animeSessionId}: ${solvedCookieResult.episodes.length}/${solvedCookieResult.lastPage} pages`);
-        }
-
-        // Puppeteer-first: AnimePahe's API is frequently challenge-protected for long-running series.
+        // Browser context is the only fallback inside the AnimePahe scraper, used when the direct API is challenge-protected.
         const browser = await this.getBrowser();
         const page = await browser.newPage();
         await page.setUserAgent(this.requestHeaders['User-Agent']);
@@ -514,8 +359,8 @@ export class AnimePaheScraper {
                 }
             });
 
-            await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await this.waitForChallengeBypass(page, 70000);
+            await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+            await this.waitForChallengeBypass(page, 20000);
 
             const browserApiResponse = await page.evaluate(async (sessionId) => {
                 const firstResponse = await fetch(`/api?m=release&id=${encodeURIComponent(sessionId)}&sort=episode_asc&page=1`, {
@@ -664,8 +509,8 @@ export class AnimePaheScraper {
                 }
             });
 
-            await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await this.waitForChallengeBypass(page, 70000);
+            await page.goto(animeUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+            await this.waitForChallengeBypass(page, 15000);
             const extractEpisodesFromHtml = (html: string): Episode[] => {
                 const $ = cheerio.load(String(html || ''));
                 const episodes: Episode[] = [];

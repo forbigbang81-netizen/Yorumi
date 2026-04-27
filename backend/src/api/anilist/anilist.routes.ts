@@ -75,6 +75,7 @@ const rankCandidate = (title: string, candidate: any) => {
     const source = normalizeTitleToken(title);
     const target = normalizeTitleToken(String(candidate?.title || ''));
     if (!source || !target) return 0;
+    if (source.length < 6 || target.length < 6) return 0;
     let score = 0;
     if (source === target) score += 100;
     else if (source.includes(target) || target.includes(source)) score += 70;
@@ -89,6 +90,7 @@ const rankCandidate = (title: string, candidate: any) => {
 const rankAgainstAnime = (details: any, candidate: any) => {
     const titles = buildScraperQueries(details);
     const titleScore = titles.reduce((best, title) => Math.max(best, rankCandidate(title, candidate)), 0);
+    if (titleScore <= 0) return 0;
     let score = titleScore;
     const targetSeason = getTargetSeasonNumber(details);
     const candidateTitle = String(candidate?.title || '');
@@ -141,8 +143,9 @@ const findRankedScraperCandidates = async (details: any) => {
         resultSets.forEach((found) => {
             if (!Array.isArray(found)) return;
             found.forEach((candidate) => {
-                if (candidate?.session && isAnimePaheSession(candidate.session) && !candidateMap.has(String(candidate.session))) {
-                    candidateMap.set(String(candidate.session), candidate);
+                const session = String(candidate?.session || '').trim();
+                if (session && isAnimePaheSession(session) && !candidateMap.has(session)) {
+                    candidateMap.set(session, candidate);
                 }
             });
         });
@@ -221,7 +224,26 @@ const hasSufficientEpisodes = (details: any, episodes: any[]) => {
     if (expectedEpisodes > 0 && episodes.length < expectedEpisodes) return false;
     return true;
 };
+const getEpisodesWithTimeout = async (session: string, timeoutMs = 9000) => {
+    let timedOut = false;
+    const timeout = new Promise<{ episodes: any[] }>((resolve) => {
+        setTimeout(() => {
+            timedOut = true;
+            resolve({ episodes: [] });
+        }, timeoutMs);
+    });
 
+    const result = await Promise.race([
+        scraperService.getEpisodes(session).catch(() => ({ episodes: [] })),
+        timeout,
+    ]);
+
+    if (timedOut) {
+        console.warn(`Episode fetch timed out for scraper session ${session}`);
+    }
+
+    return result;
+};
 const getFreshHomeFastFromMemory = () => {
     if (!homeFastMemoryCache) return null;
     if (Date.now() - homeFastMemoryCache.timestamp > HOME_FAST_TTL_SECONDS * 1000) return null;
@@ -611,7 +633,7 @@ router.get('/anime/:id/fast', async (req, res) => {
         }
 
         // Fast path: serve composed response from Redis (skip for scraper IDs)
-        const composedCacheKey = `fast-composed:v4:${id}`;
+        const composedCacheKey = `fast-composed:v8:${id}`;
         if (!id.startsWith('s:')) {
             try {
                 const composedCached = await redis.get<any>(composedCacheKey).catch(() => null);
@@ -740,7 +762,7 @@ router.get('/anime/:id/fast', async (req, res) => {
 
         let episodes: any[] = [];
         if (resolvedSession) {
-            const ep = await scraperService.getEpisodes(resolvedSession).catch(() => ({ episodes: [] }));
+            const ep = await getEpisodesWithTimeout(resolvedSession);
             episodes = Array.isArray(ep?.episodes) ? ep.episodes : [];
         }
 
@@ -753,9 +775,11 @@ router.get('/anime/:id/fast', async (req, res) => {
                 for (const { candidate } of rankedCandidates) {
                     const candidateSession = String(candidate?.session || '');
                     if (!candidateSession || candidateSession === String(resolvedSession || '')) continue;
+                    if (!isAnimePaheSession(candidateSession)) continue;
 
-                    const retry = await scraperService.getEpisodes(candidateSession).catch(() => ({ episodes: [] }));
+                    const retry = await getEpisodesWithTimeout(candidateSession);
                     const retryEpisodes = Array.isArray(retry?.episodes) ? retry.episodes : [];
+                    if (retryEpisodes.length === 0) continue;
                     if (!hasSufficientEpisodes(animeDetails, retryEpisodes)) continue;
 
                     resolvedSession = candidateSession;
