@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { LayoutList, LayoutGrid, Search, ArrowUpDown } from 'lucide-react';
 import type { Anime, Episode } from '../../../types/anime';
 
@@ -32,15 +32,6 @@ export default function EpisodeList({
 
     const getPreviewImage = (ep: Episode) => ep.snapshot || '';
 
-    // Auto-scroll to active episode
-    const activeEpRef = useRef<HTMLButtonElement>(null);
-
-    useEffect(() => {
-        if (activeEpRef.current) {
-            activeEpRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }
-    }, [currentEpNumber, viewMode]);
-
     // Filter + sort episodes
     const filteredEpisodes = episodes
         .filter(ep =>
@@ -51,6 +42,20 @@ export default function EpisodeList({
             const diff = parseFloat(a.episodeNumber) - parseFloat(b.episodeNumber);
             return sortAsc ? diff : -diff;
         });
+
+    // Auto-scroll only the episode pane after the long list has rendered.
+    const listScrollRef = useRef<HTMLDivElement>(null);
+    const activeEpRef = useRef<HTMLButtonElement>(null);
+
+    useLayoutEffect(() => {
+        const scrollPane = listScrollRef.current;
+        const activeEpisode = activeEpRef.current;
+        if (isLoading || !scrollPane || !activeEpisode) return;
+
+        const paneRect = scrollPane.getBoundingClientRect();
+        const episodeRect = activeEpisode.getBoundingClientRect();
+        scrollPane.scrollTop += episodeRect.top - paneRect.top;
+    }, [currentEpNumber, filteredEpisodes.length, isLoading, sortAsc, viewMode]);
 
     const getEpisodeMeta = (ep: Episode) => {
         const episodeNumber = parseFloat(String(ep.episodeNumber));
@@ -154,6 +159,7 @@ export default function EpisodeList({
             </div>
 
             <div 
+                ref={listScrollRef}
                 onScroll={handleScroll}
                 className={`flex-1 overflow-y-auto custom-scrollbar ${isScrolling ? 'is-scrolling' : ''}`}
             >

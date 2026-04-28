@@ -9,7 +9,6 @@ import { animeService } from '../services/animeService';
 import AnimeDashboard from '../features/anime/components/AnimeDashboard';
 import AnimeGridPage from '../features/anime/components/AnimeGridPage';
 import ContinueWatching from '../features/anime/components/ContinueWatching';
-import { getDirectScraperRouteId } from '../utils/animeNavigation';
 
 export default function HomePage() {
     const navigate = useNavigate();
@@ -31,10 +30,6 @@ export default function HomePage() {
     };
 
     const getWatchRouteId = (item: Anime): string | number | undefined => {
-        const scraperRouteId = getDirectScraperRouteId(item.scraperId);
-        if (scraperRouteId) {
-            return scraperRouteId;
-        }
         return toPositiveNumber(item.id) || toPositiveNumber(item.mal_id) || undefined;
     };
 
@@ -152,25 +147,16 @@ export default function HomePage() {
         const title = slugify(resolved.anime.title || resolved.anime.title_english || item.title || 'anime');
         const id = resolved.routeId;
 
-        let targetEp = episodeNumber;
+        let targetEp: number | string | undefined = episodeNumber;
+        const normalizedStatus = String(resolved.anime.status || item.status || '').toUpperCase();
         const knownLatestEpisode = Number(resolved.anime.latestEpisode || item.latestEpisode || 0);
 
         if (!targetEp) {
-            // Smart Logic:
-            // If Finished -> Play Episode 1
-            // If Airing -> Play Latest Episode
-            if (knownLatestEpisode > 0 && resolved.anime.status !== 'Finished Airing') {
-                targetEp = knownLatestEpisode as any;
-            } else if (resolved.anime.status === 'Finished Airing') {
-                targetEp = 1;
-            } else if (resolved.anime.status === 'Currently Airing') {
-                // Use 'latest' keyword - let the player determine the actual number
-                // based on the loaded episode list
-                targetEp = 'latest' as any;
-            } else {
-                // Default fallback (e.g. Not Yet Released or unknown)
-                targetEp = 1;
-            }
+            targetEp = knownLatestEpisode > 0 && normalizedStatus !== 'FINISHED'
+                ? knownLatestEpisode
+                : normalizedStatus === 'RELEASING'
+                    ? 'latest'
+                    : 1;
         }
 
         const resume = Number.isFinite(startSeconds) ? Math.max(0, Math.floor(startSeconds || 0)) : 0;
