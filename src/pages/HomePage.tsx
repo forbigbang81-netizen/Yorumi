@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useRef } from 'react';
 import { useAnime } from '../hooks/useAnime';
 import { slugify } from '../utils/slugify';
+import { getAnimeDetailsRouteId, getAnimeWatchRouteId } from '../utils/animeNavigation';
 import type { Anime } from '../types/anime';
 import { animeService } from '../services/animeService';
 
@@ -24,15 +25,6 @@ export default function HomePage() {
     }, []);
 
     // Navigation Handlers
-    const toPositiveNumber = (value: unknown): number => {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-    };
-
-    const getWatchRouteId = (item: Anime): string | number | undefined => {
-        return toPositiveNumber(item.id) || toPositiveNumber(item.mal_id) || undefined;
-    };
-
     const normalizeTitle = (value: unknown) =>
         String(value || '')
             .toLowerCase()
@@ -50,7 +42,7 @@ export default function HomePage() {
     }, []);
 
     const getImmediateRouteTarget = useCallback((item: Anime): { routeId: string | number; anime: Anime } | null => {
-        const directRouteId = getWatchRouteId(item);
+        const directRouteId = getAnimeDetailsRouteId(item);
         if (directRouteId) {
             return { routeId: directRouteId, anime: item };
         }
@@ -141,7 +133,10 @@ export default function HomePage() {
     };
 
     const handleWatchClick = async (item: Anime, episodeNumber?: number, startSeconds?: number) => {
-        const resolved = getImmediateRouteTarget(item) || await resolveRouteTarget(item);
+        const immediateWatchRouteId = getAnimeWatchRouteId(item);
+        const resolved = immediateWatchRouteId
+            ? { routeId: immediateWatchRouteId, anime: item }
+            : await resolveRouteTarget(item);
         if (!resolved) return;
 
         const title = slugify(resolved.anime.title || resolved.anime.title_english || item.title || 'anime');
@@ -166,14 +161,14 @@ export default function HomePage() {
 
     const handleAnimeHover = (item: Anime) => {
         anime.prefetchEpisodes(item);
-        if (!getWatchRouteId(item)) {
+        if (!getAnimeDetailsRouteId(item)) {
             resolveRouteTarget(item).catch(() => undefined);
         }
     };
 
     useEffect(() => {
         anime.spotlightAnime.slice(0, 8).forEach((item) => {
-            if (!getWatchRouteId(item)) {
+            if (!getAnimeDetailsRouteId(item)) {
                 resolveRouteTarget(item).catch(() => undefined);
             }
         });

@@ -1,10 +1,26 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Github } from 'lucide-react';
+import { Github, X } from 'lucide-react';
+import { CLOUDINARY_SHARED_ASSETS } from '../../config/cloudinaryAssets';
 import { animeService } from '../../services/animeService';
+
+const GCashLogo = () => (
+    <span className="flex h-6 w-6 items-center justify-center">
+        <img
+            src={CLOUDINARY_SHARED_ASSETS.gcashLogo}
+            onError={(event) => {
+                event.currentTarget.onerror = null;
+                event.currentTarget.src = '/gcash-logo.svg';
+            }}
+            alt=""
+            className="h-5 w-6 object-contain"
+        />
+    </span>
+);
 
 const Footer = () => {
     const location = useLocation();
+    const [isGcashQrOpen, setIsGcashQrOpen] = useState(false);
 
     // Determine active tab for styling (similar to App.tsx logic)
     // We can duplicate the logic or accept it as a prop. 
@@ -30,6 +46,19 @@ const Footer = () => {
 
         return () => window.clearTimeout(warmupId);
     }, [isManga]);
+
+    useEffect(() => {
+        if (!isGcashQrOpen) return;
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsGcashQrOpen(false);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isGcashQrOpen]);
 
     const prefetchLetter = (letter: string) => {
         if (isManga) return;
@@ -65,20 +94,16 @@ const Footer = () => {
                             <Github size={20} fill="currentColor" strokeWidth={0} />
                         </a>
 
-                        {/* Ko-fi */}
-                        <a
-                            href="https://ko-fi.com/davenarchives"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white transition-all duration-300 hover:bg-[#29ABE0] hover:scale-110"
-                            title="Ko-fi"
+                        {/* GCash donation */}
+                        <button
+                            type="button"
+                            onClick={() => setIsGcashQrOpen(true)}
+                            className="group relative w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white transition-all duration-300 hover:bg-[#1f9fe5] hover:scale-110"
+                            title="Donate any amount via GCash"
+                            aria-label="Show GCash donation QR code"
                         >
-                            <img
-                                src="https://cdn.prod.website-files.com/5c14e387dab576fe667689cf/670f5a01229bf8a18f97a3c1_favion.png"
-                                alt="Ko-fi"
-                                className="w-5 h-5 object-contain"
-                            />
-                        </a>
+                            <GCashLogo />
+                        </button>
                     </div>
                 </div>
 
@@ -127,6 +152,49 @@ const Footer = () => {
                     </p>
                 </div>
             </div>
+
+            {isGcashQrOpen && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="gcash-qr-title"
+                    onClick={() => setIsGcashQrOpen(false)}
+                >
+                    <div
+                        className="relative w-full max-w-xs rounded-lg border border-white/10 bg-[#101116] p-5 shadow-2xl"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => setIsGcashQrOpen(false)}
+                            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-white transition-colors hover:bg-white/10"
+                            aria-label="Close GCash donation QR code"
+                        >
+                            <X size={17} />
+                        </button>
+
+                        <div className="mb-4 flex items-center gap-2 pr-10">
+                            <GCashLogo />
+                            <h2 id="gcash-qr-title" className="text-base font-bold text-white">
+                                Donate via GCash
+                            </h2>
+                        </div>
+
+                        <div className="overflow-hidden rounded-md bg-white p-3">
+                            <img
+                                src={CLOUDINARY_SHARED_ASSETS.gcashQr}
+                                onError={(event) => {
+                                    event.currentTarget.onerror = null;
+                                    event.currentTarget.src = '/gcash-qr.png';
+                                }}
+                                alt="GCash donation QR code"
+                                className="aspect-square w-full object-contain"
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
         </footer>
     );
 };

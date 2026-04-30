@@ -11,6 +11,8 @@ const SHARED_PUBLIC_IDS = {
     yorumiIcon: 'yorumi/shared/yorumi-icon.svg',
     yorumiPng: 'yorumi/shared/yorumi.png',
     yorumiSvg: 'yorumi/shared/yorumi-svg.svg',
+    gcashLogo: 'yorumi/shared/gcash-logo.svg',
+    gcashQr: 'yorumi/shared/gcash-qr.png',
     luffyGif: 'yorumi/shared/luffy-loading.gif',
     reactSvg: 'yorumi/shared/react.svg'
 } as const;
@@ -21,6 +23,8 @@ export const CLOUDINARY_SHARED_ASSETS = {
     yorumiIcon: buildCloudinaryUrl(SHARED_PUBLIC_IDS.yorumiIcon),
     yorumiPng: buildCloudinaryUrl(SHARED_PUBLIC_IDS.yorumiPng),
     yorumiSvg: buildCloudinaryUrl(SHARED_PUBLIC_IDS.yorumiSvg),
+    gcashLogo: buildCloudinaryUrl(SHARED_PUBLIC_IDS.gcashLogo),
+    gcashQr: buildCloudinaryUrl(SHARED_PUBLIC_IDS.gcashQr),
     luffyGif: buildCloudinaryUrl(SHARED_PUBLIC_IDS.luffyGif),
     reactSvg: buildCloudinaryUrl(SHARED_PUBLIC_IDS.reactSvg)
 } as const;
@@ -41,6 +45,8 @@ export const resolveStaticAssetUrl = (value?: string | null) => {
     if (value === '/yorumi-icon.svg') return CLOUDINARY_SHARED_ASSETS.yorumiIcon;
     if (value === '/Yorumi.png') return CLOUDINARY_SHARED_ASSETS.yorumiPng;
     if (value === '/Yorumi.svg') return CLOUDINARY_SHARED_ASSETS.yorumiSvg;
+    if (value === '/gcash-logo.svg') return CLOUDINARY_SHARED_ASSETS.gcashLogo;
+    if (value === '/gcash-qr.png') return CLOUDINARY_SHARED_ASSETS.gcashQr;
     if (value === '/luffy.gif') return CLOUDINARY_SHARED_ASSETS.luffyGif;
 
     if (value.startsWith('/avatars/')) {
