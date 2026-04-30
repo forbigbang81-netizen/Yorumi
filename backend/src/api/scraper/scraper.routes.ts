@@ -14,8 +14,8 @@ let spotlightMemCache: { spotlight: any[] } | null = null;
 let latestUpdatesMemCache: { latestEpisodes: any[] } | null = null;
 const newReleasesMemCache = new Map<string, { data: any[]; pagination: any }>();
 const SPOTLIGHT_REDIS_KEY = 'animekai:spotlight:enriched';
-const LATEST_REDIS_KEY = 'animekai:latest-updates:enriched';
-const NEW_RELEASES_REDIS_PREFIX = 'animekai:new-releases:enriched';
+const LATEST_REDIS_KEY = 'animekai:latest-updates:enriched:v2';
+const NEW_RELEASES_REDIS_PREFIX = 'animekai:new-releases:enriched:v2';
 const CACHE_TTL_SECONDS = 300; // 5 min fresh window
 
 const buildAnimeKaiFallbackItems = (items: any[]) => {
@@ -60,7 +60,13 @@ const enrichAnimeKaiItems = async (items: any[]) => {
         .filter((item) => item?.title);
 };
 
-const getAnimeKaiListItems = (items: any[]) => buildAnimeKaiFallbackItems(items);
+const enrichAnimeKaiItemsWithFallback = async (items: any[], timeoutMs = 5000) => {
+    const rawItems = Array.isArray(items) ? items : [];
+    return Promise.race([
+        enrichAnimeKaiItems(rawItems),
+        new Promise<any[]>((resolve) => setTimeout(() => resolve(buildAnimeKaiFallbackItems(rawItems)), timeoutMs)),
+    ]);
+};
 
 const refreshSpotlightCache = async (): Promise<{ spotlight: any[] }> => {
     const rawItems = await animeKaiScraper.getSpotlightAnime();
@@ -114,7 +120,7 @@ const getStaleLatestUpdates = async (): Promise<{ latestEpisodes: any[] }> => {
 
 const refreshLatestUpdatesCache = async (): Promise<{ latestEpisodes: any[] }> => {
     const rawItems = await animeKaiScraper.getLatestUpdates();
-    const latestEpisodes = getAnimeKaiListItems(rawItems);
+    const latestEpisodes = await enrichAnimeKaiItemsWithFallback(rawItems, 4500);
     const payload = { latestEpisodes };
 
     if (latestEpisodes.length > 0) {
@@ -321,7 +327,7 @@ router.get('/recently-updated', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     try {
         const result = await animeKaiScraper.getNewReleases(page, limit);
-        const listItems = getAnimeKaiListItems(result.data);
+        const listItems = await enrichAnimeKaiItemsWithFallback(result.data, 6000);
         const payload = { data: listItems, pagination: result.pagination };
 
         if (listItems.length > 0) {
@@ -349,7 +355,7 @@ router.get('/animekai/new-releases', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     try {
         const result = await animeKaiScraper.getNewReleases(page, limit);
-        const listItems = getAnimeKaiListItems(result.data);
+        const listItems = await enrichAnimeKaiItemsWithFallback(result.data, 6000);
         const payload = { data: listItems, pagination: result.pagination };
 
         if (listItems.length > 0) {
@@ -410,10 +416,7 @@ router.get('/animekai/top-trending', async (req, res) => {
             ? requestedRange as 'now' | 'day' | 'week' | 'month'
             : 'now';
         const rawTop10 = await animeKaiScraper.getTopTrending(range);
-        const top10 = await Promise.race([
-            enrichAnimeKaiItems(rawTop10),
-            new Promise<any[]>((resolve) => setTimeout(() => resolve(buildAnimeKaiFallbackItems(rawTop10)), 5000)),
-        ]);
+        const top10 = await enrichAnimeKaiItemsWithFallback(rawTop10, 5000);
         res.set('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
         res.json({ top10 });
     } catch (error: any) {

@@ -87,7 +87,7 @@ export function AnimeProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
 
     // Cache reader (defined early so useState initializers can use it)
-    const HOME_CACHE_PREFIX = 'yorumi_home_cache_v5';
+    const HOME_CACHE_PREFIX = 'yorumi_home_cache_v6';
     const readHomeCache = <T,>(key: string, ttlMs: number): T | null => {
         try {
             const raw = localStorage.getItem(`${HOME_CACHE_PREFIX}:${key}`);

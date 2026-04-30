@@ -291,7 +291,7 @@ const SCRAPER_SEARCH_TTL = 5 * 60 * 1000;
 const AZ_LIST_CACHE_TTL = 10 * 60 * 1000;
 const ANIMEKAI_GENRES_CACHE_TTL = 12 * 60 * 60 * 1000;
 const ANIMEKAI_GENRE_PAGE_CACHE_TTL = 10 * 60 * 1000;
-const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v5';
+const PERSISTED_CACHE_PREFIX = 'yorumi_api_cache_v6';
 const STREAM_CACHE_VERSION = 'v4';
 const PERSISTED_STREAM_CACHE_PREFIX = `yorumi_stream_cache_${STREAM_CACHE_VERSION}`;
 
@@ -455,7 +455,7 @@ export const animeService = {
     },
 
     async getHomeFastData() {
-        const cacheKey = 'home-fast-data-v5';
+        const cacheKey = 'home-fast-data-v6';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
 
@@ -534,7 +534,7 @@ export const animeService = {
     },
 
     async getLatestUpdates(): Promise<LatestUpdatesResult> {
-        const cacheKey = 'latest-updates-3-10';
+        const cacheKey = 'latest-updates-4-10';
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
         const staleCached = getStaleCached(cacheKey);
@@ -577,7 +577,7 @@ export const animeService = {
     },
 
     async getLatestUpdatesPage(page: number = 1, limit: number = 18): Promise<LatestUpdatesPageResult> {
-        const cacheKey = `animekai-latest-updates-page-${page}-${limit}`;
+        const cacheKey = `animekai-latest-updates-page-v2-${page}-${limit}`;
         const cached = getCached(cacheKey, DETAIL_CACHE_TTL);
         if (cached) return cached;
         const staleCached = getStaleCached(cacheKey);

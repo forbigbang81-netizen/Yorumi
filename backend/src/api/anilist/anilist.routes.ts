@@ -7,7 +7,7 @@ import { mappingService } from '../mapping/mapping.service';
 import { scraperService } from '../scraper/scraper.service';
 
 const router = Router();
-const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v7';
+const HOME_FAST_CACHE_KEY = 'anilist:home:fast:v8';
 const HOME_FAST_TTL_SECONDS = 120;
 let homeFastMemoryCache: { data: any; timestamp: number } | null = null;
 let homeFastRefreshPromise: Promise<any> | null = null;
@@ -318,7 +318,17 @@ const buildHomeFastPayload = async () => {
             5000,
             [] as any[]
         ),
-        withTimeout(animeKaiScraper.getLatestUpdates(), 1800, [] as any[]),
+        withTimeout(
+            animeKaiScraper.getLatestUpdates().then((items) => {
+                const rawItems = Array.isArray(items) ? items : [];
+                return Promise.race([
+                    enrichAnimeKaiItems(rawItems),
+                    new Promise<any[]>((resolve) => setTimeout(() => resolve(buildAnimeKaiFallbackItems(rawItems)), 3500)),
+                ]);
+            }),
+            5000,
+            [] as any[]
+        ),
         withTimeout(anilistService.getTrendingAnime(1, 10), 4000, { media: [] }),
         withTimeout(anilistService.getPopularThisSeason(1, 10), 4000, { media: [] }),
         withTimeout(anilistService.getPopularThisMonth(1, 10), 4000, { media: [] }),
