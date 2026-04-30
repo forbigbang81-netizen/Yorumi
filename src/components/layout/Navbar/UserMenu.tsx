@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User as UserIcon, Cat, Book, LogOut } from 'lucide-react';
+import { User as UserIcon, Cat, Book, FileInput, LogOut } from 'lucide-react';
 
 interface UserMenuProps {
     user: any;
@@ -103,6 +103,13 @@ export default function UserMenu({
                         >
                             <Book className="w-5 h-5 text-gray-400 group-hover/item:text-white transition-colors" />
                             <span className="font-medium">Manga Overview</span>
+                        </button>
+                        <button
+                            onClick={() => handleNavigate('/profile?tab=import-export')}
+                            className="w-full flex items-center gap-3 px-4 py-3 bg-[#2a2a2a]/50 hover:bg-[#2a2a2a] text-gray-200 rounded-xl transition-all group/item"
+                        >
+                            <FileInput className="w-5 h-5 text-gray-400 group-hover/item:text-white transition-colors" />
+                            <span className="font-medium">Import/Export</span>
                         </button>
                     </div>
 

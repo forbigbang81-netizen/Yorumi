@@ -186,7 +186,7 @@ const Footer = () => {
                                 src={CLOUDINARY_SHARED_ASSETS.gcashQr}
                                 onError={(event) => {
                                     event.currentTarget.onerror = null;
-                                    event.currentTarget.src = '/gcash-qr.png';
+                                    event.currentTarget.src = '/donation.png';
                                 }}
                                 alt="GCash donation QR code"
                                 className="aspect-square w-full object-contain"

@@ -13,10 +13,11 @@ interface DetailsInfoProps {
     onWatch: () => void;
     onToggleList: () => void;
     onToggleFavorite?: () => void;
+    statusPicker?: React.ReactNode;
     children?: React.ReactNode;
 }
 
-export default function DetailsInfo({ anime, episodesCount, isLoading = false, inList, inFavorites = false, onWatch, onToggleList, onToggleFavorite, children }: DetailsInfoProps) {
+export default function DetailsInfo({ anime, episodesCount, isLoading = false, inList, inFavorites = false, onWatch, onToggleList, onToggleFavorite, statusPicker, children }: DetailsInfoProps) {
     const { language } = useTitleLanguage();
     const displayTitle = getDisplayTitle(anime as unknown as Record<string, unknown>, language);
     // ... helper ...
@@ -88,26 +89,29 @@ export default function DetailsInfo({ anime, episodesCount, isLoading = false, i
                         <Play className="w-4 h-4 md:w-5 md:h-5 fill-current" />
                         <span className="whitespace-nowrap">Watch Now</span>
                     </button>
-                    <button
-                        onClick={onToggleList}
-                        disabled={isLoading}
-                        className={`h-10 md:h-12 px-4 md:px-8 text-base md:text-lg font-bold rounded-full transition-all border flex items-center justify-center gap-2 flex-1 md:flex-none ${inList
-                            ? 'bg-yorumi-accent text-black border-yorumi-accent hover:bg-yorumi-accent/90'
-                            : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
-                            }`}
-                    >
-                        {inList ? (
-                            <>
-                                <Check className="w-4 h-4 md:w-5 md:h-5" />
-                                <span className="whitespace-nowrap">In List</span>
-                            </>
-                        ) : (
-                            <>
-                                <Plus className="w-4 h-4 md:w-5 md:h-5" />
-                                <span className="whitespace-nowrap">Add to List</span>
-                            </>
-                        )}
-                    </button>
+                    <div className="relative flex-1 md:flex-none">
+                        <button
+                            onClick={onToggleList}
+                            disabled={isLoading}
+                            className={`h-10 md:h-12 w-full px-4 md:px-8 text-base md:text-lg font-bold rounded-full transition-all border flex items-center justify-center gap-2 ${inList
+                                ? 'bg-yorumi-accent text-black border-yorumi-accent hover:bg-yorumi-accent/90'
+                                : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+                                }`}
+                        >
+                            {inList ? (
+                                <>
+                                    <Check className="w-4 h-4 md:w-5 md:h-5" />
+                                    <span className="whitespace-nowrap">In List</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Plus className="w-4 h-4 md:w-5 md:h-5" />
+                                    <span className="whitespace-nowrap">Add to List</span>
+                                </>
+                            )}
+                        </button>
+                        {statusPicker}
+                    </div>
                     <button
                         onClick={onToggleFavorite}
                         disabled={isLoading}

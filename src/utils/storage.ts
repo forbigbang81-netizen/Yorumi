@@ -49,7 +49,7 @@ export interface WatchListItem {
     title: string;
     image: string;
     addedAt: number;
-    status: 'watching' | 'completed' | 'plan_to_watch';
+    status: 'watching' | 'completed' | 'plan_to_watch' | 'dropped';
     score?: number;
     currentProgress?: number;
     totalCount?: number; // Episodes
@@ -64,7 +64,7 @@ export interface ReadListItem {
     title: string;
     image: string;
     addedAt: number;
-    status: 'reading' | 'completed' | 'plan_to_read';
+    status: 'reading' | 'completed' | 'plan_to_read' | 'dropped';
     score?: number;
     currentProgress?: number;
     totalCount?: number; // Chapters
@@ -275,6 +275,15 @@ export const storage = {
         }
     },
 
+    setContinueWatching: (items: WatchProgress[]) => {
+        try {
+            setScopedItem(STORAGE_KEYS.CONTINUE_WATCHING, JSON.stringify(Array.isArray(items) ? items : []));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to set continue watching:', error);
+        }
+    },
+
     removeFromContinueWatching: (animeId: string) => {
         try {
             addPendingDeleteId(STORAGE_KEYS.CONTINUE_WATCHING_PENDING_DELETES, animeId);
@@ -311,6 +320,15 @@ export const storage = {
         } catch (error) {
             console.error('Failed to get continue reading:', error);
             return [];
+        }
+    },
+
+    setContinueReading: (items: ReadProgress[]) => {
+        try {
+            setScopedItem(STORAGE_KEYS.CONTINUE_READING, JSON.stringify(Array.isArray(items) ? items : []));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to set continue reading:', error);
         }
     },
 
@@ -365,6 +383,15 @@ export const storage = {
         }
     },
 
+    setWatchList: (items: WatchListItem[]) => {
+        try {
+            setScopedItem(STORAGE_KEYS.WATCH_LIST, JSON.stringify(Array.isArray(items) ? items : []));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to set watch list:', error);
+        }
+    },
+
     isInWatchList: (animeId: string): boolean => {
         const list = storage.getWatchList();
         return list.some(item => item.id === animeId);
@@ -406,6 +433,15 @@ export const storage = {
         } catch (error) {
             console.error('Failed to get read list:', error);
             return [];
+        }
+    },
+
+    setReadList: (items: ReadListItem[]) => {
+        try {
+            setScopedItem(STORAGE_KEYS.READ_LIST, JSON.stringify(Array.isArray(items) ? items : []));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to set read list:', error);
         }
     },
 
@@ -473,6 +509,15 @@ export const storage = {
         } catch (error) {
             console.error('Failed to get anime watch time:', error);
             return {};
+        }
+    },
+
+    setAnimeWatchTime: (watchTime: Record<string, number>) => {
+        try {
+            setScopedItem(STORAGE_KEYS.ANIME_WATCH_TIME, JSON.stringify(watchTime || {}));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to set anime watch time:', error);
         }
     },
 
@@ -621,6 +666,15 @@ export const storage = {
             return data ? JSON.parse(data) : {};
         } catch {
             return {};
+        }
+    },
+
+    setChapterHistory: (history: Record<string, string[]>) => {
+        try {
+            setScopedItem(STORAGE_KEYS.CHAPTER_HISTORY, JSON.stringify(history || {}));
+            emitStorageUpdated();
+        } catch (error) {
+            console.error('Failed to set chapter history:', error);
         }
     },
 
@@ -1236,6 +1290,13 @@ storage.addToWatchList = (item, status) => {
     }
 };
 
+const originalSetWatchList = storage.setWatchList;
+storage.setWatchList = (items) => {
+    const uid = auth?.currentUser?.uid || null;
+    originalSetWatchList(items);
+    if (uid) scheduleCloudSync(uid);
+};
+
 const originalRemoveFromWatchList = storage.removeFromWatchList;
 storage.removeFromWatchList = (id) => {
     const uid = auth?.currentUser?.uid || null;
@@ -1255,6 +1316,13 @@ storage.addToReadList = (item, status) => {
             void setUserSubcollectionDoc(USER_SUBCOLLECTIONS.READ_LIST, latest.id, latest, uid);
         }
     }
+};
+
+const originalSetReadList = storage.setReadList;
+storage.setReadList = (items) => {
+    const uid = auth?.currentUser?.uid || null;
+    originalSetReadList(items);
+    if (uid) scheduleCloudSync(uid);
 };
 
 const originalSaveReadingProgress = storage.saveReadingProgress;
@@ -1277,6 +1345,20 @@ storage.saveReadingProgress = (progress) => {
         }
         scheduleCloudSync(uid);
     }
+};
+
+const originalSetContinueWatching = storage.setContinueWatching;
+storage.setContinueWatching = (items) => {
+    const uid = auth?.currentUser?.uid || null;
+    originalSetContinueWatching(items);
+    if (uid) scheduleCloudSync(uid);
+};
+
+const originalSetContinueReading = storage.setContinueReading;
+storage.setContinueReading = (items) => {
+    const uid = auth?.currentUser?.uid || null;
+    originalSetContinueReading(items);
+    if (uid) scheduleCloudSync(uid);
 };
 
 const originalRemoveFromReadList = storage.removeFromReadList;
@@ -1302,6 +1384,13 @@ storage.setEpisodeHistory = (history) => {
     if (uid) scheduleCloudSync(uid);
 };
 
+const originalSetChapterHistory = storage.setChapterHistory;
+storage.setChapterHistory = (history) => {
+    const uid = auth?.currentUser?.uid || null;
+    originalSetChapterHistory(history);
+    if (uid) scheduleCloudSync(uid);
+};
+
 const originalMarkChapterAsRead = storage.markChapterAsRead;
 storage.markChapterAsRead = (mangaId, chapterId) => {
     const uid = auth?.currentUser?.uid || null;
@@ -1313,6 +1402,13 @@ const originalAddAnimeWatchTime = storage.addAnimeWatchTime;
 storage.addAnimeWatchTime = (animeId, seconds) => {
     const uid = auth?.currentUser?.uid || null;
     originalAddAnimeWatchTime(animeId, seconds);
+    if (uid) scheduleCloudSync(uid);
+};
+
+const originalSetAnimeWatchTime = storage.setAnimeWatchTime;
+storage.setAnimeWatchTime = (watchTime) => {
+    const uid = auth?.currentUser?.uid || null;
+    originalSetAnimeWatchTime(watchTime);
     if (uid) scheduleCloudSync(uid);
 };
 

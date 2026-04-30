@@ -10,6 +10,7 @@ import type { Manga, MangaChapter } from '../types/manga';
 import DetailsCharacters from '../features/anime/components/details/DetailsCharacters';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
+import type { ReadListItem } from '../utils/storage';
 
 const normalizeMangaRouteId = (value: unknown) =>
     String(value || '')
@@ -83,6 +84,55 @@ const ChapterList = ({
     );
 };
 
+const MANGA_STATUS_OPTIONS: Array<{
+    value: ReadListItem['status'];
+    label: string;
+    color: string;
+}> = [
+        { value: 'reading', label: 'Reading', color: 'bg-yorumi-manga border-yorumi-manga' },
+        { value: 'completed', label: 'Completed', color: 'bg-[#42d65e] border-[#42d65e]' },
+        { value: 'plan_to_read', label: 'Planning', color: 'bg-[#ffbd4a] border-[#ffbd4a]' },
+        { value: 'dropped', label: 'Dropped', color: 'bg-[#ff579c] border-[#ff579c]' }
+    ];
+
+const MangaStatusPicker = ({
+    selectedStatus,
+    onSelect,
+    onCancel
+}: {
+    selectedStatus: ReadListItem['status'];
+    onSelect: (status: ReadListItem['status']) => void;
+    onCancel: () => void;
+}) => (
+    <div className="absolute left-0 top-[calc(100%+10px)] z-[80] w-[230px] rounded-2xl bg-[#151515] p-2.5 shadow-2xl shadow-black/50 ring-1 ring-white/10">
+        <div className="mb-1.5 flex items-center justify-between px-2">
+            <div className="text-[10px] font-black uppercase tracking-widest text-gray-500">Set Status</div>
+            <button onClick={onCancel} className="text-xs font-black text-gray-500 hover:text-white">
+                Close
+            </button>
+        </div>
+        <div className="space-y-1">
+            {MANGA_STATUS_OPTIONS.map((option) => {
+                const active = selectedStatus === option.value;
+
+                return (
+                    <button
+                        key={option.value}
+                        onClick={() => onSelect(option.value)}
+                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors ${active ? 'bg-yorumi-manga/15 text-white' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
+                    >
+                        <span className="flex items-center gap-3">
+                            <span className={`h-3.5 w-3.5 rounded-full border ${option.color}`} />
+                            <span className="text-sm font-black">{option.label}</span>
+                        </span>
+                        {active && <span className="text-[10px] font-black uppercase tracking-wide text-yorumi-manga">On</span>}
+                    </button>
+                );
+            })}
+        </div>
+    </div>
+);
+
 export default function MangaDetailsPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -104,6 +154,8 @@ export default function MangaDetailsPage() {
     const { language } = useTitleLanguage();
 
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
+    const [isStatusPickerOpen, setIsStatusPickerOpen] = useState(false);
+    const [selectedReadStatus, setSelectedReadStatus] = useState<ReadListItem['status']>('reading');
 
 
 
@@ -217,6 +269,36 @@ export default function MangaDetailsPage() {
     const mangaId = displayManga.mal_id.toString();
     const inFavorites = isFavorite(mangaId);
 
+    const addDisplayMangaToReadList = (status: ReadListItem['status']) => {
+        addToReadList({
+            id: mangaId,
+            title: displayManga.title,
+            image: displayManga.images.jpg.large_image_url,
+            score: displayManga.score,
+            type: displayManga.type,
+            totalCount: displayManga.chapters || mangaChapters.length,
+            genres: displayManga.genres?.map((g: any) => g.name),
+            mediaStatus: displayManga.status,
+            synopsis: displayManga.synopsis,
+            status
+        });
+    };
+
+    const handleToggleReadList = () => {
+        if (isInReadList(mangaId)) {
+            removeFromReadList(mangaId);
+            return;
+        }
+
+        if (isStatusPickerOpen) {
+            setIsStatusPickerOpen(false);
+            return;
+        }
+
+        setSelectedReadStatus('reading');
+        setIsStatusPickerOpen(true);
+    };
+
     return (
         <div className="min-h-screen bg-[#0a0a0a] pb-20 fade-in animate-in duration-300">
             {/* 1. Header Hero */}
@@ -306,43 +388,38 @@ export default function MangaDetailsPage() {
                             >
                                 {mangaChaptersLoading ? 'Loading Chapters...' : 'Read Now'}
                             </button>
-                            <button
-                                onClick={() => {
-                                    if (!displayManga) return;
-                                    if (isInReadList(mangaId)) {
-                                        removeFromReadList(mangaId);
-                                    } else {
-                                        addToReadList({
-                                            id: mangaId,
-                                            title: displayManga.title,
-                                            image: displayManga.images.jpg.large_image_url,
-                                            score: displayManga.score,
-                                            type: displayManga.type,
-                                            totalCount: displayManga.chapters || mangaChapters.length,
-                                            genres: displayManga.genres?.map((g: any) => g.name),
-                                            mediaStatus: displayManga.status,
-                                            synopsis: displayManga.synopsis,
-                                            status: 'reading' // Default status
-                                        });
-                                    }
-                                }}
-                                className={`h-12 px-8 text-lg font-bold rounded-full transition-colors border flex items-center gap-2 ${isInReadList(mangaId)
-                                    ? 'bg-yorumi-manga text-white border-yorumi-manga'
-                                    : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
-                                    }`}
-                            >
-                                {isInReadList(mangaId) ? (
-                                    <>
-                                        <Check className="w-5 h-5" />
-                                        In List
-                                    </>
-                                ) : (
-                                    <>
-                                        <Plus className="w-5 h-5" />
-                                        Add to List
-                                    </>
+                            <div className="relative">
+                                <button
+                                    onClick={handleToggleReadList}
+                                    className={`h-12 px-8 text-lg font-bold rounded-full transition-colors border flex items-center gap-2 ${isInReadList(mangaId)
+                                        ? 'bg-yorumi-manga text-white border-yorumi-manga'
+                                        : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+                                        }`}
+                                >
+                                    {isInReadList(mangaId) ? (
+                                        <>
+                                            <Check className="w-5 h-5" />
+                                            In List
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Plus className="w-5 h-5" />
+                                            Add to List
+                                        </>
+                                    )}
+                                </button>
+                                {isStatusPickerOpen && (
+                                    <MangaStatusPicker
+                                        selectedStatus={selectedReadStatus}
+                                        onSelect={(status) => {
+                                            setSelectedReadStatus(status);
+                                            addDisplayMangaToReadList(status);
+                                            setIsStatusPickerOpen(false);
+                                        }}
+                                        onCancel={() => setIsStatusPickerOpen(false)}
+                                    />
                                 )}
-                            </button>
+                            </div>
                             <button
                                 onClick={() => {
                                     if (inFavorites) {

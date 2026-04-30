@@ -5,6 +5,7 @@ import { useWatchList } from '../hooks/useWatchList';
 import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
 import { slugify } from '../utils/slugify';
 import type { Anime } from '../types/anime';
+import type { WatchListItem } from '../utils/storage';
 
 // Feature Components
 import DetailsHero from '../features/anime/components/details/DetailsHero';
@@ -95,6 +96,55 @@ const DetailsPageSkeleton = () => (
     </div>
 );
 
+const WATCH_STATUS_OPTIONS: Array<{
+    value: WatchListItem['status'];
+    label: string;
+    color: string;
+}> = [
+        { value: 'watching', label: 'Watching', color: 'bg-yorumi-accent border-yorumi-accent' },
+        { value: 'completed', label: 'Completed', color: 'bg-[#42d65e] border-[#42d65e]' },
+        { value: 'plan_to_watch', label: 'Planning', color: 'bg-[#ffbd4a] border-[#ffbd4a]' },
+        { value: 'dropped', label: 'Dropped', color: 'bg-[#ff579c] border-[#ff579c]' }
+    ];
+
+const WatchStatusPicker = ({
+    selectedStatus,
+    onSelect,
+    onCancel
+}: {
+    selectedStatus: WatchListItem['status'];
+    onSelect: (status: WatchListItem['status']) => void;
+    onCancel: () => void;
+}) => (
+    <div className="absolute left-0 top-[calc(100%+10px)] z-[80] w-[230px] rounded-2xl bg-[#151515] p-2.5 shadow-2xl shadow-black/50 ring-1 ring-white/10">
+        <div className="mb-1.5 flex items-center justify-between px-2">
+            <div className="text-[10px] font-black uppercase tracking-widest text-gray-500">Set Status</div>
+            <button onClick={onCancel} className="text-xs font-black text-gray-500 hover:text-white">
+                Close
+            </button>
+        </div>
+        <div className="space-y-1">
+            {WATCH_STATUS_OPTIONS.map((option) => {
+                const active = selectedStatus === option.value;
+
+                return (
+                    <button
+                        key={option.value}
+                        onClick={() => onSelect(option.value)}
+                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors ${active ? 'bg-yorumi-accent/15 text-white' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
+                    >
+                        <span className="flex items-center gap-3">
+                            <span className={`h-3.5 w-3.5 rounded-full border ${option.color}`} />
+                            <span className="text-sm font-black">{option.label}</span>
+                        </span>
+                        {active && <span className="text-[10px] font-black uppercase tracking-wide text-yorumi-accent">On</span>}
+                    </button>
+                );
+            })}
+        </div>
+    </div>
+);
+
 export default function AnimeDetailsPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -157,6 +207,8 @@ export default function AnimeDetailsPage() {
     const { isFavorite, addFavorite, removeFavorite } = useFavoriteAnime();
     const [activeTab, setActiveTab] = useState<'summary' | 'relations'>('summary');
     const [minimumSkeletonDone, setMinimumSkeletonDone] = useState(false);
+    const [isStatusPickerOpen, setIsStatusPickerOpen] = useState(false);
+    const [selectedWatchStatus, setSelectedWatchStatus] = useState<WatchListItem['status']>('watching');
 
     useEffect(() => {
         setMinimumSkeletonDone(false);
@@ -175,28 +227,41 @@ export default function AnimeDetailsPage() {
     const inList = isInWatchList(animeId);
     const inFavorites = isFavorite(animeId);
 
+    const addSelectedAnimeToWatchList = (status: WatchListItem['status']) => {
+        if (!selectedAnime || !animeId) return;
+
+        addToWatchList({
+            id: animeId,
+            anilistId: selectedAnime.id ? String(selectedAnime.id) : undefined,
+            malId: selectedAnime.mal_id ? String(selectedAnime.mal_id) : undefined,
+            scraperId: isAnimePaheSession(selectedAnime.scraperId) ? selectedAnime.scraperId : undefined,
+            title: selectedAnime.title,
+            image: selectedAnime.images.jpg.large_image_url,
+            score: selectedAnime.score,
+            type: selectedAnime.type,
+            totalCount: selectedAnime.episodes || episodes.length,
+            genres: selectedAnime.genres?.map(g => g.name),
+            mediaStatus: selectedAnime.status,
+            synopsis: selectedAnime.synopsis,
+            status
+        });
+    };
+
     const handleToggleList = () => {
         if (!selectedAnime || !animeId) return;
 
         if (inList) {
             removeFromWatchList(animeId);
-        } else {
-            addToWatchList({
-                id: animeId,
-                anilistId: selectedAnime.id ? String(selectedAnime.id) : undefined,
-                malId: selectedAnime.mal_id ? String(selectedAnime.mal_id) : undefined,
-                scraperId: isAnimePaheSession(selectedAnime.scraperId) ? selectedAnime.scraperId : undefined,
-                title: selectedAnime.title,
-                image: selectedAnime.images.jpg.large_image_url,
-                score: selectedAnime.score,
-                type: selectedAnime.type,
-                totalCount: selectedAnime.episodes || episodes.length,
-                genres: selectedAnime.genres?.map(g => g.name),
-                mediaStatus: selectedAnime.status,
-                synopsis: selectedAnime.synopsis,
-                status: 'watching'
-            });
+            return;
         }
+
+        if (isStatusPickerOpen) {
+            setIsStatusPickerOpen(false);
+            return;
+        }
+
+        setSelectedWatchStatus('watching');
+        setIsStatusPickerOpen(true);
     };
 
     const handleToggleFavorite = () => {
@@ -290,6 +355,17 @@ export default function AnimeDetailsPage() {
                     }}
                     onToggleList={handleToggleList}
                     onToggleFavorite={handleToggleFavorite}
+                    statusPicker={isStatusPickerOpen ? (
+                        <WatchStatusPicker
+                            selectedStatus={selectedWatchStatus}
+                            onSelect={(status) => {
+                                setSelectedWatchStatus(status);
+                                addSelectedAnimeToWatchList(status);
+                                setIsStatusPickerOpen(false);
+                            }}
+                            onCancel={() => setIsStatusPickerOpen(false)}
+                        />
+                    ) : null}
                 >
                     {/* Tabs */}
                     <div className="flex items-center gap-8 border-b border-white/10 mb-6 mt-4">

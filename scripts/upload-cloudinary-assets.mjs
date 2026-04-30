@@ -19,7 +19,7 @@ const assetGlobs = [
     { key: 'yorumiPng', file: 'public/Yorumi.png', publicId: 'yorumi/shared/yorumi' },
     { key: 'yorumiSvg', file: 'public/Yorumi.svg', publicId: 'yorumi/shared/yorumi-svg' },
     { key: 'gcashLogo', file: 'public/gcash-logo.svg', publicId: 'yorumi/shared/gcash-logo' },
-    { key: 'gcashQr', file: 'public/gcash-qr.png', publicId: 'yorumi/shared/gcash-qr' },
+    { key: 'gcashQr', file: 'public/donation.png', publicId: 'yorumi/shared/donation' },
     { key: 'luffyGif', file: 'src/assets/luffy.gif', publicId: 'yorumi/shared/luffy-loading' },
     { key: 'reactSvg', file: 'src/assets/react.svg', publicId: 'yorumi/shared/react' }
 ];

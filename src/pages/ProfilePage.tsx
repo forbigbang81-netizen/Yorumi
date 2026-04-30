@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { User, History, Pencil, Check, X, BookOpen, Cat, Book, ChevronLeft, ChevronRight } from 'lucide-react';
+import { User, History, Pencil, Check, X, BookOpen, Cat, Book, ChevronLeft, ChevronRight, FileInput, FileOutput, Upload, Download, AlertCircle } from 'lucide-react';
 import { useContinueWatching } from '../hooks/useContinueWatching';
 import { useContinueReading } from '../hooks/useContinueReading';
 import { useWatchList } from '../hooks/useWatchList';
@@ -10,13 +10,14 @@ import { useReadList } from '../hooks/useReadList';
 import { useFavoriteAnime } from '../hooks/useFavoriteAnime';
 import { useFavoriteManga } from '../hooks/useFavoriteManga';
 import { slugify } from '../utils/slugify';
-import { storage } from '../utils/storage';
+import { storage, type AnimeCompletionSnapshot, type MangaCompletionSnapshot, type ReadListItem, type ReadProgress, type WatchListItem, type WatchProgress } from '../utils/storage';
 import { animeService } from '../services/animeService';
 import { mangaService } from '../services/mangaService';
 import useEmblaCarousel from 'embla-carousel-react';
 import { DEFAULT_BANNER_URL, resolveStaticAssetUrl } from '../config/cloudinaryAssets';
+import { API_BASE } from '../config/api';
 
-type TabType = 'profile' | 'anime-overview' | 'manga-overview';
+type TabType = 'profile' | 'anime-overview' | 'manga-overview' | 'import-export';
 
 const isAnimeSessionId = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -56,6 +57,7 @@ export default function ProfilePage() {
 
     const activeTab = (searchParams.get('tab') as TabType) || 'profile';
     const isMangaOverview = activeTab === 'manga-overview';
+    const isImportExport = activeTab === 'import-export';
 
     const handleTabChange = (tab: TabType) => {
         setSearchParams({ tab });
@@ -124,6 +126,12 @@ export default function ProfilePage() {
                             label="Manga Overview"
                             activeClassName="text-yorumi-manga border-yorumi-manga"
                         />
+                        <TabButton
+                            active={activeTab === 'import-export'}
+                            onClick={() => handleTabChange('import-export')}
+                            icon={<FileInput className={isImportExport ? "w-5 h-5 fill-current" : "w-5 h-5"} />}
+                            label="Import/Export"
+                        />
                     </div>
                 </div>
             </div>
@@ -143,6 +151,7 @@ export default function ProfilePage() {
                 {activeTab === 'profile' && <ProfileTab user={user} avatar={avatar} />}
                 {activeTab === 'anime-overview' && <AnimeOverviewTab />}
                 {activeTab === 'manga-overview' && <MangaOverviewTab />}
+                {activeTab === 'import-export' && <ImportExportTab />}
             </div>
         </div>
     );
@@ -180,6 +189,8 @@ import AvatarSelectionModal from '../components/modals/AvatarSelectionModal';
 import BannerSelectionModal from '../components/modals/BannerSelectionModal';
 import AnimeCard from '../features/anime/components/AnimeCard';
 import MangaCard from '../features/manga/components/MangaCard';
+import type { FavoriteAnimeItem } from '../hooks/useFavoriteAnime';
+import type { FavoriteMangaItem } from '../hooks/useFavoriteManga';
 
 import { useActivityHistory } from '../hooks/useActivityHistory';
 
@@ -581,6 +592,739 @@ const MangaOverviewTab = () => {
                 <div className="space-y-6 md:space-y-8 min-w-0">
                     <MangaContinueReadingHighlights showSeeAll />
                     <MangaReadListCarousel />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+type ImportExportPanel = 'import' | 'export';
+type ExportFormat = 'json' | 'text' | 'mal-xml';
+type ImportMode = 'merge' | 'replace';
+type ImportSource = 'mal' | 'al' | 'file';
+
+type YorumiBackupLibrary = {
+    watchList?: WatchListItem[];
+    readList?: ReadListItem[];
+    continueWatching?: WatchProgress[];
+    continueReading?: ReadProgress[];
+    episodeHistory?: Record<string, number[]>;
+    chapterHistory?: Record<string, string[]>;
+    animeWatchTime?: Record<string, number>;
+    animeWatchTimeTotalSeconds?: number;
+    animeGenreCache?: Record<string, string[]>;
+    mangaGenreCache?: Record<string, string[]>;
+    animeCompletionCache?: Record<string, AnimeCompletionSnapshot>;
+    mangaCompletionCache?: Record<string, MangaCompletionSnapshot>;
+    favoriteAnime?: FavoriteAnimeItem[];
+    favoriteManga?: FavoriteMangaItem[];
+};
+
+type YorumiBackupPayload = {
+    app?: string;
+    exportedAt?: string;
+    library?: YorumiBackupLibrary;
+};
+
+type ImportedAnimeListResult = {
+    items: WatchListItem[];
+    episodeHistory: Record<string, number[]>;
+};
+
+type ImportedAnilistLibraryResult = {
+    watchList: WatchListItem[];
+    readList: ReadListItem[];
+    episodeHistory: Record<string, number[]>;
+    chapterHistory: Record<string, string[]>;
+    favoriteAnime: FavoriteAnimeItem[];
+    favoriteManga: FavoriteMangaItem[];
+};
+
+const escapeXml = (value: unknown) =>
+    String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+
+const downloadBackupFile = (filename: string, content: string, type: string) => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+};
+
+const mergeByKey = <T,>(current: T[], incoming: T[], getKey: (item: T) => string, getTime?: (item: T) => number) => {
+    const merged = new Map<string, T>();
+    current.forEach((item) => {
+        const key = getKey(item);
+        if (key) merged.set(key, item);
+    });
+    incoming.forEach((item) => {
+        const key = getKey(item);
+        if (key) merged.set(key, item);
+    });
+
+    const values = Array.from(merged.values());
+    return getTime ? values.sort((a, b) => getTime(b) - getTime(a)) : values;
+};
+
+const mergeNumberHistory = (current: Record<string, number[]>, incoming: Record<string, number[]>) => {
+    const merged: Record<string, number[]> = { ...current };
+    Object.entries(incoming || {}).forEach(([id, values]) => {
+        if (!Array.isArray(values)) return;
+        const next = new Set([...(merged[id] || []), ...values.map((value) => Number(value)).filter(Number.isFinite)]);
+        merged[id] = Array.from(next).sort((a, b) => a - b);
+    });
+    return merged;
+};
+
+const mergeStringHistory = (current: Record<string, string[]>, incoming: Record<string, string[]>) => {
+    const merged: Record<string, string[]> = { ...current };
+    Object.entries(incoming || {}).forEach(([id, values]) => {
+        if (!Array.isArray(values)) return;
+        merged[id] = Array.from(new Set([...(merged[id] || []), ...values.map((value) => String(value))]));
+    });
+    return merged;
+};
+
+const mergeStringArrayMap = (current: Record<string, string[]>, incoming: Record<string, string[]>) => {
+    const merged: Record<string, string[]> = { ...current };
+    Object.entries(incoming || {}).forEach(([id, values]) => {
+        if (!Array.isArray(values)) return;
+        merged[id] = Array.from(new Set([...(merged[id] || []), ...values.map((value) => String(value))]));
+    });
+    return merged;
+};
+
+const mergeNumberMap = (current: Record<string, number>, incoming: Record<string, number>) => {
+    const merged: Record<string, number> = { ...current };
+    Object.entries(incoming || {}).forEach(([id, value]) => {
+        const safeValue = Number(value) || 0;
+        merged[id] = Math.max(merged[id] || 0, safeValue);
+    });
+    return merged;
+};
+
+const mapExternalAnimeStatus = (value: unknown): WatchListItem['status'] => {
+    const numeric = Number(value);
+    if (numeric === 2) return 'completed';
+    if (numeric === 4) return 'dropped';
+    if (numeric === 6) return 'plan_to_watch';
+
+    const normalized = String(value ?? '').toLowerCase().replace(/[^a-z]/g, '');
+    if (normalized.includes('complete')) return 'completed';
+    if (normalized.includes('drop')) return 'dropped';
+    if (normalized.includes('plan')) return 'plan_to_watch';
+    return 'watching';
+};
+
+const buildEpisodeProgress = (count: unknown) => {
+    const safeCount = Math.min(2000, Math.max(0, Math.floor(Number(count) || 0)));
+    return Array.from({ length: safeCount }, (_, index) => index + 1);
+};
+
+const buildChapterProgress = (count: unknown) => {
+    const safeCount = Math.min(2000, Math.max(0, Math.floor(Number(count) || 0)));
+    return Array.from({ length: safeCount }, (_, index) => String(index + 1));
+};
+
+const mapExternalMangaStatus = (value: unknown): ReadListItem['status'] => {
+    const normalized = String(value ?? '').toLowerCase().replace(/[^a-z]/g, '');
+    if (normalized.includes('complete')) return 'completed';
+    if (normalized.includes('drop')) return 'dropped';
+    if (normalized.includes('plan')) return 'plan_to_read';
+    return 'reading';
+};
+
+const fetchMalAnimeList = async (username: string): Promise<ImportedAnimeListResult> => {
+    const res = await fetch(`${API_BASE}/import/mal/${encodeURIComponent(username)}`);
+    if (!res.ok) {
+        throw new Error('Could not load that MAL list. Make sure it is public.');
+    }
+    const payload = await res.json();
+    const data = (Array.isArray(payload?.data) ? payload.data : []) as Record<string, unknown>[];
+    const episodeHistory: Record<string, number[]> = {};
+    const items = data.map((entry: Record<string, unknown>, index: number): WatchListItem | null => {
+        const id = String(entry.anime_id || '').trim();
+        const title = String(entry.anime_title || entry.anime_title_eng || '').trim();
+        if (!id || !title) return null;
+
+        const genres = Array.isArray(entry.genres)
+            ? entry.genres.map((genre) => String((genre as Record<string, unknown>)?.name || '')).filter(Boolean)
+            : [];
+        const progress = Number(entry.num_watched_episodes || 0) || 0;
+        const watched = buildEpisodeProgress(progress);
+        if (watched.length > 0) episodeHistory[id] = watched;
+
+        return {
+            id,
+            malId: id,
+            title,
+            image: String(entry.anime_image_path || ''),
+            addedAt: Number(entry.updated_at || 0) > 0 ? Number(entry.updated_at) * 1000 : Date.now() - index,
+            status: mapExternalAnimeStatus(entry.status),
+            score: Number(entry.score || 0) || 0,
+            currentProgress: progress,
+            totalCount: Number(entry.anime_num_episodes || 0) || undefined,
+            type: String(entry.anime_media_type_string || 'TV'),
+            genres,
+            mediaStatus: String(entry.anime_airing_status || ''),
+            synopsis: ''
+        };
+    }).filter((item: WatchListItem | null): item is WatchListItem => Boolean(item));
+
+    return { items, episodeHistory };
+};
+
+const fetchAnilistMediaCollection = async (username: string, type: 'ANIME' | 'MANGA') => {
+    const query = `
+        query ($userName: String, $type: MediaType) {
+            MediaListCollection(userName: $userName, type: $type) {
+                lists {
+                    entries {
+                        status
+                        score
+                        progress
+                        media {
+                            id
+                            idMal
+                            episodes
+                            chapters
+                            format
+                            status
+                            genres
+                            description(asHtml: false)
+                            title {
+                                userPreferred
+                                english
+                                romaji
+                            }
+                            coverImage {
+                                large
+                                medium
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    `;
+    const res = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ query, variables: { userName: username, type } })
+    });
+    if (!res.ok) {
+        throw new Error(`Could not load that AniList ${type.toLowerCase()} list. Make sure it is public.`);
+    }
+
+    const payload = await res.json();
+    if (payload?.errors?.length) {
+        throw new Error('Could not load that AniList list. Check the username and privacy settings.');
+    }
+
+    return ((payload?.data?.MediaListCollection?.lists || []) as Array<{ entries?: Array<Record<string, unknown>> }>)
+        .flatMap((list) => Array.isArray(list.entries) ? list.entries : []);
+};
+
+const fetchAnilistFavorites = async (username: string) => {
+    const query = `
+        query ($userName: String) {
+            User(name: $userName) {
+                favourites {
+                    anime(page: 1, perPage: 50) {
+                        nodes {
+                            id
+                            description(asHtml: false)
+                            title {
+                                userPreferred
+                                english
+                                romaji
+                            }
+                            coverImage {
+                                large
+                                medium
+                            }
+                        }
+                    }
+                    manga(page: 1, perPage: 50) {
+                        nodes {
+                            id
+                            title {
+                                userPreferred
+                                english
+                                romaji
+                            }
+                            coverImage {
+                                large
+                                medium
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    `;
+    const res = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ query, variables: { userName: username } })
+    });
+    if (!res.ok) {
+        throw new Error('Could not load AniList favorites. Make sure the profile is public.');
+    }
+
+    const payload = await res.json();
+    const animeNodes = (payload?.data?.User?.favourites?.anime?.nodes || []) as Record<string, unknown>[];
+    const mangaNodes = (payload?.data?.User?.favourites?.manga?.nodes || []) as Record<string, unknown>[];
+    const now = Date.now();
+
+    const favoriteAnime = animeNodes.map((node, index): FavoriteAnimeItem | null => {
+        const id = String(node.id || '').trim();
+        const titleObject = (node.title || {}) as Record<string, unknown>;
+        const title = String(titleObject.userPreferred || titleObject.english || titleObject.romaji || '').trim();
+        const cover = node.coverImage as { large?: string; medium?: string } | undefined;
+        if (!id || !title) return null;
+        return {
+            id,
+            title,
+            image: cover?.large || cover?.medium || '',
+            synopsis: String(node.description || ''),
+            addedAt: now - index
+        };
+    }).filter((item: FavoriteAnimeItem | null): item is FavoriteAnimeItem => Boolean(item));
+
+    const favoriteManga = mangaNodes.map((node, index): FavoriteMangaItem | null => {
+        const id = String(node.id || '').trim();
+        const titleObject = (node.title || {}) as Record<string, unknown>;
+        const title = String(titleObject.userPreferred || titleObject.english || titleObject.romaji || '').trim();
+        const cover = node.coverImage as { large?: string; medium?: string } | undefined;
+        if (!id || !title) return null;
+        return {
+            id,
+            title,
+            image: cover?.large || cover?.medium || '',
+            addedAt: now - index
+        };
+    }).filter((item: FavoriteMangaItem | null): item is FavoriteMangaItem => Boolean(item));
+
+    return { favoriteAnime, favoriteManga };
+};
+
+const fetchAnilistLibrary = async (username: string): Promise<ImportedAnilistLibraryResult> => {
+    const [animeEntries, mangaEntries, favorites] = await Promise.all([
+        fetchAnilistMediaCollection(username, 'ANIME'),
+        fetchAnilistMediaCollection(username, 'MANGA'),
+        fetchAnilistFavorites(username)
+    ]);
+    const episodeHistory: Record<string, number[]> = {};
+    const chapterHistory: Record<string, string[]> = {};
+
+    const watchList = animeEntries.map((entry, index): WatchListItem | null => {
+        const media = (entry.media || {}) as Record<string, unknown>;
+        const id = String(media.id || '').trim();
+        const titleObject = (media.title || {}) as Record<string, unknown>;
+        const title = String(titleObject.userPreferred || titleObject.english || titleObject.romaji || '').trim();
+        if (!id || !title) return null;
+
+        const cover = media.coverImage as { large?: string; medium?: string } | undefined;
+        const progress = Number(entry.progress || 0) || 0;
+        const watched = buildEpisodeProgress(progress);
+        if (watched.length > 0) episodeHistory[id] = watched;
+
+        return {
+            id,
+            anilistId: id,
+            malId: media.idMal ? String(media.idMal) : undefined,
+            title,
+            image: cover?.large || cover?.medium || '',
+            addedAt: Date.now() - index,
+            status: mapExternalAnimeStatus(entry.status),
+            score: Number(entry.score || 0) || 0,
+            currentProgress: progress,
+            totalCount: Number(media.episodes || 0) || undefined,
+            type: String(media.format || 'TV'),
+            genres: Array.isArray(media.genres) ? media.genres.map((genre) => String(genre)).filter(Boolean) : [],
+            mediaStatus: String(media.status || ''),
+            synopsis: String(media.description || '')
+        };
+    }).filter((item): item is WatchListItem => Boolean(item));
+
+    const readList = mangaEntries.map((entry, index): ReadListItem | null => {
+        const media = (entry.media || {}) as Record<string, unknown>;
+        const id = String(media.id || '').trim();
+        const titleObject = (media.title || {}) as Record<string, unknown>;
+        const title = String(titleObject.userPreferred || titleObject.english || titleObject.romaji || '').trim();
+        if (!id || !title) return null;
+
+        const cover = media.coverImage as { large?: string; medium?: string } | undefined;
+        const progress = Number(entry.progress || 0) || 0;
+        const chapters = buildChapterProgress(progress);
+        if (chapters.length > 0) chapterHistory[id] = chapters;
+
+        return {
+            id,
+            title,
+            image: cover?.large || cover?.medium || '',
+            addedAt: Date.now() - index,
+            status: mapExternalMangaStatus(entry.status),
+            score: Number(entry.score || 0) || 0,
+            currentProgress: progress,
+            totalCount: Number(media.chapters || 0) || undefined,
+            type: String(media.format || 'Manga'),
+            genres: Array.isArray(media.genres) ? media.genres.map((genre) => String(genre)).filter(Boolean) : [],
+            mediaStatus: String(media.status || ''),
+            synopsis: String(media.description || '')
+        };
+    }).filter((item): item is ReadListItem => Boolean(item));
+
+    return {
+        watchList,
+        readList,
+        episodeHistory,
+        chapterHistory,
+        favoriteAnime: favorites.favoriteAnime,
+        favoriteManga: favorites.favoriteManga
+    };
+};
+
+const ImportExportTab = () => {
+    const { watchList } = useWatchList();
+    const { readList } = useReadList();
+    const { continueWatchingList } = useContinueWatching();
+    const { continueReadingList } = useContinueReading();
+    const { favorites: favoriteAnime, addFavorite: addFavoriteAnime, removeFavorite: removeFavoriteAnime } = useFavoriteAnime();
+    const { favorites: favoriteManga, addFavorite: addFavoriteManga, removeFavorite: removeFavoriteManga } = useFavoriteManga();
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const [panel, setPanel] = useState<ImportExportPanel>('import');
+    const [exportFormat, setExportFormat] = useState<ExportFormat>('json');
+    const [importMode, setImportMode] = useState<ImportMode>('merge');
+    const [importSource, setImportSource] = useState<ImportSource>('mal');
+    const [malUsername, setMalUsername] = useState('');
+    const [anilistUsername, setAnilistUsername] = useState('');
+    const [selectedFileName, setSelectedFileName] = useState('');
+    const [selectedFileContent, setSelectedFileContent] = useState('');
+    const [importStatus, setImportStatus] = useState('');
+    const [exportStatus, setExportStatus] = useState('');
+    const [busy, setBusy] = useState(false);
+
+    const buildLibrary = (): YorumiBackupLibrary => ({
+        watchList,
+        readList,
+        continueWatching: continueWatchingList,
+        continueReading: continueReadingList,
+        episodeHistory: storage.getEpisodeHistory(),
+        chapterHistory: storage.getChapterHistory(),
+        animeWatchTime: storage.getAnimeWatchTime(),
+        animeWatchTimeTotalSeconds: storage.getAnimeWatchTimeTotalSeconds(),
+        animeGenreCache: storage.getAnimeGenreCache(),
+        mangaGenreCache: storage.getMangaGenreCache(),
+        animeCompletionCache: storage.getAnimeCompletionCache(),
+        mangaCompletionCache: storage.getMangaCompletionCache(),
+        favoriteAnime,
+        favoriteManga
+    });
+
+    const buildBackupPayload = (): YorumiBackupPayload => ({
+        app: 'Yorumi',
+        exportedAt: new Date().toISOString(),
+        library: buildLibrary()
+    });
+
+    const buildTextExport = () => {
+        const animeLines = watchList.map((item) => `ANIME\t${item.id}\t${item.title}`);
+        const mangaLines = readList.map((item) => `MANGA\t${item.id}\t${item.title}`);
+        return ['# Yorumi Library Export', ...animeLines, ...mangaLines].join('\n');
+    };
+
+    const buildMalXmlExport = () => {
+        const animeXml = watchList.map((item) => {
+            const malId = item.malId || item.id;
+            return [
+                '  <anime>',
+                `    <series_animedb_id>${escapeXml(malId)}</series_animedb_id>`,
+                `    <series_title>${escapeXml(item.title)}</series_title>`,
+                `    <my_watched_episodes>${escapeXml(item.currentProgress || 0)}</my_watched_episodes>`,
+                `    <my_score>${escapeXml(item.score || 0)}</my_score>`,
+                `    <my_status>${escapeXml(item.status)}</my_status>`,
+                '  </anime>'
+            ].join('\n');
+        });
+        return ['<?xml version="1.0" encoding="UTF-8"?>', '<myanimelist>', ...animeXml, '</myanimelist>'].join('\n');
+    };
+
+    const handleExport = () => {
+        const stamp = new Date().toISOString().slice(0, 10);
+        if (exportFormat === 'json') {
+            downloadBackupFile(`yorumi-backup-${stamp}.json`, JSON.stringify(buildBackupPayload(), null, 2), 'application/json');
+        } else if (exportFormat === 'text') {
+            downloadBackupFile(`yorumi-library-${stamp}.txt`, buildTextExport(), 'text/plain');
+        } else {
+            downloadBackupFile(`yorumi-anime-${stamp}.xml`, buildMalXmlExport(), 'application/xml');
+        }
+        setExportStatus('Export ready.');
+    };
+
+    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        setSelectedFileName(file.name);
+        setSelectedFileContent(await file.text());
+        setImportStatus('');
+    };
+
+    const parseImportLibrary = (): YorumiBackupLibrary => {
+        if (!selectedFileContent.trim()) {
+            throw new Error('Choose a Yorumi JSON backup first.');
+        }
+
+        const parsed = JSON.parse(selectedFileContent) as YorumiBackupPayload | YorumiBackupLibrary;
+        const library = 'library' in parsed ? parsed.library : parsed;
+        if (!library || typeof library !== 'object') {
+            throw new Error('This file does not look like a Yorumi backup.');
+        }
+        return library as YorumiBackupLibrary;
+    };
+
+    const applyImportedLibrary = async (incoming: YorumiBackupLibrary) => {
+        const replace = importMode === 'replace';
+        const importedWatchList = Array.isArray(incoming.watchList) ? incoming.watchList : [];
+        const importedReadList = Array.isArray(incoming.readList) ? incoming.readList : [];
+        const importedContinueWatching = Array.isArray(incoming.continueWatching) ? incoming.continueWatching : [];
+        const importedContinueReading = Array.isArray(incoming.continueReading) ? incoming.continueReading : [];
+
+        storage.setWatchList(replace ? importedWatchList : mergeByKey(storage.getWatchList(), importedWatchList, (item) => item.id, (item) => item.addedAt || 0));
+        storage.setReadList(replace ? importedReadList : mergeByKey(storage.getReadList(), importedReadList, (item) => item.id, (item) => item.addedAt || 0));
+        storage.setContinueWatching(replace ? importedContinueWatching : mergeByKey(storage.getContinueWatching(), importedContinueWatching, (item) => item.animeId, (item) => item.lastWatched || item.timestamp || 0));
+        storage.setContinueReading(replace ? importedContinueReading : mergeByKey(storage.getContinueReading(), importedContinueReading, (item) => item.mangaId, (item) => item.lastRead || item.timestamp || 0));
+        storage.setEpisodeHistory(replace ? (incoming.episodeHistory || {}) : mergeNumberHistory(storage.getEpisodeHistory(), incoming.episodeHistory || {}));
+        storage.setChapterHistory(replace ? (incoming.chapterHistory || {}) : mergeStringHistory(storage.getChapterHistory(), incoming.chapterHistory || {}));
+        storage.setAnimeWatchTime(replace ? (incoming.animeWatchTime || {}) : mergeNumberMap(storage.getAnimeWatchTime(), incoming.animeWatchTime || {}));
+        storage.setAnimeWatchTimeTotalSeconds(
+            replace
+                ? Number(incoming.animeWatchTimeTotalSeconds || 0)
+                : Math.max(storage.getAnimeWatchTimeTotalSeconds(), Number(incoming.animeWatchTimeTotalSeconds || 0))
+        );
+        storage.setAnimeGenreCache(replace ? (incoming.animeGenreCache || {}) : mergeStringArrayMap(storage.getAnimeGenreCache(), incoming.animeGenreCache || {}));
+        storage.setMangaGenreCache(replace ? (incoming.mangaGenreCache || {}) : mergeStringArrayMap(storage.getMangaGenreCache(), incoming.mangaGenreCache || {}));
+        storage.setAnimeCompletionCache(replace ? (incoming.animeCompletionCache || {}) : { ...storage.getAnimeCompletionCache(), ...(incoming.animeCompletionCache || {}) });
+        storage.setMangaCompletionCache(replace ? (incoming.mangaCompletionCache || {}) : { ...storage.getMangaCompletionCache(), ...(incoming.mangaCompletionCache || {}) });
+
+        if (replace) {
+            await Promise.all([
+                ...favoriteAnime.map((item) => removeFavoriteAnime(item.id)),
+                ...favoriteManga.map((item) => removeFavoriteManga(item.id))
+            ]);
+        }
+        await Promise.all([
+            ...(incoming.favoriteAnime || []).map((item) => addFavoriteAnime(item)),
+            ...(incoming.favoriteManga || []).map((item) => addFavoriteManga(item))
+        ]);
+
+        return importedWatchList.length + importedReadList.length;
+    };
+
+    const clearFavoritesForReplace = async () => {
+        if (importMode !== 'replace') return;
+        await Promise.all([
+            ...favoriteAnime.map((item) => removeFavoriteAnime(item.id)),
+            ...favoriteManga.map((item) => removeFavoriteManga(item.id))
+        ]);
+    };
+
+    const handleImport = async () => {
+        setBusy(true);
+        try {
+            if (importSource === 'file') {
+                const total = await applyImportedLibrary(parseImportLibrary());
+                setImportStatus(`Imported ${total} library entries.`);
+                return;
+            }
+
+            const username = (importSource === 'mal' ? malUsername : anilistUsername).trim();
+            if (!username) {
+                throw new Error(`Enter a ${importSource === 'mal' ? 'MAL' : 'AniList'} username first.`);
+            }
+
+            if (importSource === 'mal') {
+                const result = await fetchMalAnimeList(username);
+                if (result.items.length === 0) {
+                    throw new Error('No public anime entries were found for that username.');
+                }
+
+                await clearFavoritesForReplace();
+                await applyImportedLibrary({
+                    watchList: result.items,
+                    episodeHistory: result.episodeHistory
+                });
+                setImportStatus(`Imported ${result.items.length} anime entries from MAL.`);
+                return;
+            }
+
+            const result = await fetchAnilistLibrary(username);
+            const listTotal = result.watchList.length + result.readList.length;
+            const favoriteTotal = result.favoriteAnime.length + result.favoriteManga.length;
+            if (listTotal === 0 && favoriteTotal === 0) {
+                throw new Error('No public AniList entries or favorites were found for that username.');
+            }
+
+            await applyImportedLibrary({
+                watchList: result.watchList,
+                readList: result.readList,
+                episodeHistory: result.episodeHistory,
+                chapterHistory: result.chapterHistory,
+                favoriteAnime: result.favoriteAnime,
+                favoriteManga: result.favoriteManga
+            });
+            setImportStatus(`Imported ${listTotal} AniList entries and ${favoriteTotal} favorites.`);
+        } catch (error) {
+            setImportStatus(error instanceof Error ? error.message : 'Import failed.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const tabClass = (active: boolean) =>
+        `flex-1 min-w-[150px] flex items-center justify-center gap-2 px-4 py-4 text-sm md:text-base font-bold transition-colors ${active
+            ? 'bg-[#2a2f34] text-white'
+            : 'text-gray-500 hover:text-gray-200 hover:bg-white/[0.03]'
+        }`;
+
+    const RadioButton = ({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) => (
+        <button onClick={onClick} className="flex items-center gap-2 text-sm md:text-base font-semibold text-white">
+            <span className={`w-5 h-5 rounded-full border-[5px] ${active ? 'border-[#35d675] bg-white' : 'border-[#26313a] bg-[#20272e]'}`} />
+            {label}
+        </button>
+    );
+
+    const library = buildLibrary();
+    const totalEntries = (library.watchList?.length || 0) + (library.readList?.length || 0);
+
+    return (
+        <div className="w-full max-w-[640px] mx-auto">
+            <div className="bg-[#101519] rounded-3xl overflow-hidden shadow-2xl">
+                <div className="grid grid-cols-2 bg-[#0b1013]">
+                    <button className={tabClass(panel === 'import')} onClick={() => setPanel('import')}>
+                        <FileInput className="w-5 h-5" />
+                        Import
+                    </button>
+                    <button className={tabClass(panel === 'export')} onClick={() => setPanel('export')}>
+                        <FileOutput className="w-5 h-5" />
+                        Export
+                    </button>
+                </div>
+
+                <div className="p-5 md:p-9">
+                    {panel === 'import' && (
+                        <div className="space-y-7">
+                            <div className="rounded-2xl bg-[#1f272e] p-5 md:p-6 text-gray-400 text-sm md:text-base leading-relaxed">
+                                Import your anime list from MAL or AniList. Your list must be public; entries are added to Yorumi with progress when available.
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-5 md:gap-6 items-center">
+                                <div className="text-white font-bold">MAL username</div>
+                                <input
+                                    type="text"
+                                    value={malUsername}
+                                    onChange={(event) => setMalUsername(event.target.value)}
+                                    placeholder="MAL username"
+                                    className="w-full bg-[#20272e] text-white placeholder:text-gray-500 rounded-lg px-4 py-3 outline-none border border-transparent focus:border-yorumi-accent/70"
+                                />
+
+                                <div className="text-white font-bold">AL username</div>
+                                <input
+                                    type="text"
+                                    value={anilistUsername}
+                                    onChange={(event) => setAnilistUsername(event.target.value)}
+                                    placeholder="AniList username"
+                                    className="w-full bg-[#20272e] text-white placeholder:text-gray-500 rounded-lg px-4 py-3 outline-none border border-transparent focus:border-yorumi-accent/70"
+                                />
+
+                                <div className="text-white font-bold">File</div>
+                                <div className="min-w-0">
+                                    <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileChange} />
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="w-full flex items-center gap-3 bg-[#20272e] hover:bg-[#29313a] text-white rounded-lg transition-colors overflow-hidden"
+                                    >
+                                        <span className="px-4 py-3 bg-white/5 flex items-center gap-2 shrink-0">
+                                            <Upload className="w-4 h-4" />
+                                            Choose File
+                                        </span>
+                                        <span className="px-2 truncate text-gray-300">{selectedFileName || 'No file chosen'}</span>
+                                    </button>
+                                    <p className="mt-2 text-sm text-gray-500">Use this for Yorumi JSON backup files.</p>
+                                </div>
+
+                                <div className="text-white font-bold">From</div>
+                                <div className="flex flex-wrap gap-5">
+                                    <RadioButton active={importSource === 'mal'} label="MAL" onClick={() => setImportSource('mal')} />
+                                    <RadioButton active={importSource === 'al'} label="AL" onClick={() => setImportSource('al')} />
+                                    <RadioButton active={importSource === 'file'} label="File" onClick={() => setImportSource('file')} />
+                                </div>
+
+                                <div className="text-white font-bold">Mode</div>
+                                <div className="flex flex-wrap gap-5">
+                                    <RadioButton active={importMode === 'merge'} label="Merge" onClick={() => setImportMode('merge')} />
+                                    <RadioButton active={importMode === 'replace'} label="Replace" onClick={() => setImportMode('replace')} />
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleImport}
+                                disabled={busy || (importSource === 'file' && !selectedFileContent)}
+                                className="w-full py-3.5 rounded-lg bg-yorumi-accent hover:bg-yorumi-accent/90 text-black font-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {busy ? 'Importing...' : 'Import'}
+                            </button>
+                        </div>
+                    )}
+
+                    {panel === 'export' && (
+                        <div className="space-y-7">
+                            <div className="rounded-2xl bg-[#1f272e] p-5 md:p-6 text-gray-400 text-sm md:text-base leading-relaxed">
+                                Export {totalEntries} anime and manga entries, plus local progress, history, caches, and favorites.
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-5 md:gap-6 items-center">
+                                <div className="text-white font-bold">Format</div>
+                                <div className="flex flex-wrap gap-5">
+                                    <RadioButton active={exportFormat === 'json'} label="JSON" onClick={() => setExportFormat('json')} />
+                                    <RadioButton active={exportFormat === 'text'} label="TEXT" onClick={() => setExportFormat('text')} />
+                                    <RadioButton active={exportFormat === 'mal-xml'} label="MAL XML" onClick={() => setExportFormat('mal-xml')} />
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleExport}
+                                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-lg bg-yorumi-accent hover:bg-yorumi-accent/90 text-black font-black transition-colors"
+                            >
+                                <Download className="w-5 h-5" />
+                                Export
+                            </button>
+                        </div>
+                    )}
+
+                    {panel === 'import' && importStatus && (
+                        <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-gray-300">
+                            <AlertCircle className="w-4 h-4 text-yorumi-accent" />
+                            {importStatus}
+                        </div>
+                    )}
+
+                    {panel === 'export' && exportStatus && (
+                        <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-gray-300">
+                            <AlertCircle className="w-4 h-4 text-yorumi-accent" />
+                            {exportStatus}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
