@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Check, Plus, Heart } from 'lucide-react';
 import { useManga } from '../hooks/useManga';
@@ -7,6 +7,7 @@ import { useFavoriteManga } from '../hooks/useFavoriteManga';
 import { slugify } from '../utils/slugify';
 import MangaCard from '../features/manga/components/MangaCard';
 import type { Manga, MangaChapter } from '../types/manga';
+import type { Anime } from '../types/anime';
 import DetailsCharacters from '../features/anime/components/details/DetailsCharacters';
 import { useTitleLanguage } from '../context/TitleLanguageContext';
 import { getDisplayTitle } from '../utils/titleLanguage';
@@ -42,7 +43,7 @@ const ChapterList = ({
             <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2">
                 {currentChapters.map((ch, index) => {
                     // Extract just the number or short identifier
-                    const match = ch.title.match(/Chapter\s+(\d+[\.]?\d*)/i);
+                    const match = ch.title.match(/Chapter\s+(\d+[.]?\d*)/i);
                     const displayNum = match ? match[1] : ch.title.replace('Chapter', '').trim();
 
                     const isRead = readChapters.has(ch.id);
@@ -157,7 +158,33 @@ export default function MangaDetailsPage() {
     const [isStatusPickerOpen, setIsStatusPickerOpen] = useState(false);
     const [selectedReadStatus, setSelectedReadStatus] = useState<ReadListItem['status']>('reading');
 
+    const currentRouteId = normalizeMangaRouteId(id);
+    const selectedMatchesCurrentRoute = Boolean(selectedManga) && [
+        selectedManga?.scraper_id,
+        selectedManga?.id,
+        selectedManga?.mal_id
+    ].some((candidate) => normalizeMangaRouteId(candidate) === currentRouteId);
+    const routeMatchesCurrentRoute = Boolean(routeManga) && [
+        routeManga?.scraper_id,
+        routeManga?.id,
+        routeManga?.mal_id
+    ].some((candidate) => normalizeMangaRouteId(candidate) === currentRouteId);
 
+    const displayManga = selectedMatchesCurrentRoute
+        ? selectedManga
+        : routeMatchesCurrentRoute
+            ? routeManga
+            : selectedManga || routeManga;
+
+    // Navigate to reader page with path-based URL
+    const handleChapterClick = useCallback((chapter: MangaChapter) => {
+        if (!displayManga) return;
+
+        const title = slugify(displayManga.title || 'manga');
+        const chapterMatch = chapter.title.match(/Chapter\s+(\d+)/i);
+        const chapterNum = chapterMatch ? chapterMatch[1] : '1';
+        navigate(`/manga/read/${title}/${id}/c${chapterNum}`);
+    }, [displayManga, id, navigate]);
 
     // Fetch details on mount or ID change
     // Scroll to top on mount
@@ -186,7 +213,7 @@ export default function MangaDetailsPage() {
                 }
             }
         }
-    }, [location.state, mangaChapters, loadMangaChapter]);
+    }, [location.state, mangaChapters, loadMangaChapter, handleChapterClick]);
 
     // Fetch details on ID change
     useEffect(() => {
@@ -205,24 +232,6 @@ export default function MangaDetailsPage() {
             navigate('/manga');
         }
     };
-
-    const currentRouteId = normalizeMangaRouteId(id);
-    const selectedMatchesCurrentRoute = Boolean(selectedManga) && [
-        selectedManga?.scraper_id,
-        selectedManga?.id,
-        selectedManga?.mal_id
-    ].some((candidate) => normalizeMangaRouteId(candidate) === currentRouteId);
-    const routeMatchesCurrentRoute = Boolean(routeManga) && [
-        routeManga?.scraper_id,
-        routeManga?.id,
-        routeManga?.mal_id
-    ].some((candidate) => normalizeMangaRouteId(candidate) === currentRouteId);
-
-    const displayManga = selectedMatchesCurrentRoute
-        ? selectedManga
-        : routeMatchesCurrentRoute
-            ? routeManga
-            : selectedManga || routeManga;
 
     if (!displayManga) {
         return (
@@ -250,14 +259,6 @@ export default function MangaDetailsPage() {
         );
     }
 
-    // Navigate to reader page with path-based URL
-    const handleChapterClick = (chapter: MangaChapter) => {
-        const title = slugify(displayManga.title || 'manga');
-        const chapterMatch = chapter.title.match(/Chapter\s+(\d+)/i);
-        const chapterNum = chapterMatch ? chapterMatch[1] : '1';
-        navigate(`/manga/read/${title}/${id}/c${chapterNum}`);
-    };
-
     // Determine banner
     // If we have no banner, use the large cover logic or a blur
     const bannerImage = displayManga.images.jpg.large_image_url;
@@ -277,7 +278,7 @@ export default function MangaDetailsPage() {
             score: displayManga.score,
             type: displayManga.type,
             totalCount: displayManga.chapters || mangaChapters.length,
-            genres: displayManga.genres?.map((g: any) => g.name),
+            genres: displayManga.genres?.map((g) => g.name),
             mediaStatus: displayManga.status,
             synopsis: displayManga.synopsis,
             status
@@ -374,7 +375,7 @@ export default function MangaDetailsPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex flex-row items-center justify-center md:justify-start gap-4 py-2">
+                        <div className="flex w-full max-w-xl flex-row items-center justify-center md:justify-start gap-2 sm:gap-4 py-2">
                             <button
                                 onClick={() => {
                                     // Start reading first chapter (last in array since MK returns newest-first)
@@ -384,14 +385,14 @@ export default function MangaDetailsPage() {
                                     }
                                 }}
                                 disabled={mangaChaptersLoading}
-                                className="h-12 px-8 bg-yorumi-manga hover:bg-yorumi-manga/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-lg font-bold rounded-full transition-transform active:scale-95 flex items-center gap-3 shadow-lg shadow-yorumi-manga/20"
+                                className="h-12 min-w-0 flex-1 justify-center px-3 sm:px-8 bg-yorumi-manga hover:bg-yorumi-manga/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-base sm:text-lg font-bold rounded-full transition-transform active:scale-95 flex items-center gap-2 sm:gap-3 shadow-lg shadow-yorumi-manga/20 whitespace-nowrap"
                             >
                                 {mangaChaptersLoading ? 'Loading Chapters...' : 'Read Now'}
                             </button>
-                            <div className="relative">
+                            <div className="relative min-w-0 flex-1">
                                 <button
                                     onClick={handleToggleReadList}
-                                    className={`h-12 px-8 text-lg font-bold rounded-full transition-colors border flex items-center gap-2 ${isInReadList(mangaId)
+                                    className={`h-12 w-full min-w-0 justify-center px-3 sm:px-8 text-base sm:text-lg font-bold rounded-full transition-colors border flex items-center gap-2 whitespace-nowrap ${isInReadList(mangaId)
                                         ? 'bg-yorumi-manga text-white border-yorumi-manga'
                                         : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
                                         }`}
@@ -432,7 +433,7 @@ export default function MangaDetailsPage() {
                                         });
                                     }
                                 }}
-                                className={`h-12 w-12 rounded-full transition-all border flex items-center justify-center ${inFavorites
+                                className={`h-12 w-12 shrink-0 rounded-full transition-all border flex items-center justify-center ${inFavorites
                                     ? 'bg-red-500/20 text-red-400 border-red-400/40'
                                     : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
                                     }`}
@@ -523,7 +524,7 @@ export default function MangaDetailsPage() {
                                 {/* Characters Section */}
                                 {displayManga.characters && (
                                     <DetailsCharacters
-                                        characters={displayManga.characters as any}
+                                        characters={displayManga.characters as Anime['characters']}
                                         title="Characters"
                                     />
                                 )}
@@ -533,7 +534,7 @@ export default function MangaDetailsPage() {
                         {activeTab === 'relations' && (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                                 {/* Use `relations` from enriched data */}
-                                {(displayManga as any).relations?.edges?.map((edge: any) => (
+                                {displayManga.relations?.edges?.map((edge) => (
                                     <MangaCard
                                         key={edge.node.id}
                                         manga={{

@@ -8,6 +8,10 @@ import MangaInfoSidebar from './MangaInfoSidebar';
 import { useTitleLanguage } from '../../../../context/TitleLanguageContext';
 import { getDisplayTitle } from '../../../../utils/titleLanguage';
 
+type FullscreenElement = HTMLDivElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
 interface MangaReaderModalProps {
     isOpen: boolean;
     manga: Manga;
@@ -55,12 +59,14 @@ export default function MangaReaderModal({
     const [isHeaderVisible, setIsHeaderVisible] = useState(true);
 
     const lastScrollY = useRef(0);
+    const readerRootRef = useRef<HTMLDivElement>(null);
+    const fullscreenAttemptedRef = useRef(false);
     const { saveProgress } = useContinueReading();
 
     // Save progress on chapter change
     useEffect(() => {
         if (currentChapter && manga) {
-            const match = currentChapter.title.match(/Chapter\s+(\d+[\.]?\d*)/i);
+            const match = currentChapter.title.match(/Chapter\s+(\d+[.]?\d*)/i);
             const chapterNum = match ? match[1] : '1';
             saveProgress(manga, {
                 id: currentChapter.id,
@@ -107,6 +113,16 @@ export default function MangaReaderModal({
         return () => window.removeEventListener('resize', handleResize);
     }, [isOpen]);
 
+    useEffect(() => {
+        const fullscreenRoot = readerRootRef.current;
+
+        return () => {
+            if (document.fullscreenElement === fullscreenRoot) {
+                document.exitFullscreen().catch(() => undefined);
+            }
+        };
+    }, []);
+
     if (!isOpen) return null;
 
     // Determine prev/next chapters
@@ -132,13 +148,34 @@ export default function MangaReaderModal({
         if (!isHeaderVisible) setIsHeaderVisible(true);
     };
 
+    const requestMobileFullscreen = () => {
+        if (fullscreenAttemptedRef.current || window.innerWidth >= 768 || document.fullscreenElement) return;
+
+        fullscreenAttemptedRef.current = true;
+        const element = readerRootRef.current as FullscreenElement | null;
+
+        if (element?.requestFullscreen) {
+            element.requestFullscreen({ navigationUI: 'hide' }).catch(() => undefined);
+            return;
+        }
+
+        const webkitRequestFullscreen = element?.webkitRequestFullscreen;
+        if (webkitRequestFullscreen) {
+            Promise.resolve(webkitRequestFullscreen.call(element)).catch(() => undefined);
+        }
+    };
+
     const closeSidebars = () => {
         setShowChapters(false);
         setShowDetails(false);
     };
 
     return (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md transition-all duration-300 pt-[60px]">
+        <div
+            ref={readerRootRef}
+            className="fixed inset-0 z-[130] md:z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md transition-all duration-300 pt-0 md:pt-[60px]"
+            onPointerDown={requestMobileFullscreen}
+        >
             <div className="w-full h-full flex flex-col bg-[#0a0a0a] relative">
                 {/* Header */}
                 <ReaderHeader

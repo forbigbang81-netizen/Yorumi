@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useManga } from '../hooks/useManga';
 import { slugify } from '../utils/slugify';
 import MangaReaderModal from '../features/manga/components/MangaReaderModal';
+import type { MangaChapter } from '../types/manga';
 
 const MangaReaderSkeleton = () => {
     return (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md pt-[60px]">
+        <div className="fixed inset-0 z-[130] md:z-[90] flex items-center justify-center bg-black/95 backdrop-blur-md pt-0 md:pt-[60px]">
             <div className="w-full h-full flex flex-col bg-[#0a0a0a] relative">
                 <header className="h-14 shrink-0 flex items-center px-6 border-b border-white/10 bg-black/40 backdrop-blur-md">
                     <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
@@ -110,7 +111,7 @@ export default function MangaReaderPage() {
     }, [mangaChapters, chapter, currentMangaChapter, loadMangaChapter]);
 
     // Handle chapter navigation - update URL
-    const handleLoadChapter = (ch: any) => {
+    const handleLoadChapter = (ch: MangaChapter) => {
         if (selectedManga) {
             const title = slugify(selectedManga.title || 'manga');
             const chapterMatch = ch.title.match(/Chapter\s+(\d+)/i);
